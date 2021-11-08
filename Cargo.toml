@@ -1,0 +1,19 @@
+[package]
+name = "fdqc-tensors"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+#intel-mkl-sys = "0.2"
+#blas-src = {version = "0.8",features=["intel-mkl"]}
+#lapack-src = { version = "0.8",features=["intel-mkl"]}
+
+[dependencies]
+lapack-sys = "0.14"
+lapack = "0.19"
+blas-sys = "0.7"
+blas = "0.22"
+blas-src = { version = "0.8", features=["openblas"] }
+lapack-src = { version = "0.8", features=["openblas"] }
+num-complex = "0.4"
+libc = "0.2"
