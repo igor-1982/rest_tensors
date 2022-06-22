@@ -7,22 +7,24 @@ extern crate lapack_src;
 use std::fmt::Display;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
-use crate::{MatFormat,Indexing,Tensors,RecFn,SAFE_MINIMUM};
+use crate::{RecFn,SAFE_MINIMUM};
+use crate::tensors::{MatFormat,Tensors};
+use crate::index::Indexing;
 
 use lapack::{dsyev,dspevx,dspgvx};
 use blas::dgemm;
 #[derive(Debug)]
-pub struct TensorsSlice<'a, T: Clone> {
-    pub store_format : MatFormat,
+pub struct TensorsSliceMut<'a, T: Clone> {
+    pub store_format : &'a MatFormat,
     pub rank: usize,
-    pub size : Vec<usize>,
-    pub indicing: Vec<usize>,
+    pub size : &'a [usize],
+    pub indicing: &'a [usize],
     pub data : &'a mut [T],
 }
 
-impl <'a, T: Clone> Indexing for TensorsSlice<'a, T> {
+impl <'a, T: Clone> Indexing for TensorsSliceMut<'a, T> {
+    #[inline]
     fn indexing(&self, positions: &[usize]) -> usize 
-        where T: Clone
     {
         let mut p_start: usize = 0;
         match self.store_format {
@@ -57,6 +59,29 @@ impl <'a, T: Clone> Indexing for TensorsSlice<'a, T> {
         }
         p_start
     }
+    #[inline]
+    fn indexing_mat(&self, positions: &[usize]) -> usize 
+    {
+        let mut p_start: usize = 0;
+        match self.store_format {
+            MatFormat::Full => {
+                let mut i:usize = 0;
+                for i in 0..self.rank {
+                    p_start += self.indicing[i]*positions[i];
+                }
+            },
+            MatFormat::Lower => {
+                let mut i: usize = 0;
+                p_start = (2*self.size[0]-positions[1]-1)*positions[1]/2 + positions[0];
+            },
+            MatFormat::Upper => {
+                let mut i: usize = 0;
+                p_start = (positions[1]+1)*positions[1]/2 + positions[0];
+            }
+        }
+        p_start
+    }
+    #[inline]
     fn reverse_indexing(&self, positions: usize) -> Vec<usize> 
         where T: Clone
     {
@@ -116,10 +141,10 @@ impl <'a, T: Clone> Indexing for TensorsSlice<'a, T> {
     }
 }
 
-impl <'a, T> TensorsSlice<'a, T> 
+impl <'a, T> TensorsSliceMut<'a, T> 
     where T: Clone + Display
     {
-    pub fn formated_output(&mut self, n_len: usize, mat_form: String) {
+    pub fn formated_output(&self, n_len: usize, mat_form: String) {
         let mat_format = if mat_form.to_lowercase()==String::from("full") {MatFormat::Full
         } else if mat_form.to_lowercase()==String::from("upper") {MatFormat::Upper
         } else if mat_form.to_lowercase()==String::from("lower") {MatFormat::Lower
@@ -188,26 +213,55 @@ impl <'a, T> TensorsSlice<'a, T>
             }
         });
     }
-    pub fn get(&mut self, position: &[usize]) -> Option<T>{
-        if position.len()!=self.rank {
-            println!("Error: it is a {}-D tensor, which cannot be indexed by a position of {:?}", self.rank,position);
-            None
-        } else {
-            let index: usize = self.indexing(position);
-            Some(self.data[index].clone())
-        }
+    #[inline]
+    pub fn get(&self, position: &[usize]) -> Option<&T>{
+        let index: usize = self.indexing(position);
+        self.data.get(index)
+        //if position.len()!=self.rank {
+        //    println!("Error: it is a {}-D tensor, which cannot be indexed by a position of {:?}", self.rank,position);
+        //    None
+        //} else {
+        //    let index: usize = self.indexing(position);
+        //    Some(self.data[index].clone())
+        //}
     }
+    #[inline]
     pub fn set(&mut self, position: &[usize], new_data: T){
-        if position.len()!=self.rank {
-            panic!("Error: it is a {}-D tensor, which cannot be indexed by a position of {:?}", self.rank,position);
+        let index: usize = self.indexing(position);
+        if let Some(tmp_value) = self.data.get_mut(index) {
+            *tmp_value = new_data
         } else {
-            let index: usize = self.indexing(position);
-            self.data[index] = new_data;
-        }
+          panic!("Error in setting the tensor element located at the position of {:?}", position);
+        };
+        //if position.len()!=self.rank {
+        //    panic!("Error: it is a {}-D tensor, which cannot be indexed by a position of {:?}", self.rank,position);
+        //} else {
+        //    let index: usize = self.indexing(position);
+        //    self.data[index] = new_data;
+        //}
+    }
+    #[inline]
+    pub fn set_mat(&mut self, position: &[usize], new_data: T){
+        /// In order to guarantee the performance, the position should be in the correct order for different stored formats,
+        /// which will not be checked in the indexing_mat()
+        let index: usize = self.indexing_mat(position);
+        if let Some(tmp_value) = self.data.get_mut(index) {
+            *tmp_value = new_data
+        } else {
+          panic!("Error in setting the tensor element located at the position of {:?}", position);
+        };
+    }
+    #[inline]
+    pub fn get_mat_slice(&mut self, position: &[usize],len: usize) -> Option<&mut [T]>{
+        /// In order to guarantee the performance, the position should be in the correct order for different stored formats,
+        /// which will not be checked in the indexing_mat()
+        let index: usize = self.indexing_mat(position);
+        //self.data.get(index)
+        Some(&mut self.data[index..index+len])
     }
 }
-impl <'a> TensorsSlice<'a, f64> {
-    pub fn dot(&mut self, b: &mut TensorsSlice<f64>) -> Option<Tensors<f64>> {
+impl <'a> TensorsSliceMut<'a, f64> {
+    pub fn dot(&mut self, b: &mut TensorsSliceMut<f64>) -> Option<Tensors<f64>> {
         /// for self a => a*b
         match self.store_format {
             MatFormat::Full => {
@@ -219,7 +273,7 @@ impl <'a> TensorsSlice<'a, f64> {
                     unsafe {
                         dgemm(b'N',b'N',m as i32,n as i32,k as i32,1.0,self.data,m as i32,b.data,k as i32,1.0,&mut c,m as i32);
                     }
-                    Some(Tensors::from_vec(String::from("full"),vec![m,n], c))
+                    Some(Tensors::from_vec('F',vec![m,n], c))
                 }
             },
             MatFormat::Lower => {
@@ -257,7 +311,7 @@ impl <'a> TensorsSlice<'a, f64> {
                     if info!=0 {
                         panic!("Error in diagonalizing the matrix");
                     }
-                    let eigenvectors = Tensors::from_vec(String::from("full"),vec![self.size[0],self.size[0]], a);
+                    let eigenvectors = Tensors::from_vec('F',vec![self.size[0],self.size[0]], a);
                     //let eigenvalues = Tensors::from_vec(String::from("full"),vec![self.size[0]], w);
                     Some((eigenvectors, w,n))
                 }
@@ -280,7 +334,7 @@ impl <'a> TensorsSlice<'a, f64> {
                         dspevx(b'V',b'A',b'L',n,&mut a, 0.0_f64, 0.0_f64,0,0,
                                SAFE_MINIMUM,&mut n_found, &mut w, &mut z, n, &mut work, &mut iwork, &mut ifail,&mut info);
                     }
-                    let eigenvectors = Tensors::from_vec(String::from("full"),vec![self.size[0],self.size[0]], z);
+                    let eigenvectors = Tensors::from_vec('F',vec![self.size[0],self.size[0]], z);
                     //let eigenvalues = Tensors::from_vec(String::from("full"),vec![self.size[0]], w);
                     Some((eigenvectors, w, n_found))
                 }
@@ -303,14 +357,14 @@ impl <'a> TensorsSlice<'a, f64> {
                         dspevx(b'V',b'A',b'U',n,&mut a, 0.0_f64, 0.0_f64,0,0,
                                SAFE_MINIMUM,&mut n_found, &mut w, &mut z, n, &mut work, &mut iwork, &mut ifail,&mut info);
                     }
-                    let eigenvectors = Tensors::from_vec(String::from("full"),vec![self.size[0],self.size[0]], z);
+                    let eigenvectors = Tensors::from_vec('F',vec![self.size[0],self.size[0]], z);
                     //let eigenvalues = Tensors::from_vec(String::from("full"),vec![self.size[0]], w);
                     Some((eigenvectors, w, n_found))
                 }
             }
         }
     }
-    pub fn lapack_solver(&mut self,ovlp:TensorsSlice<f64>,num_orb:usize) -> Option<(Tensors<f64>,Vec<f64>)> {
+    pub fn lapack_solver(&mut self,ovlp:TensorsSliceMut<f64>,num_orb:usize) -> Option<(Tensors<f64>,Vec<f64>)> {
         ///solve A*x=(lambda)*B*x
         let mut itype: i32 = 1;
         let mut n = self.size[0] as i32;
@@ -359,8 +413,161 @@ impl <'a> TensorsSlice<'a, f64> {
         if m!=num_orb as i32 {
             panic!("Error:: The number of outcoming eigenvectors {} is unequal to the orbital number {}", m, num_orb);
         }
-        let eigenvectors = Tensors::from_vec("full".to_string(),vec![n as usize,m as usize],z);
+        let eigenvectors = Tensors::from_vec('F',vec![n as usize,m as usize],z);
         //let eigenvalues = Tensors::from_vec("full".to_string(),vec![n as usize],w);
         Some((eigenvectors, w))
+    }
+}
+
+pub struct TensorsSlice<'a, T: Clone> {
+    pub store_format : &'a MatFormat,
+    pub rank: usize,
+    pub size : &'a [usize],
+    pub indicing: &'a [usize],
+    pub data : &'a [T],
+}
+
+impl <'a, T> TensorsSlice<'a, T> 
+    where T: Clone + Display
+    {
+    #[inline]
+    pub fn get(&self, position: &[usize]) -> Option<&T>{
+        let index: usize = self.indexing(position);
+        self.data.get(index)
+    }
+    #[inline]
+    pub fn get_mat(&self, position: &[usize]) -> Option<&T>{
+        /// In order to guarantee the performance, the position should be in the correct order for different stored formats,
+        /// which will not be checked in the indexing_mat()
+        let index: usize = self.indexing_mat(position);
+        self.data.get(index)
+    }
+    #[inline]
+    pub fn get_mat_slice(&self, position: &[usize],len: usize) -> Option<&[T]>{
+        /// In order to guarantee the performance, the position should be in the correct order for different stored formats,
+        /// which will not be checked in the indexing_mat()
+        let index: usize = self.indexing_mat(position);
+        //self.data.get(index)
+        Some(&self.data[index..index+len])
+    }
+    #[inline]
+    pub fn get_mat_slice_hp(&self, start: usize,len: usize) -> &[T]{
+        //let index: usize = self.indexing_mat(position);
+        //self.data.get(index)
+        &self.data[start..start+len]
+    }
+}
+impl <'a, T: Clone> Indexing for TensorsSlice<'a, T> {
+    #[inline]
+    fn indexing(&self, positions: &[usize]) -> usize 
+    // The general indexing mode, which, however, is very time consuming
+        where T: Clone
+    {
+        let mut p_start: usize = 0;
+        match self.store_format {
+            MatFormat::Full => {
+                for i in 0..self.rank {
+                    p_start += self.indicing[i]*positions[i];
+                }
+            },
+            MatFormat::Lower => {
+                p_start = if positions[0]>=positions[1] {
+                    (2*self.size[0]-positions[1]-1)*positions[1]/2 + positions[0]
+                } else {
+                    (2*self.size[0]-positions[0]-1)*positions[0]/2 + positions[1]
+                };
+                for i in 2..self.rank-2 {
+                    p_start += self.indicing[i]*positions[i];
+                }
+            },
+            MatFormat::Upper => {
+                p_start = if positions[0]<=positions[1] {
+                    (positions[1]+1)*positions[1]/2 + positions[0]
+                } else {
+                    (positions[0]+1)*positions[0]/2 + positions[1]
+                };
+                for i in 2..self.rank-2 {
+                    p_start += self.indicing[i]*positions[i];
+                }
+            }
+        }
+        p_start
+    }
+    #[inline]
+    fn indexing_mat(&self, positions: &[usize]) -> usize 
+        where T: Clone
+    {
+        //let mut p_start: usize = 0;
+        match self.store_format {
+            MatFormat::Upper => {
+                (positions[1]+1)*positions[1]/2 + positions[0]
+            },
+            MatFormat::Full => {
+                self.indicing[0]*positions[0] + self.indicing[1]*positions[1]
+            },
+            MatFormat::Lower => {
+                (2*self.size[0]-positions[1]-1)*positions[1]/2 + positions[0]
+            }
+        }
+        //p_start
+    }
+    #[inline]
+    fn reverse_indexing(&self, positions: usize) -> Vec<usize> 
+        where T: Clone
+    // The general reversed indexing mode, which, however, is very time consuming
+    {
+        let mut pos: Vec<usize> = vec![0;self.size.len()];
+        let mut rest = positions;
+        match self.store_format {
+            MatFormat::Full => {
+                (0..self.size.len()).rev().for_each(|i| {
+                    pos[i] = rest/self.indicing[i];
+                    rest = rest % self.indicing[i];
+                })
+            },
+            MatFormat::Lower => {
+                // according the definition of lower tensor, the first and second ranks have the same lenght
+                (2..self.size.len()).rev().for_each(|i|{
+                    pos[i] = rest/self.indicing[i];
+                    rest = rest % self.indicing[i];
+                });
+                let index_pattern = RecFn(Box::new(|func: &RecFn<i32>, n: (i32,i32)| -> (i32,i32) {
+                    match n.0 {
+                        i if i<0 => {
+                            (0,n.1+1)
+                        },
+                        0=>(0,n.1),
+                        _ => {func.call(func,(n.0-n.1, n.1-1))}
+                    }
+                }));
+                let (i,j) = index_pattern.call(&index_pattern,(rest as i32,self.size[0] as i32));
+                let i = rest - (self.size[0]+j as usize -1)*(self.size[0]-j as usize)/2;
+                let j = self.size[0] - j as usize;
+                pos[0] = i;
+                pos[1] = j as usize;
+            },
+            MatFormat::Upper => {
+                // according the definition of lower tensor, the first and second ranks have the same lenght
+                (2..self.size.len()).rev().for_each(|i|{
+                    pos[i] = rest/self.indicing[i];
+                    let rest = rest % self.indicing[i];
+                });
+                let index_pattern = RecFn(Box::new(|func: &RecFn<i32>, n: (i32,i32)| -> (i32,i32) {
+                    match n.0-n.1 {
+                        i if i<0 => {
+                            (0,n.1-1)
+                        },
+                        0 => (0,n.1),
+                        _ => {func.call(func,(n.0-n.1, n.1+1))}
+                    }
+                }));
+                let (i,j) = index_pattern.call(&index_pattern,(rest as i32,0));
+                let tmp_val = (j*(j+1)/2);
+                let i = rest - tmp_val as usize;
+                pos[0] = i;
+                pos[1] = j as usize;
+            },
+        }
+        pos
     }
 }

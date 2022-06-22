@@ -5,21 +5,45 @@ extern crate lapack;
 extern crate lapack_src;
 
 use std::fmt::Display;
+use std::marker::PhantomData;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
 use lapack::{dsyev,dspevx,dspgvx};
 use blas::dgemm;
 mod tensors_slice;
-use crate::tensors_slice::TensorsSlice;
+mod eri;
+mod index;
+mod tensors;
+mod tensor_basic_operation;
+mod matrix;
+mod matrix_blas_lapack;
+pub mod ri;
+//use typenum::{U1,U2,U3,U4};
+use crate::tensors_slice::{TensorsSliceMut,TensorsSlice};
+//use itertools::iproduct;
+
+
+pub use crate::tensor_basic_operation::*;
+pub use crate::tensors::*;
+pub use crate::eri::*;
+pub use crate::matrix::*;
+pub use crate::ri::*;
+
+#[derive(Clone,Debug,PartialEq)]
+pub struct Tensors4D<T:Clone+Display,D> {
+    /// Coloum-major Tensors with the rank of 4 at most,
+    /// designed for quantum chemistry calculations specifically.
+    pub data : Vec<T>,
+    pub size : [usize;4],
+    pub indicing: [usize;4],
+    pub rank : D,
+    //pub store_format : MatFormat,
+    //pub size : Vec<usize>,
+    //pub indicing: [usize;4],
+}
+
 
 const SAFE_MINIMUM:f64 = 10E-12;
-
-#[derive(Clone, Copy,Debug, PartialEq)]
-pub enum MatFormat {
-    Full,
-    Upper,
-    Lower
-}
 
 //recursive wrapper
 struct RecFn<T>(Box<dyn Fn(&RecFn<T>,(T,T)) -> (T,T)>);
@@ -29,561 +53,45 @@ impl<T> RecFn<T> {
     }
 }
 
-pub trait Indexing {
-    fn indexing(&self, position:&[usize]) -> usize;
-    fn reverse_indexing(&self, position:usize) -> Vec<usize>;
-}
-
-#[derive(Clone,Debug,PartialEq)]
-pub struct Tensors<T:Clone+Display> {
-    /// Coloum-major Tensors designed for quantum chemistry calculations specifically.
-    pub store_format : MatFormat,
-    pub rank: usize,
-    pub size : Vec<usize>,
-    pub indicing: Vec<usize>,
-    pub data : Vec<T>
-}
-
-impl <T: Clone + Display> Tensors<T> {
-    pub fn new(new_type: String, size: Vec<usize>, new_default: T) -> Tensors<T> {
-        let mut mat_format = if new_type.to_lowercase()==String::from("full") {MatFormat::Full
-        } else if new_type.to_lowercase()==String::from("upper") {MatFormat::Upper
-        } else if new_type.to_lowercase()==String::from("lower") {MatFormat::Lower
-        } else {
-            panic!("Error in determing the layout format of the matrix: {}", new_type)
-        };
-        if size.len()==1 {
-            mat_format = match mat_format {
-                MatFormat::Full => {MatFormat::Full},
-                MatFormat::Upper => {
-                    println!("WARNNING: a simple 1-D array is allocated, which cannot be stored as a upper matrix");
-                    MatFormat::Full
-                },
-                MatFormat::Lower => {
-                    println!("WARNNING: a simple 1-D array is allocated, which cannot be stored as a lower matrix");
-                    MatFormat::Full
-                },
-            }
-        } else if size.len()>=2 && size[0]!=size[1] {
-            mat_format = match mat_format {
-                MatFormat::Full => {MatFormat::Full},
-                MatFormat::Upper => {
-                    println!("WARNNING: a {}-D tensor ({:?}) is allocated, which cannot be stored as a upper matrix ", size.len(),&size);
-                    MatFormat::Full
-                },
-                MatFormat::Lower => {
-                    println!("WARNNING: a {}-D tensor ({:?}) is allocated, which cannot be stored as a lower matrix", size.len(),&size);
-                    MatFormat::Full
-                },
-            }
-        }
-
-        let mut len: usize = 1;
-        let mut indicing: Vec<usize> = vec![0;size.len()];
-        match &mat_format {
-            MatFormat::Full => {
-                for i in 0..size.len() {
-                    indicing[i]=len;
-                    len *= size[i];
-                };
-            },
-            MatFormat::Lower => {
-                len = size[0]*(size[0]+1)/2;
-                for i in 2..size.len() {
-                    indicing[i]=len;
-                    len *= size[i];
-                };
-            },
-            MatFormat::Upper => {
-                len = size[0]*(size[0]+1)/2;
-                indicing[1]=len;
-                for i in 2..size.len() {
-                    indicing[i]=len;
-                    len *= size[i];
-                };
-            }
-        }
-        Tensors {
-            store_format: mat_format,
-            rank: size.len(),
-            size,
-            indicing,
-            data: vec![new_default.clone(); len]
-        }
-    }
-    pub fn from_vec(new_type: String, size: Vec<usize>, new_vec: Vec<T>) -> Tensors<T> {
-        let mut mat_format = if new_type.to_lowercase()==String::from("full") {MatFormat::Full
-        } else if new_type.to_lowercase()==String::from("upper") {MatFormat::Upper
-        } else if new_type.to_lowercase()==String::from("lower") {MatFormat::Lower
-        } else {
-            panic!("Error in determing the layout format of the matrix: {}", new_type)
-        };
-        if size.len()==1 {
-            mat_format = match mat_format {
-                MatFormat::Full => {MatFormat::Full},
-                MatFormat::Upper => {
-                    println!("WARNNING: a simple 1-D array is allocated, which cannot be stored as a upper matrix");
-                    MatFormat::Full
-                },
-                MatFormat::Lower => {
-                    println!("WARNNING: a simple 1-D array is allocated, which cannot be stored as a lower matrix");
-                    MatFormat::Full
-                },
-            }
-        } else if size.len()>=2 && size[0]!=size[1] {
-            mat_format = match mat_format {
-                MatFormat::Full => {MatFormat::Full},
-                MatFormat::Upper => {
-                    println!("WARNNING: a {}-D tensor is allocated, which cannot be stored as a upper matrix ", size.len());
-                    MatFormat::Full
-                },
-                MatFormat::Lower => {
-                    println!("WARNNING: a {}-D tensor is allocated, which cannot be stored as a lower matrix", size.len());
-                    MatFormat::Full
-                },
-            }
-        }
-        let mut len: usize = 1;
-        let mut indicing: Vec<usize> = vec![0;size.len()];
-        match &mat_format {
-            MatFormat::Full => {
-                for i in 0..size.len() {
-                    indicing[i]=len;
-                    len *= size[i];
-                };
-            },
-            MatFormat::Lower => {
-                len = size[0]*(size[0]+1)/2;
-                for i in 2..size.len() {
-                    indicing[i]=len;
-                    len *= size[i];
-                };
-            },
-            MatFormat::Upper => {
-                len = size[0]*(size[0]+1)/2;
-                for i in 2..size.len() {
-                    indicing[i]=len;
-                    len *= size[i];
-                };
-            }
-        }
-        if len>new_vec.len() {
-            panic!("Error: inconsistency happens when formating a tensor from a given vector, (length from size, length of new vector) = ({},{})",len,new_vec.len());
-        } else if len<new_vec.len() {
-            println!("Waring: the vector size ({}) is larger for the size of the new tensor ({})", new_vec.len(), len);
-        }
-        Tensors {
-            store_format: mat_format,
-            rank: size.len(),
-            size,
-            indicing,
-            data: new_vec
-        }
-    }
-    pub fn duplicate(&self, out_type: String)  -> Option<Tensors<T>> {
-        let mut new_type = if out_type.to_lowercase()==String::from("full") {MatFormat::Full
-        } else if out_type.to_lowercase()==String::from("upper") {MatFormat::Upper
-        } else if out_type.to_lowercase()==String::from("lower") {MatFormat::Lower
-        } else if out_type.to_lowercase()==String::from("unchange") {self.store_format.clone()
-        } else {
-            panic!("Error in determing the layout format of the matrix: {}", out_type)
-        };
-        let mut self_type = match &self.store_format {
-            MatFormat::Full => String::from("full"),
-            MatFormat::Upper => String::from("upper"),
-            MatFormat::Lower => String::from("lower")
-        };
-        let new_size = self.size.clone();
-        let new_default: T = self.data[0].clone();
-        //if self_type == out_type_2 {
-        let mut new_tensor = if self.store_format == new_type {
-            let mut tmp_tensor = Tensors::new(self_type,new_size,new_default);
-            tmp_tensor.data = self.data.clone();
-            tmp_tensor
-        } else {
-            let mut tmp_tensor = Tensors::new(out_type,new_size,new_default);
-            let tmp_size_vec = 0;
-            (0..self.data.len()).into_iter().for_each(|i| {
-                let mut tensor_position = self.reverse_indexing(i);
-                tmp_tensor.set(&tensor_position,self.data[i].clone());
-                if let MatFormat::Full = tmp_tensor.store_format {
-                    let tmp_switch = tensor_position[0];
-                    tensor_position[0] = tensor_position[1];
-                    tensor_position[1] = tmp_switch;
-                    tmp_tensor.set(&tensor_position,self.data[i].clone());
-                }
-            });
-            tmp_tensor
-        };
-        Some(new_tensor)
-
-    }
-    pub fn mat_shape(&mut self, start_dimention: usize) -> Option<(usize,usize)> {
-        if let Some(i_dim) = self.size.get(start_dimention) {
-            if let Some(j_dim) = self.size.get(start_dimention+1) {
-                Some((*i_dim,*j_dim))
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    }
-    pub fn get(&self, position: &[usize]) -> Option<T> {
-        if position.len()!=self.rank {
-            println!("Error: it is a {}-D tensor, which cannot be indexed by a position of {:?}", self.rank,position);
-            None
-        } else {
-            let index: usize = self.indexing(position);
-            Some(self.data[index].clone())
-        }
-    }
-    pub fn get_mut(&mut self, position: &[usize]) -> Option<&mut T>{
-        if position.len()!=self.rank {
-            println!("Error: it is a {}-D tensor, which cannot be indexed by a position of {:?}", self.rank,position);
-            None
-        } else {
-            let index: usize = self.indexing(position);
-            Some(&mut self.data[index])
-        }
-    }
-    pub fn set(&mut self, position: &[usize], new_data: T){
-        if position.len()!=self.rank {
-            panic!("Error: it is a {}-D tensor, which cannot be indexed by a position of {:?}", self.rank,position);
-        } else {
-            let index: usize = self.indexing(position);
-            self.data[index] = new_data;
-        }
-    }
-    pub fn get_reducing_tensor_mut(&mut self, i_reduced: usize) -> Option<TensorsSlice<T>> {
-        if i_reduced > self.size[self.size.len()-1] {
-            None
-        } else {
-            let mut position:Vec<usize> = vec![0; self.rank];
-            position[self.rank-1] = i_reduced;
-            let p_start = self.indexing(&position);
-            let p_length = self.indicing[self.rank-1];
-            Some(TensorsSlice {
-                store_format: self.store_format.clone(),
-                rank: self.rank-1,
-                size: self.size[..self.rank-1].to_vec(),
-                indicing: self.indicing[..self.rank-1].to_vec(),
-                data : &mut self.data[p_start..p_start+p_length]})
-        }
-    }
-    pub fn get_reducing_tensor(&mut self, i_reduced: usize) -> Option<Tensors<T>> {
-        if i_reduced > self.size[self.size.len()-1] {
-            None
-        } else {
-            let mut position:Vec<usize> = vec![0; self.rank];
-            position[self.rank-1] = i_reduced;
-            let p_start = self.indexing(&position);
-            let p_length = self.indicing[self.rank-1];
-            Some(Tensors {
-                store_format: self.store_format.clone(),
-                rank: self.rank-1,
-                size: self.size[..self.rank-1].to_vec(),
-                indicing: self.indicing[..self.rank-1].to_vec(),
-                data : self.data[p_start..p_start+p_length].to_vec().clone()})
-        }
-    }
-    pub fn to_tensorsslice(&mut self) -> Option<TensorsSlice<T>> {
-        Some(TensorsSlice {
-            store_format: self.store_format.clone(),
-            rank: self.rank,
-            size: self.size.clone(),
-            indicing: self.indicing.clone(),
-            data : &mut self.data})
-        
-    }
-    pub fn get_reducing_matrix(&mut self, i_reduced: Vec<usize>) -> Option<TensorsSlice<T>> {
-        if self.rank<2 || (self.rank > 2 && self.rank - i_reduced.len()!=2) {
-            println!("Error:: the tensor cannot be reduced to a matrix");
-            None
-        } else if (self.size[0]!=self.size[1]) {
-            println!("Error:: the first and second dimensions of the tensor have different length, thus it cannot be reduced to a matrix");
-            None
-        } else if self.rank>2 {
-            let mut position:Vec<usize> = vec![0; self.rank];
-            (0..i_reduced.len()).into_iter().for_each(|i| {
-                let p= position.get_mut(i+2).unwrap();
-                *p=i_reduced[i];
-            });
-            let p_start = 0;
-            let p_length = self.indicing[2];
-            Some(TensorsSlice {
-                store_format: self.store_format.clone(),
-                rank: 2,
-                size: self.size[..self.rank-1].to_vec(),
-                indicing: self.indicing[..2].to_vec(),
-                data : &mut self.data[p_start..p_start+p_length]})
-        } else {
-            Some(TensorsSlice {
-                store_format: self.store_format.clone(),
-                rank: 2,
-                size: self.size.clone(),
-                indicing: self.indicing[..2].to_vec(),
-                data : &mut self.data})
-        }
-    }
-
-    pub fn formated_output(&mut self, n_len: usize, mat_form: String) {
-        let mat_format = if mat_form.to_lowercase()==String::from("full") {MatFormat::Full
-        } else if mat_form.to_lowercase()==String::from("upper") {MatFormat::Upper
-        } else if mat_form.to_lowercase()==String::from("lower") {MatFormat::Lower
-        } else {
-            panic!("Error in determing the layout format of the matrix: {}", mat_form)
-        };
-        if self.rank!=2 {panic!("At present, the formated output is only available for the 2-D matrix")};
-        let n_row = self.size[0];
-        let n_column = self.size[1];
-        let n_block = if n_column%n_len==0 {n_column/n_len} else {n_column/n_len+1};
-        let mut index:usize = 0;
-        //println!("{}",n_block);
-        (0..n_block).into_iter().for_each(|i_block| {
-            let t_len = if (i_block+1)*n_len<=n_column {n_len} else {n_column%n_len};
-            //println!("{},{}",i_block,t_len);
-            let mut tmp_s:String = format!("{:5}","");
-            for i in 0..t_len {
-                if tmp_s.len()==5 {
-                    tmp_s = format!("{} {:12}",tmp_s,i+i_block*n_len);
-                } else {
-                    tmp_s = format!("{},{:12}",tmp_s,i+i_block*n_len);
-                }
-            }
-            println!("{}",tmp_s);
-            for i in 0..n_row as usize {
-                let mut tmp_s = format!("{:5}",i);
-                let j_start = i_block*n_len;
-                let mut turn_off_comma = true;
-                for j in (j_start..j_start+t_len) {
-                    match &mat_format {
-                        MatFormat::Full => {
-                            let tmp_f = self.get(&[i,j]).unwrap();
-                            if tmp_s.len()==5 {
-                                tmp_s = format!("{} {:12.6}",tmp_s,tmp_f);
-                            } else {
-                                tmp_s = format!("{},{:12.6}",tmp_s,tmp_f);
-                            }
-                        },
-                        MatFormat::Upper => {
-                            if i<=j {
-                                let tmp_f = self.get(&[i,j]).unwrap();
-                                if turn_off_comma {
-                                    tmp_s = format!("{} {:12.6}",tmp_s,tmp_f);
-                                    turn_off_comma = false;
-                                } else {
-                                    tmp_s = format!("{},{:12.6}",tmp_s,tmp_f);
-                                }
-                            } else {
-                                tmp_s = format!("{} {:12}",tmp_s,String::from(" "));
-                            }
-                        },
-                        MatFormat::Lower => {
-                            if i>=j {
-                                let tmp_f = self.get(&[i,j]).unwrap();
-                                if tmp_s.len()==5 {
-                                    tmp_s = format!("{} {:12.6}",tmp_s,tmp_f);
-                                } else {
-                                    tmp_s = format!("{},{:12.6}",tmp_s,tmp_f);
-                                }
-                            }
-                        }
-                    };
-                    //println!("{},{}",tmp_i,j);
-                };
-                if tmp_s.len()>5 {println!("{}",tmp_s)};
-            }
-        });
-    }
-}
-
-impl <T: Clone+Display+Add<Output=T>+AddAssign> Add for Tensors<T> {
-    type Output = Self;
-
-    fn add(self, other: Self) -> Self::Output {
-        let mut new_tensors = self.duplicate("unchange".to_string()).unwrap();
-        (0..new_tensors.data.len()).into_iter().for_each(|i| {
-            new_tensors.data[i] += other.data[i].clone();
-        });
-        new_tensors
-    }
-}
-
-impl <T: Clone+Display+Sub<Output=T>+SubAssign> Sub for Tensors<T> {
-    type Output = Self;
-
-    fn sub(self, other: Self) -> Self::Output {
-        let mut new_tensors = self.duplicate("unchange".to_string()).unwrap();
-        (0..new_tensors.data.len()).into_iter().for_each(|i| {
-            new_tensors.data[i] -= other.data[i].clone();
-        });
-        new_tensors
-    }
-}
-
-impl <T: Clone+Display> Indexing for Tensors<T> {
-    fn indexing(&self, positions: &[usize]) -> usize 
-        where T: Clone
-    {
-        let mut p_start: usize = 0;
-        match self.store_format {
-            MatFormat::Full => {
-                let mut i:usize = 0;
-                for i in 0..self.rank {
-                    p_start += self.indicing[i]*positions[i];
-                }
-            },
-            MatFormat::Lower => {
-                let mut i: usize = 0;
-                p_start = if positions[0]>=positions[1] {
-                    (2*self.size[0]-positions[1]-1)*positions[1]/2 + positions[0]
-                } else {
-                    (2*self.size[0]-positions[0]-1)*positions[0]/2 + positions[1]
-                };
-                for i in 2..self.rank {
-                    p_start += self.indicing[i]*positions[i];
-                }
-            },
-            MatFormat::Upper => {
-                let mut i: usize = 0;
-                p_start = if positions[0]<=positions[1] {
-                    (positions[1]+1)*positions[1]/2 + positions[0]
-                } else {
-                    (positions[0]+1)*positions[0]/2 + positions[1]
-                };
-                for i in 2..self.rank {
-                    p_start += self.indicing[i]*positions[i];
-                }
-            }
-        }
-        p_start
-    }
-    fn reverse_indexing(&self, positions: usize) -> Vec<usize> 
-        where T: Clone
-    {
-        let mut pos: Vec<usize> = vec![0;self.size.len()];
-        let mut rest = positions;
-        match self.store_format {
-            MatFormat::Full => {
-                (0..self.size.len()).rev().for_each(|i| {
-                    pos[i] = rest/self.indicing[i];
-                    rest = rest % self.indicing[i];
-                })
-            },
-            MatFormat::Lower => {
-                // according the definition of lower tensor, the first and second ranks have the same lenght
-                (2..self.size.len()).rev().for_each(|i|{
-                    pos[i] = rest/self.indicing[i];
-                    rest = rest % self.indicing[i];
-                });
-                let index_pattern = RecFn(Box::new(|func: &RecFn<i32>, n: (i32,i32)| -> (i32,i32) {
-                    match n.0 {
-                        i if i<0 => {
-                            (0,n.1+1)
-                        },
-                        0=>(0,n.1),
-                        _ => {func.call(func,(n.0-n.1, n.1-1))}
-                    }
-                }));
-                let (i,j) = index_pattern.call(&index_pattern,(rest as i32,self.size[0] as i32));
-                let i = rest - (self.size[0]+j as usize -1)*(self.size[0]-j as usize)/2;
-                let j = self.size[0] - j as usize;
-                pos[0] = i;
-                pos[1] = j as usize;
-            },
-            MatFormat::Upper => {
-                // according the definition of lower tensor, the first and second ranks have the same lenght
-                (2..self.size.len()).rev().for_each(|i|{
-                    pos[i] = rest/self.indicing[i];
-                    let rest = rest % self.indicing[i];
-                });
-                let index_pattern = RecFn(Box::new(|func: &RecFn<i32>, n: (i32,i32)| -> (i32,i32) {
-                    match n.0-n.1 {
-                        i if i<0 => {
-                            (0,n.1-1)
-                        },
-                        0 => (0,n.1),
-                        _ => {func.call(func,(n.0-n.1, n.1+1))}
-                    }
-                }));
-                let (i,j) = index_pattern.call(&index_pattern,(rest as i32,0));
-                let tmp_val = (j*(j+1)/2);
-                let i = rest - tmp_val as usize;
-                pos[0] = i;
-                pos[1] = j as usize;
-            },
-        }
-        pos
-    }
-}
-
-impl Tensors<f64> {
-    pub fn dot(&mut self, b: &mut Tensors<f64>) -> Option<Tensors<f64>> {
-        let mut tmp_a = self.to_tensorsslice().unwrap();
-        let mut tmp_b = b.to_tensorsslice().unwrap();
-        Some(tmp_a.dot(&mut tmp_b).unwrap())
-    }
-    pub fn abs(&mut self) -> f64 {
-        let mut result = 0.0;
-        (0..self.data.len()).into_iter().for_each(|i|{
-            result += self.data[i].powf(2.0);
-        });
-        result.sqrt()
-    }
-    pub fn multiple(&mut self, scaled_factor: f64) {
-        let mut tmp_a = self.to_tensorsslice().unwrap();
-        tmp_a.multiple(scaled_factor);
-    }
-    pub fn diagonalize(&mut self) -> Option<(Tensors<f64>,Vec<f64>,i32)> {
-        let mut tmp_a = self.to_tensorsslice().unwrap();
-        tmp_a.diagonalize()
-    }
-    pub fn lapack_solver(&mut self,ovlp:&mut Tensors<f64>,num_orb:usize) -> Option<(Tensors<f64>,Vec<f64>)> {
-        let mut tmp_a = self.to_tensorsslice().unwrap();
-        let mut tmp_b = ovlp.to_tensorsslice().unwrap();
-        tmp_a.lapack_solver(tmp_b, num_orb)
-    }
-    pub fn transpose(&mut self) -> Option<Tensors<f64>> {
-        match self.store_format {
-            MatFormat::Full => {
-                let tmp_size = self.size.clone();
-                let mut new_ten: Tensors<f64> = Tensors::new(String::from("full"), tmp_size, 0.0);
-                (0..self.size[0]).into_iter().for_each(|i| {
-                    (0..self.size[1]).into_iter().for_each(|j| {
-                        new_ten.set(&[i,j],self.get(&[j,i]).unwrap());
-                    })
-                });
-                Some(new_ten)
-            },
-            MatFormat::Lower => {
-                let tmp_size = self.size.clone();
-                let mut new_ten: Tensors<f64> = Tensors::new(String::from("upper"), tmp_size, 0.0);
-                (0..self.size[0]).into_iter().for_each(|i| {
-                    (0..i+1).into_iter().for_each(|j| {
-                        new_ten.set(&[j,i],self.get(&[i,j]).unwrap());
-                    })
-                });
-                Some(new_ten)
-            },
-            MatFormat::Upper => {
-                let tmp_size = self.size.clone();
-                let mut new_ten: Tensors<f64> = Tensors::new(String::from("lower"), tmp_size, 0.0);
-                (0..self.size[0]).into_iter().for_each(|i| {
-                    (0..i+1).into_iter().for_each(|j| {
-                        new_ten.set(&[i,j],self.get(&[j,i]).unwrap());
-                    })
-                });
-                Some(new_ten)
-            }
-        }
-    }
-}
 
 
 #[cfg(test)]
 mod tests {
-    use crate::{Indexing, Tensors};
+    use itertools::{iproduct, Itertools};
+    use libc::access;
+
+    use crate::{index::Indexing, tensors::Tensors, MatrixFull, RIFull, MatrixUpper, print_vec};
+    //#[test]
+    //fn test_matrix_index() {
+    //    let size_a:Vec<usize>=vec![3,3];
+    //    let mut tmp_a = vec![
+    //        3.0,1.0,1.0,
+    //        1.0,3.0,1.0,
+    //        1.0,1.0,3.0];
+    //    let mut my_a = Tensors::from_vec('F', size_a, tmp_a);
+    //    println!("{}",my_a[(0usize,0usize)]);
+    //}
+    #[test]
+    fn test_operator_overloading() {
+        let a = MatrixFull::from_vec([3,3],vec![0.0,1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0]).unwrap();
+        let b = MatrixFull::from_vec([3,3],vec![8.0,3.0,4.0,2.0,6.0,3.0,9.0,16.0,6.0]).unwrap();
+        println!("a:{:?}, b:{:?}", a,b);
+        let c = a+b;
+        println!("c:{:?}", c);
+        println!("c:[{:8.4},{:8.4},{:8.4}]", c[[0,0]],c[[0,1]],c[[0,2]]);
+        println!("c:[{:8.4},{:8.4},{:8.4}]", c[[1,0]],c[[1,1]],c[[1,2]]);
+        println!("c:[{:8.4},{:8.4},{:8.4}]", c[[2,0]],c[[2,1]],c[[2,2]]);
+        let a = MatrixFull::new([3,3],1);
+        let b = MatrixFull::new([2,2],2);
+        let c = b+a;
+        println!("c:{:?}", c);
+        let a = MatrixFull::from_vec([2,2],vec![3,2,1,3]).unwrap();
+        let b = MatrixFull::from_vec([2,2],vec![2,3,3,1]).unwrap();
+        let c = b-a;
+        println!("c:{:?}", &c);
+        println!("c:[{},{}]", c[[0,0]],c[[1,0]]);
+        println!("c:[{},{}]", c[[0,1]],c[[1,1]]);
+    }
     #[test]
     fn test_upper_matrix() {
         let size:Vec<usize>=vec![11,11];
@@ -592,7 +100,7 @@ mod tests {
             tmp_v[i] = i as f64;
         });
         //let size = vec![11,11];
-        let mut my_mat = Tensors::from_vec(String::from("upper"), size, tmp_v);
+        let mut my_mat = Tensors::from_vec('U', size, tmp_v);
         let mut tmp_v = if let Some(fvalue) = my_mat.get_mut(&[2,6]) {
             fvalue
         } else {
@@ -612,7 +120,7 @@ mod tests {
         (0..tmp_v.len()).into_iter().for_each(|i| {
             tmp_v[i] = i as f64;
         });
-        let mut my_mat = Tensors::from_vec(String::from("upper"), size, tmp_v);
+        let mut my_mat = Tensors::from_vec('U', size, tmp_v);
         let mut tmp_v = if let Some(fvalue) = my_mat.get_mut(&[2,6,1]) {
             fvalue
         } else {
@@ -625,7 +133,7 @@ mod tests {
         tmp_rd_mat.formated_output(5, String::from("upper"));
         tmp_rd_mat.set(&[2,6],50.0);
         tmp_rd_mat.formated_output(5, String::from("upper"));
-        assert_eq!(my_mat.get(&[2,6,1]).unwrap(), 50.0);
+        assert_eq!(*my_mat.get(&[2,6,1]).unwrap(), 50.0);
     }
     #[test]
     fn test_dgemm() {
@@ -640,8 +148,8 @@ mod tests {
             2.0,6.0,10.0,
             3.0,7.0,11.0,
             4.0,8.0,11.0];
-        let mut my_a = Tensors::from_vec(String::from("full"), size_a, tmp_a);
-        let mut my_b = Tensors::from_vec(String::from("full"), size_b, tmp_b);
+        let mut my_a = Tensors::from_vec('F', size_a, tmp_a);
+        let mut my_b = Tensors::from_vec('F', size_b, tmp_b);
         let mut my_c = my_a.dot(&mut my_b).unwrap();
         //my_c.formated_oupput
         my_c.formated_output(5,String::from("full"));
@@ -655,7 +163,7 @@ mod tests {
             3.0,1.0,1.0,
             1.0,3.0,1.0,
             1.0,1.0,3.0];
-        let mut my_a = Tensors::from_vec("full".to_string(), size_a, tmp_a);
+        let mut my_a = Tensors::from_vec('F', size_a, tmp_a);
         let (mut eigenvectors,mut eigenvalues,mut n) = my_a.diagonalize().unwrap();
         my_a.formated_output(5,String::from("full"));
         println!("eigenvalues: {:?}",eigenvalues);
@@ -670,12 +178,12 @@ mod tests {
             3.0,1.0,3.0,1.0,1.0,3.0
             ];
         let size_a:Vec<usize>=vec![3,3];
-        let mut my_a = Tensors::from_vec("upper".to_string(), size_a, tmp_a);
+        let mut my_a = Tensors::from_vec('F', size_a, tmp_a);
         let (mut full_eigenvectors,mut eigenvalues,mut n) = my_a.diagonalize().unwrap();
         println!("{:?}",eigenvalues);
         full_eigenvectors.formated_output(5,String::from("full"));
         //let mut full_eigenvectors = eigenvectors.copy(String::from("full")).unwrap();
-        let mut full_my_a = my_a.duplicate(String::from("full")).unwrap();
+        let mut full_my_a = my_a.duplicate('F').unwrap();
         full_my_a.formated_output(5,String::from("full"));
         //full_eigenvectors.formated_output(5,String::from("full"));
         let mut my_b = full_my_a.dot(&mut full_eigenvectors).unwrap();
@@ -683,4 +191,109 @@ mod tests {
         let mut my_c = full_eigenvectors_trans.dot(&mut my_b).unwrap();
         my_c.formated_output(5,String::from("full"));
     }
+    #[test]
+    fn test_slice_concat() {
+        let mut orig_a = vec![1,2,3,4,5,6,7];
+        let mut orig_b = vec![10,12,15,27,31,3,1];
+        let mut a = &mut orig_a[2..5];
+        let mut b = &mut orig_b[2..5];
+        let mut c = vec![a,b].into_iter().flatten();
+        c.for_each(|i| {*i = *i+2});
+
+        println!("{:?}", orig_a);
+        println!("{:?}", orig_b);
+
+        let dd = 2..6;
+        println!("{},{},{}",dd.start, dd.end, dd.len());
+        println!("{},{},{}",dd.start, dd.end, dd.len());
+        dd.for_each(|i| {println!("{}",i)});
+        
+        //c.enumerate().for_each(|i| {
+        //    println!{"index: {}, value: {}", i.0,i.1};
+        //})
+    }
+    #[test]
+    fn test_ri() {
+        let orig_a = vec![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
+        let mut tmp_ri = RIFull::from_vec([3,3,2],orig_a).unwrap();
+        println!("{:?}",tmp_ri);
+        println!("{}",tmp_ri[[0,0,0]]);
+        println!("{}",tmp_ri[[0,0,1]]);
+        println!("{}",tmp_ri[[2,2,1]]);
+        tmp_ri[[0,0,0]] = 100;
+        println!("{}",tmp_ri[[0,0,0]]);
+        println!("{:?}",tmp_ri);
+
+        //now test get_slices
+        let dd = tmp_ri.get_slices(0..2, 1..3, 0..2);
+        dd.enumerate().for_each(|i| {
+            println!("{},{}",i.0,i.1)}
+        );
+        let dd = tmp_ri.get_slices_mut(0..2, 1..3, 0..2);
+        dd.enumerate().for_each(|i| {
+            *i.1 += 2}
+        );
+        println!("{:?}",&tmp_ri.data);
+
+        iproduct!(2..5,1..4,0..3).for_each(|f| {
+            println!("x:{}, y:{},z:{}", f.2,f.1,f.0);
+        });
+
+        let orig_b = vec![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
+        let mut tmp_aux = MatrixFull::from_vec([4,4],orig_b).unwrap();
+        let dd = tmp_aux.get_slices_mut(0..1, 2..4);
+        dd.enumerate().for_each(|i| {println!("{},{}",i.0,i.1)});
+
+
+        //(0..5).into_iter().for_each(|i| {
+        //    (0..5).into_iter().for_each(|j| {
+        //        
+        //    })
+        //})
+
+        //let orig_b = vec![1,2,3,4,5,6];
+        //let mut tmp_mat = MatrixUpper::from_vec(6,orig_b).unwrap();
+        //println!("{:?}",tmp_mat[1]);
+        //let orig_c = vec![1,2,3,4,5,6];
+        //println!("{:?}", &orig_c[1..3]);
+
+
+    }
+    #[test]
+    fn matfull_inverse_and_power() {
+        let orig_a = vec![1.0, 0.2350377623170771, 0.00000000000000014780661935396685, 0.0000000000000001230564920088275, 0.0, 0.05732075877050055, 0.05732075877577619, 0.05732075876606951, 0.2350377623170771, 1.0000000000000002, 0.0000000000000006843048497264658, -0.0000000000000006063573786851014, 0.0, 0.4899272978714807, 0.4899272978956163, 0.48992729785120903, 0.00000000000000014780661935396685, 0.0000000000000006843048497264658, 1.0000000000000004, -0.00000000000000000000000000000030065232611750355, 0.0, 0.43694556071760393, -0.14564693387985528, -0.14564891678026162, 0.0000000000000001230564920088275, -0.0000000000000006063573786851014, -0.00000000000000000000000000000030065232611750355, 1.0000000000000004, 0.0, -0.00000000000000019929707359479999, -0.3447708719127397, 0.367656510461097, 0.0, 0.0, 0.0, 0.0, 1.0000000000000004, 0.0, -0.22548046384235368, -0.1858400020910537, 0.05732075877050055, 0.4899272978714807, 0.43694556071760393, -0.00000000000000019929707359479999, 0.0, 1.0000000000000002, 0.20144562931480953, 0.20144477338087088, 0.05732075877577619, 0.4899272978956163, -0.14564693387985528, -0.3447708719127397, -0.22548046384235368, 0.20144562931480953, 1.0000000000000002, 0.20144477335123845, 0.05732075876606951, 0.48992729785120903, -0.14564891678026162, 0.367656510461097, -0.1858400020910537, 0.20144477338087088, 0.20144477335123845, 1.0000000000000002];
+
+        let mut tmp_mat = MatrixFull::from_vec([8,8],orig_a.clone()).unwrap();
+        println!("tmp_mat:");
+        print_vec(&tmp_mat.data, tmp_mat.size[0]);
+
+        let mut inv_tmp_mat = tmp_mat.lapack_inverse().unwrap();
+        println!("inv_tmp_mat:");
+        print_vec(&inv_tmp_mat.data, inv_tmp_mat.size[0]);
+
+        //let mut tmp_mat_2 = MatrixFull::new([8,8],0.0);
+        //tmp_mat_2.lapack_dgemm(&mut tmp_mat, &mut inv_tmp_mat, 'N', 'N', 1.0, 0.0);
+        //println!("tmp_mat * inv_tmp_mat:");
+        //print_vec(&tmp_mat_2.data, tmp_mat_2.size[0]);
+
+        let mut inv_tmp_mat_2 = tmp_mat.lapack_power(-0.5, 10.0E-6).unwrap();
+        println!("inv_tmp_mat:");
+        print_vec(&inv_tmp_mat_2.data, inv_tmp_mat_2.size[0]);
+
+    }
 }
+
+
+fn print_vec(buf: &Vec<f64>, len_per_line: usize) {
+        buf.chunks(len_per_line).for_each(|value| {
+            let mut tmp_str = String::new();
+            value.into_iter().enumerate().for_each(|x| {
+                if x.0 == 0 {
+                    tmp_str = format!("{:16.8}",x.1);
+                } else {
+                    tmp_str = format!("{},{:16.8}",tmp_str,x.1);
+                }
+            });
+            println!("{}",tmp_str);
+        });
+    }
