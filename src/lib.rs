@@ -1,8 +1,8 @@
 #![allow(unused)]
 extern crate blas;
-extern crate blas_src;
 extern crate lapack;
-extern crate lapack_src;
+//extern crate blas_src;
+//extern crate lapack_src;
 
 use std::fmt::Display;
 use std::marker::PhantomData;
