@@ -3,6 +3,9 @@ name = "fdqc-tensors"
 version = "0.1.0"
 edition = "2018"
 
+[lib]
+crate-type = ["dylib", "rlib"]
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 #intel-mkl-sys = "0.2"
 #blas-src = {version = "0.8",features=["intel-mkl"]}

@@ -2,7 +2,7 @@ use std::iter::Flatten;
 use std::slice::{ChunksExactMut,ChunksExact};
 use std::vec::IntoIter;
 use std::{fmt::Display, collections::binary_heap::Iter, iter::Filter, convert};
-use std::ops::{Add, Sub, Mul, AddAssign, SubAssign, Index, Range};
+use std::ops::{Add, Sub, Mul, AddAssign, SubAssign, Index, Range, MulAssign, DivAssign};
 use typenum::{U2, Pow};
 use rayon::{prelude::*,slice};
 use itertools::iproduct;
@@ -33,6 +33,9 @@ impl <T: Clone + Display + Send + Sync> RIFull<T> {
             indicing,
             data: vec![new_default; len]
         }
+    }
+    pub fn empty() -> RIFull<T> {
+        RIFull { size: [0,0,0], indicing: [0,0,0], data: Vec::new() }
     }
     pub unsafe fn from_vec_unchecked(size: [usize;3], new_vec: Vec<T>) -> RIFull<T> {
         let mut indicing = [0usize;3];
@@ -70,6 +73,16 @@ impl <T: Clone + Display + Send + Sync> RIFull<T> {
             data : &mut self.data[p_start..p_start+p_length]}
         )
     }
+
+    //pub fn reduce_to_matrix_mut(&mut self, i_reduced: usize) -> Option<MatrixFullSliceMut<T>> {
+    //    let p_length = if let Some(value) = self.indicing.get(2) {value} else {return None};
+    //    let p_start = p_length * i_reduced; 
+    //    Some(MatrixFullSliceMut {
+    //        size: &self.size[0..2],
+    //        indicing: &self.indicing[0..2],
+    //        data : &mut self.data[p_start..p_start+p_length]}
+    //    )
+    //}
 
     #[inline]
     pub fn get_reducing_matrix(&self, i_reduced: usize) -> Option<MatrixFullSlice<T>> {
@@ -110,6 +123,12 @@ impl <T: Clone + Display + Send + Sync> RIFull<T> {
         tmp_slices.into_iter().flatten()
     }
     #[inline]
+    pub fn iter_slices_x(&self, y: usize, z: usize) -> std::slice::Iter<T> {
+        let start = z*self.indicing[2] + y*self.indicing[1];
+        let end = start + self.indicing[1];
+        self.data[start..end].iter()
+    }
+    #[inline]
     pub fn iter_mut_auxbas(&mut self, auxbas_range: Range<usize>) -> Option<ChunksExactMut<T>> {
         if let Some(x) = self.size.get(0) {
             if let Some(y) = self.size.get(1) {
@@ -148,5 +167,25 @@ impl <T: Clone + Display + Send + Sync> RIFull<T> {
                         .par_chunks_exact(chunk_size))
             } else {None}
         } else {None}
+    }
+    #[inline]
+    pub fn check_shape(&self, other:&RIFull<T>) -> bool {
+        self.size.iter().zip(other.size.iter()).fold(true, |check,size| {
+            check && size.0==size.1
+        })
+    }
+}
+
+impl RIFull<f64> {
+    #[inline]
+    pub fn self_scaled_add(&mut self, bm: &RIFull<f64>, b: f64) {
+        /// A = A + b*B
+        if self.check_shape(bm) {
+            self.data.iter_mut()
+                .zip(bm.data.iter())
+                .for_each(|(c,p)| {*c +=p*b});
+        } else {
+            panic!("Error: Shape inconsistency happens when plus two matrices");
+        }
     }
 }
