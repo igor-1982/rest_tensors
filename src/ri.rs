@@ -74,7 +74,7 @@ impl <T: Clone + Display + Send + Sync> RIFull<T> {
         )
     }
 
-    //pub fn reduce_to_matrix_mut(&mut self, i_reduced: usize) -> Option<MatrixFullSliceMut<T>> {
+    //pub fn get_reducing_matrix_mut(&mut self, i_reduced: usize) -> Option<MatrixFullSliceMut<T>> {
     //    let p_length = if let Some(value) = self.indicing.get(2) {value} else {return None};
     //    let p_start = p_length * i_reduced; 
     //    Some(MatrixFullSliceMut {

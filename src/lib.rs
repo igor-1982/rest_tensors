@@ -16,7 +16,7 @@ mod index;
 mod tensors;
 mod tensor_basic_operation;
 mod matrix;
-mod matrix_blas_lapack;
+pub mod matrix_blas_lapack;
 pub mod ri;
 //use typenum::{U1,U2,U3,U4};
 use crate::tensors_slice::{TensorsSliceMut,TensorsSlice};

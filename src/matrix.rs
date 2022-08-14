@@ -235,8 +235,9 @@ impl <T: Copy + Clone + Display + Send + Sync> MatrixFull<T> {
         tmp_slices.into_iter().flatten()
     }
     #[inline]
-    pub fn iter_j(&self, j: usize) -> Flatten<IntoIter<& [T]>> {
-        self.get_slices(0..self.size[0], j..j+1)
+    pub fn iter_j(&self, j: usize) -> std::slice::Iter<T> {
+        let len = self.indicing[1];
+        self.data[j*len..(j+1)*len].iter()
     }
     #[inline]
     pub fn iter_slice_x(&self, y: usize) -> std::slice::Iter<T> {
@@ -267,6 +268,12 @@ impl <T: Copy + Clone + Display + Send + Sync> MatrixFull<T> {
     #[inline]
     pub fn iter_mut_j(&mut self, j: usize) -> Flatten<IntoIter<&mut [T]>> {
         self.get_slices_mut(0..self.size[0], j..j+1)
+    }
+    #[inline]
+    pub fn par_iter_mut_j(&mut self, j: usize) -> rayon::slice::IterMut<T> {
+        let start = self.indicing[1]*j;
+        let end = start + self.indicing[1];
+        self.data[start..end].par_iter_mut()
     }
     #[inline]
     pub fn get_slices_mut_j(&mut self, j: usize) -> &mut [T] {
@@ -313,8 +320,16 @@ impl <T: Copy + Clone + Display + Send + Sync> MatrixFull<T> {
         self.data.chunks_exact(self.size[0])
     }
     #[inline]
+    pub fn par_iter_columns_full(&self) -> rayon::slice::ChunksExact<T>{
+        self.data.par_chunks_exact(self.size[0])
+    }
+    #[inline]
     pub fn iter_mut_columns_full(&mut self) -> ChunksExactMut<T>{
         self.data.chunks_exact_mut(self.size[0])
+    }
+    #[inline]
+    pub fn par_iter_mut_columns_full(&mut self) -> rayon::slice::ChunksExactMut<T>{
+        self.data.par_chunks_exact_mut(self.size[0])
     }
     //#[inline]
     //pub fn iter_rows(&self) -> Option<ChunksExact<T>>{
@@ -606,6 +621,12 @@ impl <'a, T: Copy + Clone + Display + Send + Sync> MatrixFullSliceMut<'a, T> {
         self.data[start..end].iter_mut()
     }
     #[inline]
+    pub fn par_iter_mut_j(&mut self, j: usize) -> rayon::slice::IterMut<T> {
+        let start = self.indicing[1]*j;
+        let end = start + self.indicing[1];
+        self.data[start..end].par_iter_mut()
+    }
+    #[inline]
     pub fn iter_columns_full(&self) -> ChunksExact<T>{
         self.data.chunks_exact(self.size[0])
     }
@@ -652,6 +673,18 @@ impl <'a, T: Copy + Clone + Display + Send + Sync> MatrixFullSlice<'a, T> {
     #[inline]
     pub fn iter_columns_full(&self) -> ChunksExact<T>{
         self.data.chunks_exact(self.size[0])
+    }
+    #[inline]
+    pub fn par_iter_columns_full(&self) -> rayon::slice::ChunksExact<T>{
+        self.data.par_chunks_exact(self.size[0])
+    }
+    #[inline]
+    pub fn par_iter_columns(&self, range_column: Range<usize>) -> Option<rayon::slice::ChunksExact<T>>{
+        if let Some(n_chunk) = self.size.get(0) {
+            Some(self.data[n_chunk*range_column.start..n_chunk*range_column.end].par_chunks_exact(*n_chunk))
+        }  else {
+            None
+        }
     }
     #[inline]
     pub fn iter_slice_x(&self, y: usize) -> std::slice::Iter<T> {
@@ -947,5 +980,4 @@ pub struct MatrixUpperSlice<'a,T:Clone+Display> {
 //        });
 //    }
 //}
-
 

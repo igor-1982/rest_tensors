@@ -1,5 +1,6 @@
 use blas::dgemm;
 use lapack::{dsyev, dspgvx, dspevx,dgetrf,dgetri};
+use rayon::prelude::{*};
 
 use crate::{MatrixFullSliceMut, MatrixFull, SAFE_MINIMUM, MatrixUpperSliceMut, TensorSlice, TensorSliceMut, MatrixFullSlice};
 
@@ -254,4 +255,84 @@ impl <'a> MatrixUpperSliceMut<'a, f64> {
         //let eigenvalues = Tensors::from_vec("full".to_string(),vec![n as usize],w);
         Some((eigenvectors, w))
     }
+}
+
+// for c = a*b
+#[inline]
+pub fn _dgemm_nn(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>) -> MatrixFull<f64> {
+    let (ax,ay) = (mat_a.size[0], mat_a.size[1]);
+    let (bx,by) = (mat_b.size[0], mat_b.size[1]);
+    if ay!=bx {panic!("For the input matrices: mat_a[ax,ay], mat_b[bx,by], ay!=bx. dgemm false")};
+    let mut mat_c = MatrixFull::new([ax,by],0.0);
+    //let mat_aa = mat_a.transpose();
+    mat_c.par_iter_mut_columns_full().zip(mat_b.par_iter_columns_full()).for_each(|(mat_c,mat_b)| {
+        mat_b.iter().zip(mat_a.iter_columns_full()).for_each(|(mat_b,mat_a)| {
+            mat_c.iter_mut().zip(mat_a.iter()).for_each(|(mat_c,mat_a)| {
+                *mat_c += mat_a*mat_b;
+            })
+        });
+        //mat_c.iter_mut().zip(mat_a.iter_columns_full()).for_each(|(mat_c,mat_a)| {
+        //    *mat_c = mat_a.iter().zip(mat_b.iter()).fold(0.0,|acc,(a,b)| acc + a*b)
+        //});
+    });
+    mat_c
+}
+// for c = a**T*b
+#[inline]
+pub fn _dgemm_tn(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>) -> MatrixFull<f64> {
+    let (ax,ay) = (mat_a.size[0], mat_a.size[1]);
+    let (bx,by) = (mat_b.size[0], mat_b.size[1]);
+    if ay!=bx {panic!("For the input matrices: mat_a[ax,ay], mat_b[bx,by], ay!=bx. dgemm false")};
+    let mut mat_c = MatrixFull::new([ax,by],0.0);
+    //let mat_aa = mat_a.transpose();
+    mat_c.par_iter_mut_columns_full().zip(mat_b.par_iter_columns_full()).for_each(|(mat_c,mat_b)| {
+        mat_c.iter_mut().zip(mat_a.iter_columns_full()).for_each(|(mat_c,mat_a)| {
+            *mat_c = mat_a.iter().zip(mat_b.iter()).fold(0.0,|acc,(a,b)| acc + a*b)
+        });
+    });
+    mat_c
+}
+
+#[inline]
+// einsum: ij, j -> ij
+pub fn _einsum_01(mat_a: &MatrixFullSlice<f64>, vec_b: &[f64]) -> MatrixFull<f64>{
+    let i_len = mat_a.size[0];
+    let j_len = vec_b.len();
+    let mut om = MatrixFull::new([i_len,j_len],0.0);
+
+    om.par_iter_mut_columns_full().zip(mat_a.par_iter_columns(0..j_len).unwrap())
+    .map(|(om_j,mat_a_j)| {(om_j,mat_a_j)})
+    .zip(vec_b.par_iter())
+    .for_each(|((om_j,mat_a_j),vec_b_j)| {
+        om_j.iter_mut().zip(mat_a_j.iter()).for_each(|(om_ij,mat_a_ij)| {
+            *om_ij = *mat_a_ij*vec_b_j
+        });
+    });
+    om 
+}
+#[inline]
+// einsum ip, ip -> p
+pub fn _einsum_02(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>) -> Vec<f64> {
+    let a_y = mat_a.size.get(1).unwrap();
+    let b_y = mat_b.size.get(1).unwrap();
+    let mut out_vec = vec![0.0;*a_y.min(b_y)];
+
+    mat_a.par_iter_columns_full().zip(mat_b.par_iter_columns_full())
+    .map(|(mat_a_p, mat_b_p)| (mat_a_p,mat_b_p))
+    .zip(out_vec.par_iter_mut())
+    .for_each(|((mat_a_p,mat_b_p),out_vec_p)| {
+        *out_vec_p = mat_a_p.iter().zip(mat_b_p.iter())
+            .fold(0.0, |acc, (mat_a_ip, mat_b_ip)| 
+            {acc + mat_a_ip*mat_b_ip});
+    });
+    out_vec
+}
+
+#[test]
+fn test_einsum_02() {
+    let mut mat_a = MatrixFull::from_vec([2,2],vec![3.0,4.0,2.0,6.0]).unwrap();
+    let mut mat_b = mat_a.clone();
+    let mut mat_c = _einsum_02(&mat_a.to_matrixfullslice(), &mat_b.to_matrixfullslice());
+    println!("{:?}", mat_c);
+
 }
