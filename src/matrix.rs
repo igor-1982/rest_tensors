@@ -376,6 +376,27 @@ impl<T: Copy + Clone + Display + Send + Sync> Index<[usize;2]> for MatrixFull<T>
 }
 
 impl MatrixFull<f64> {
+    pub fn get_diagonal_terms(&self) -> Option<Vec<&f64>> {
+        //let tmp_len = self.size;
+        let new_size = self.size[0];
+        if new_size ==0 {
+            return None
+        } else if self.size[0] == self.size[1] {
+            let mut tmp_v = vec![&self.data[0]; new_size];
+            (0..new_size).for_each(|i| {
+                if let Some(to_v) =tmp_v.get_mut(i) {
+                    if let Some(fm_v) = self.data.get(i*new_size+i) {
+                        *to_v = fm_v
+                    }
+                }
+            });
+            return Some(tmp_v)
+        } else {
+            return None
+        }
+
+    }
+
     pub fn add(&self, other: &MatrixFull<f64>) -> Option<MatrixFull<f64>> {
         if self.check_shape(other) {
             let mut new_tensors: MatrixFull<f64> = self.clone();

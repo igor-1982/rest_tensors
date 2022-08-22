@@ -16,6 +16,7 @@ mod index;
 mod tensors;
 mod tensor_basic_operation;
 mod matrix;
+mod davidson;
 pub mod matrix_blas_lapack;
 pub mod ri;
 //use typenum::{U1,U2,U3,U4};
@@ -28,6 +29,7 @@ pub use crate::tensors::*;
 pub use crate::eri::*;
 pub use crate::matrix::*;
 pub use crate::ri::*;
+pub use crate::davidson::*;
 
 #[derive(Clone,Debug,PartialEq)]
 pub struct Tensors4D<T:Clone+Display,D> {
