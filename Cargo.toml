@@ -25,6 +25,7 @@ itertools = "0.10.3"
 #lapack-src = { version = "0.8", features=["openblas"] }
 #openblas-src = {version = "0.10", features=["static"]}
 #eigenvalues = "0.4.0"
+nalgebra = "0.31.1"
 
 [dev-dependencies]
 criterion = "0.3"
