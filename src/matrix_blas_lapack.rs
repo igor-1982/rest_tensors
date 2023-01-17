@@ -263,6 +263,7 @@ pub fn _dgemm_nn(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>) -> 
     let (ax,ay) = (mat_a.size[0], mat_a.size[1]);
     let (bx,by) = (mat_b.size[0], mat_b.size[1]);
     if ay!=bx {panic!("For the input matrices: mat_a[ax,ay], mat_b[bx,by], ay!=bx. dgemm false")};
+    if (ax==0||by==0) {return MatrixFull::new([ax,by],0.0)};
     let mut mat_c = MatrixFull::new([ax,by],0.0);
     //let mat_aa = mat_a.transpose();
     mat_c.par_iter_mut_columns_full().zip(mat_b.par_iter_columns_full()).for_each(|(mat_c,mat_b)| {
@@ -283,6 +284,7 @@ pub fn _dgemm_tn(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>) -> 
     let (ax,ay) = (mat_a.size[0], mat_a.size[1]);
     let (bx,by) = (mat_b.size[0], mat_b.size[1]);
     if ay!=bx {panic!("For the input matrices: mat_a[ax,ay], mat_b[bx,by], ay!=bx. dgemm false")};
+    if (ax==0||by==0) {return MatrixFull::new([ax,by],0.0)};
     let mut mat_c = MatrixFull::new([ax,by],0.0);
     //let mat_aa = mat_a.transpose();
     mat_c.par_iter_mut_columns_full().zip(mat_b.par_iter_columns_full()).for_each(|(mat_c,mat_b)| {
@@ -298,6 +300,7 @@ pub fn _dgemm_tn(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>) -> 
 pub fn _einsum_01(mat_a: &MatrixFullSlice<f64>, vec_b: &[f64]) -> MatrixFull<f64>{
     let i_len = mat_a.size[0];
     let j_len = vec_b.len();
+    if (i_len == 0 || j_len ==0) {return MatrixFull::new([i_len,j_len],0.0)};
     let mut om = MatrixFull::new([i_len,j_len],0.0);
 
     om.par_iter_mut_columns_full().zip(mat_a.par_iter_columns(0..j_len).unwrap())
@@ -315,6 +318,9 @@ pub fn _einsum_01(mat_a: &MatrixFullSlice<f64>, vec_b: &[f64]) -> MatrixFull<f64
 pub fn _einsum_02(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>) -> Vec<f64> {
     let a_y = mat_a.size.get(1).unwrap();
     let b_y = mat_b.size.get(1).unwrap();
+    let a_x = mat_a.size.get(0).unwrap();
+    let b_x = mat_b.size.get(0).unwrap();
+    if (*a_x == 0 || *b_x ==0) {return vec![0.0;*a_y.min(b_y)]};
     let mut out_vec = vec![0.0;*a_y.min(b_y)];
 
     mat_a.par_iter_columns_full().zip(mat_b.par_iter_columns_full())
