@@ -1,8 +1,10 @@
+use std::{iter::Flatten, vec::IntoIter};
+
 use blas::dgemm;
 use lapack::{dsyev, dspgvx, dspevx,dgetrf,dgetri};
 use rayon::prelude::{*};
 
-use crate::{MatrixFullSliceMut, MatrixFull, SAFE_MINIMUM, MatrixUpperSliceMut, TensorSlice, TensorSliceMut, MatrixFullSlice};
+use crate::{MatrixFullSliceMut, MatrixFull, SAFE_MINIMUM, MatrixUpperSliceMut, TensorSlice, TensorSliceMut, MatrixFullSlice, MatrixFullSliceMut2};
 
 
 impl <'a> MatrixFullSliceMut<'a, f64> {
@@ -93,6 +95,30 @@ impl <'a> MatrixFullSliceMut<'a, f64> {
             None
         }
     }
+    pub fn lapack_dgetrf(&mut self) -> Option<MatrixFull<f64>> {
+        if self.size[0]==self.size[1] {
+            let ndim = self.size[0];
+            let n= ndim as i32;
+            let mut a: Vec<f64> = self.data.to_vec().clone();
+            let mut w: Vec<f64> = vec![0.0;ndim];
+            let mut work: Vec<f64> = vec![0.0;4*ndim];
+            let mut ipiv: Vec<i32> = vec![0;ndim];
+            let lwork = 4*n;
+            let mut info1 = 0;
+            unsafe {
+                dgetrf(n,n,&mut a,n, &mut ipiv, &mut info1);
+            }
+            if info1!=0 {
+                panic!("Error happens when LU factorizing the matrix. dgetrf info: {}", info1);
+            }
+            let inv_mat = MatrixFull::from_vec([ndim,ndim], a).unwrap();
+            Some(inv_mat)
+        } else {
+            println!("Error: The matrix for inversion should be NxN");
+            None
+        }
+    }
+
     pub fn lapack_inverse(&mut self) -> Option<MatrixFull<f64>> {
         if self.size[0]==self.size[1] {
             let ndim = self.size[0];
@@ -283,9 +309,9 @@ pub fn _dgemm_nn(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>) -> 
 pub fn _dgemm_tn(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>) -> MatrixFull<f64> {
     let (ax,ay) = (mat_a.size[0], mat_a.size[1]);
     let (bx,by) = (mat_b.size[0], mat_b.size[1]);
-    if ay!=bx {panic!("For the input matrices: mat_a[ax,ay], mat_b[bx,by], ay!=bx. dgemm false")};
-    if (ax==0||by==0) {return MatrixFull::new([ax,by],0.0)};
-    let mut mat_c = MatrixFull::new([ax,by],0.0);
+    if ax!=bx {panic!("For the input matrices: mat_a[ax,ay], mat_b[bx,by], ay!=bx. dgemm false")};
+    if (ay==0||by==0) {return MatrixFull::new([ay,by],0.0)};
+    let mut mat_c = MatrixFull::new([ay,by],0.0);
     //let mat_aa = mat_a.transpose();
     mat_c.par_iter_mut_columns_full().zip(mat_b.par_iter_columns_full()).for_each(|(mat_c,mat_b)| {
         mat_c.iter_mut().zip(mat_a.iter_columns_full()).for_each(|(mat_c,mat_a)| {
@@ -293,6 +319,24 @@ pub fn _dgemm_tn(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>) -> 
         });
     });
     mat_c
+}
+pub fn _dgemm_tn_v02(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>, to_slice: Flatten<IntoIter<&mut [f64]>>) {
+    let (ax,ay) = (mat_a.size[0], mat_a.size[1]);
+    let (bx,by) = (mat_b.size[0], mat_b.size[1]);
+    if ax!=bx {panic!("For the input matrices: mat_a[ax,ay], mat_b[bx,by], ay!=bx. dgemm false")};
+    //if (ay==0||by==0) {return MatrixFull::new([ay,by],0.0)};
+    //let mut mat_c = MatrixFull::new([ay,by],0.0);
+    //let mat_aa = mat_a.transpose();
+    let mut mat_c = MatrixFullSliceMut2{
+        size: &[ay,by],
+        indicing: &[1,ay],
+        data: to_slice.collect::<Vec<&mut f64>>()
+    };
+    mat_c.iter_mut_columns_full().zip(mat_b.iter_columns_full()).for_each(|(mat_c,mat_b)| {
+        mat_c.iter_mut().zip(mat_a.iter_columns_full()).for_each(|(mat_c,mat_a)| {
+            **mat_c = mat_a.iter().zip(mat_b.iter()).fold(0.0,|acc,(a,b)| acc + a*b)
+        });
+    });
 }
 
 #[inline]

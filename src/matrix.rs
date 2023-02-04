@@ -2,7 +2,7 @@ use std::{fmt::Display, collections::binary_heap::Iter, iter::{Filter,Flatten, M
 use std::ops::{Add, Sub, Mul, AddAssign, SubAssign, Index, Range};
 use libc::CLOSE_RANGE_CLOEXEC;
 use typenum::{U2, Pow};
-use rayon::{prelude::*, collections::btree_map::IterMut};
+use rayon::{prelude::*, collections::btree_map::IterMut, iter::Enumerate};
 use std::vec::IntoIter;
 
 use crate::{index::{TensorIndex, TensorIndexUncheck}, Tensors4D, TensorOpt, TensorOptMut, TensorSlice, TensorSliceMut, TensorOptUncheck, TensorSliceUncheck, TensorSliceMutUncheck, TensorOptMutUncheck, MatFormat};
@@ -252,7 +252,7 @@ impl <T: Copy + Clone + Display + Send + Sync> MatrixFull<T> {
         & self.data[start..end]
     }
     #[inline]
-    pub fn get_slices_mut(& mut self, x: Range<usize>, y: Range<usize>) -> Flatten<IntoIter<&mut [T]>> {
+    pub fn get_slices_mut_old(& mut self, x: Range<usize>, y: Range<usize>) -> Flatten<IntoIter<&mut [T]>> {
         let mut tmp_slices: Vec<&mut [T]> = vec![];
         let mut dd = self.data.split_at_mut(0).1;
         let len_slices_x = x.len();
@@ -261,6 +261,22 @@ impl <T: Copy + Clone + Display + Send + Sync> MatrixFull<T> {
             let start = x.start + y*len_y;
             let gg = ee.split_at_mut(start-offset).1.split_at_mut(len_slices_x);
             tmp_slices.push(gg.0);
+            (gg.1,start+len_slices_x)
+        });
+        tmp_slices.into_iter().flatten()
+    }
+    #[inline]
+    pub fn get_slices_mut(& mut self, x: Range<usize>, y: Range<usize>) -> Flatten<IntoIter<&mut [T]>> {
+        //let mut tmp_slices: Vec<&mut [T]> = vec![];
+        let mut tmp_slices: Vec<&mut [T]> = Vec::with_capacity(y.len());
+        unsafe{tmp_slices.set_len(y.len());}
+        let mut dd = self.data.split_at_mut(0).1;
+        let len_slices_x = x.len();
+        let len_y = self.indicing[1];
+        y.zip(tmp_slices.iter_mut()).fold((dd,0_usize),|(ee, offset), (y,to_slice)| {
+            let start = x.start + y*len_y;
+            let gg = ee.split_at_mut(start-offset).1.split_at_mut(len_slices_x);
+            *to_slice = gg.0;
             (gg.1,start+len_slices_x)
         });
         tmp_slices.into_iter().flatten()
@@ -340,6 +356,55 @@ impl <T: Copy + Clone + Display + Send + Sync> MatrixFull<T> {
     //        //None
     //    }
     //}
+    #[inline]
+    pub fn get_diagonal_terms(&self) -> Option<Vec<&T>> {
+        //let tmp_len = self.size;
+        let new_size = self.size.get(0).unwrap();
+        let new_size_y = self.size.get(1).unwrap();
+        if *new_size == 0 || new_size != new_size_y {
+            return None
+        } else if self.size[0] == self.size[1] {
+            //let mut tmp_v: Vec<&T> = Vec::new();
+            //unsafe{tmp_v.set_len(new_size)};
+            //tmp_v.iter_mut().enumerate().for_each(|(i, to_v)| {
+            //    if let Some(fm_v) = self.data.get(i*new_size+i) {
+            //        *to_v = fm_v
+            //    }
+            //});
+           let tmp_v = 
+               self.data.iter()
+               .enumerate().filter(|(i,data)| {i%new_size == i/new_size})
+               .map(|(i,data)| data).collect::<Vec<&T>>();
+            return Some(tmp_v)
+        } else {
+            return None
+        }
+    }
+    #[inline]
+    pub fn get_mut_diagonal_terms(&mut self) -> Option<Vec<&mut T>> {
+        //let tmp_len = self.size;
+        let new_size = self.size.get(0).unwrap();
+        let new_size_y = self.size.get(1).unwrap();
+        if *new_size == 0 || new_size != new_size_y {
+            return None
+        } else if self.size[0] == self.size[1] {
+            //let mut tmp_v: Vec<&T> = Vec::new();
+            //unsafe{tmp_v.set_len(new_size)};
+            //tmp_v.iter_mut().enumerate().for_each(|(i, to_v)| {
+            //    if let Some(fm_v) = self.data.get(i*new_size+i) {
+            //        *to_v = fm_v
+            //    }
+            //});
+           let tmp_v = 
+               self.data.iter_mut()
+               .enumerate().filter(|(i,data)| {i%new_size == i/new_size})
+               .map(|(i,data)| data).collect::<Vec<&mut T>>();
+            return Some(tmp_v)
+        } else {
+            return None
+        }
+    }
+
 }
 
 impl<T: Copy + Clone + Display + Send + Sync + Add + AddAssign> Add for MatrixFull<T> {
@@ -376,26 +441,55 @@ impl<T: Copy + Clone + Display + Send + Sync> Index<[usize;2]> for MatrixFull<T>
 }
 
 impl MatrixFull<f64> {
-    pub fn get_diagonal_terms(&self) -> Option<Vec<&f64>> {
-        //let tmp_len = self.size;
-        let new_size = self.size[0];
-        if new_size ==0 {
-            return None
-        } else if self.size[0] == self.size[1] {
-            let mut tmp_v = vec![&self.data[0]; new_size];
-            (0..new_size).for_each(|i| {
-                if let Some(to_v) =tmp_v.get_mut(i) {
-                    if let Some(fm_v) = self.data.get(i*new_size+i) {
-                        *to_v = fm_v
-                    }
-                }
-            });
-            return Some(tmp_v)
-        } else {
-            return None
-        }
-
+    pub fn print_debug(&self, x: Range<usize>, y: Range<usize>)  {
+        let length = x.len()*y.len();
+        let mut tmp_s:String = format!("debug: ");
+        self.get_slices(x,y).for_each(|x| {
+            tmp_s = format!("{},{:16.8}", tmp_s, x);
+        });
+        println!("{}",tmp_s);
     }
+    //pub fn get_diagonal_terms(&self) -> Option<Vec<&f64>> {
+    //    //let tmp_len = self.size;
+    //    let new_size = self.size[0];
+    //    let new_size_y = self.size[1];
+    //    if new_size ==0 || new_size != new_size_y {
+    //        return None
+    //    } else if self.size[0] == self.size[1] {
+    //        let mut tmp_v: Vec<&f64> = Vec::new();
+    //        unsafe{tmp_v.set_len(new_size)};
+    //        //vec![&self.data[0]; new_size];
+    //        tmp_v.iter_mut().enumerate().for_each(|(i, to_v)| {
+    //            if let Some(fm_v) = self.data.get(i*new_size+i) {
+    //                *to_v = fm_v
+    //            }
+    //        });
+    //        return Some(tmp_v)
+    //    } else {
+    //        return None
+    //    }
+    //}
+
+    //pub fn get_diagonal_terms_mut(&mut self) -> Option<Vec<&mut f64>> {
+    //    //let tmp_len = self.size;
+    //    let new_size = self.size[0];
+    //    let new_size_y = self.size[1];
+    //    if new_size ==0 || new_size != new_size_y {
+    //        return None
+    //    } else if self.size[0] == self.size[1] {
+    //        let mut tmp_v: Vec<&mut f64> = Vec::new();
+    //        unsafe{tmp_v.set_len(new_size)};
+    //        //vec![&self.data[0]; new_size];
+    //        tmp_v.iter_mut().enumerate().for_each(|(i, to_v)| {
+    //            if let Some(fm_v) = self.data.get_mut(i*new_size+i) {
+    //                *to_v = fm_v
+    //            }
+    //        });
+    //        return Some(tmp_v)
+    //    } else {
+    //        return None
+    //    }
+    //}
 
     pub fn add(&self, other: &MatrixFull<f64>) -> Option<MatrixFull<f64>> {
         if self.check_shape(other) {
@@ -1002,3 +1096,18 @@ pub struct MatrixUpperSlice<'a,T:Clone+Display> {
 //    }
 //}
 
+
+#[derive(Debug,PartialEq)]
+pub struct MatrixFullSliceMut2<'a,T> {
+    pub size : &'a [usize],
+    pub indicing: &'a [usize],
+    pub data : Vec<&'a mut T>
+}
+
+impl<'a, T> MatrixFullSliceMut2<'a,T> {
+    #[inline]
+    pub fn iter_mut_columns_full(&mut self) -> std::slice::ChunksExactMut<&'a mut T>{
+        self.data.chunks_exact_mut(self.size[0])
+    }
+    
+}

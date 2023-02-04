@@ -27,8 +27,8 @@
 //    (dav.eigenvalues, dav.eigenvectors)
 //}
 use std::default::Default;
-use crate::{MatrixFull};
-use nalgebra::{DVector};
+use crate::MatrixFull;
+use nalgebra::DVector;
 
 #[derive(Debug)]
 pub struct DavidsonParams { 

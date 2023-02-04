@@ -8,7 +8,8 @@ use rayon::{prelude::*,slice};
 use itertools::iproduct;
 
 
-use crate::{MatrixFullSliceMut, MatrixFullSlice};
+use crate::matrix_blas_lapack::{_dgemm_nn,_dgemm_tn, _dgemm_tn_v02};
+use crate::{MatrixFullSliceMut, MatrixFullSlice, MatrixFull};
 use crate::{index::{TensorIndex, TensorIndexUncheck}, Tensors4D, TensorOpt, TensorOptMut, TensorSlice, TensorSliceMut, TensorOptUncheck, TensorSliceUncheck, TensorSliceMutUncheck, TensorOptMutUncheck, MatFormat};
 
 #[derive(Clone,Debug,PartialEq)]
@@ -108,7 +109,7 @@ impl <T: Clone + Display + Send + Sync> RIFull<T> {
         tmp_slices.into_iter().flatten()
     }
     #[inline]
-    pub fn get_slices_mut(& mut self, x: Range<usize>, y: Range<usize>, z: Range<usize>) -> Flatten<IntoIter<&mut [T]>> {
+    pub fn get_slices_mut_old(& mut self, x: Range<usize>, y: Range<usize>, z: Range<usize>) -> Flatten<IntoIter<&mut [T]>> {
         let mut tmp_slices: Vec<&mut [T]> = vec![];
         let mut dd = self.data.split_at_mut(0).1;
         let len_slices_x = x.len();
@@ -118,6 +119,23 @@ impl <T: Clone + Display + Send + Sync> RIFull<T> {
             let start = x.start + y*len_y + z*len_z;
             let gg = ee.split_at_mut(start-offset).1.split_at_mut(len_slices_x);
             tmp_slices.push(gg.0);
+            (gg.1,start+len_slices_x)
+        });
+        tmp_slices.into_iter().flatten()
+    }
+    #[inline]
+    pub fn get_slices_mut(& mut self, x: Range<usize>, y: Range<usize>, z: Range<usize>) -> Flatten<IntoIter<&mut [T]>> {
+        let length = y.len()*z.len();
+        let mut tmp_slices: Vec<&mut [T]> = Vec::with_capacity(length);
+        unsafe{tmp_slices.set_len(length)}
+        let mut dd = self.data.split_at_mut(0).1;
+        let len_slices_x = x.len();
+        let len_y = self.indicing[1];
+        let len_z = self.indicing[2];
+        iproduct!(z,y).zip(tmp_slices.iter_mut()).fold((dd,0_usize),|(ee, offset), ((z,y),to_slice)| {
+            let start = x.start + y*len_y + z*len_z;
+            let gg = ee.split_at_mut(start-offset).1.split_at_mut(len_slices_x);
+            *to_slice = gg.0;
             (gg.1,start+len_slices_x)
         });
         tmp_slices.into_iter().flatten()
@@ -187,5 +205,26 @@ impl RIFull<f64> {
         } else {
             panic!("Error: Shape inconsistency happens when plus two matrices");
         }
+    }
+    #[inline]
+    pub fn ao2mo_v01(&self, eigenvector: &MatrixFull<f64>) -> anyhow::Result<RIFull<f64>> {
+        /// AO(num_basis, num_basis, num_auxbas) -> MO(num_auxbas, num_state, num_state)
+        let num_basis = eigenvector.size.get(0).unwrap().clone();
+        let num_state = eigenvector.size.get(1).unwrap().clone();
+        let num_auxbas = self.size.get(2).unwrap().clone();
+        let mut rimo = RIFull::new([num_auxbas,num_basis,num_state],0.0);
+
+        for i_auxbas in (0..num_auxbas) {
+            let i_aux = &self.get_reducing_matrix(i_auxbas).unwrap();
+            let tmp_aux = _dgemm_nn(i_aux, &eigenvector.to_matrixfullslice());
+            //_dgemm_tn_v02(&eigenvector.to_matrixfullslice(), 
+            //              &tmp_aux.to_matrixfullslice(),
+            //              rimo.get_slices_mut_old(i_auxbas..i_auxbas+1, 0..num_basis, 0..num_state)
+            //            )
+            let tmp_aux2 = _dgemm_tn(&eigenvector.to_matrixfullslice(), &tmp_aux.to_matrixfullslice());
+            rimo.get_slices_mut_old(i_auxbas..i_auxbas+1, 0..num_basis, 0..num_state)
+                .zip(tmp_aux2.data.iter()).for_each(|(to, from)| {*to = *from});
+        }
+        Ok(rimo)
     }
 }

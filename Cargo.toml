@@ -21,6 +21,7 @@ libc = "0.2"
 typenum = "1.14"
 rayon = "1.5.1"
 itertools = "0.10.3"
+anyhow = "1"
 #blas-src = { version = "0.8", features=["openblas"] }
 #lapack-src = { version = "0.8", features=["openblas"] }
 #openblas-src = {version = "0.10", features=["static"]}
