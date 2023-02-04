@@ -252,7 +252,7 @@ impl <T: Copy + Clone + Display + Send + Sync> MatrixFull<T> {
         & self.data[start..end]
     }
     #[inline]
-    pub fn get_slices_mut_old(& mut self, x: Range<usize>, y: Range<usize>) -> Flatten<IntoIter<&mut [T]>> {
+    pub fn get_slices_mut(& mut self, x: Range<usize>, y: Range<usize>) -> Flatten<IntoIter<&mut [T]>> {
         let mut tmp_slices: Vec<&mut [T]> = vec![];
         let mut dd = self.data.split_at_mut(0).1;
         let len_slices_x = x.len();
@@ -266,7 +266,7 @@ impl <T: Copy + Clone + Display + Send + Sync> MatrixFull<T> {
         tmp_slices.into_iter().flatten()
     }
     #[inline]
-    pub fn get_slices_mut(& mut self, x: Range<usize>, y: Range<usize>) -> Flatten<IntoIter<&mut [T]>> {
+    pub fn get_slices_mut_new(& mut self, x: Range<usize>, y: Range<usize>) -> Flatten<IntoIter<&mut [T]>> {
         //let mut tmp_slices: Vec<&mut [T]> = vec![];
         let mut tmp_slices: Vec<&mut [T]> = Vec::with_capacity(y.len());
         unsafe{tmp_slices.set_len(y.len());}
