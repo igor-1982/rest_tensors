@@ -122,28 +122,11 @@ pub fn davidson_solve(mut a_x: Box<dyn FnMut(&Vec<f64>) -> Vec<f64> + '_>,
         axt = vec![];
         for xi in xt {
             let mut axi = a_x(&mut xi.clone());
-            println!("    axi {:?} ", axi);
+            if print_level > 3 { println!("    axi {:?} ", axi); }
             axt.push(axi.to_vec());
             xs.push(xi.clone().to_vec());
             ax.push(axi.to_vec());
         }
-        //for xi in &mut xt {
-        //    let mut axi = a_x(xi);
-        //    axt.push(axi.to_vec());
-        //    xs.push(xi.clone());
-        //    ax.push(axi.to_vec());
-        //}
-        //let mut xt_new = xt.clone();
-        //xt_new.iter().for_each(|xi| {
-        //    println!("    xs {:?} ", xs);
-        //   //let mut axi = a_x(&xi.clone());
-        //    let mut axi = a_x(xi);
-        //    println!("    xs {:?} ", xs);
-        //    axt.push(axi.to_vec());
-        //    xs.push(xi.clone());
-        //    println!("    xs {:?} ", xs);
-        //    ax.push(axi.to_vec());
-        //});
         //println!("    xs {:?} ", xs);
         //let xslen = xs.len();
         let mut rnow = xtlen;
@@ -239,6 +222,7 @@ pub fn davidson_solve(mut a_x: Box<dyn FnMut(&Vec<f64>) -> Vec<f64> + '_>,
                 xt[k] = xtk_na.data.into();
             }
         }
+        norm_min = 1.0;
         //println!("xt {:?} ", xt);
         let mut xt_new:Vec<Vec<f64>> = vec![];
         for k in 0..xt.len() {
@@ -249,7 +233,7 @@ pub fn davidson_solve(mut a_x: Box<dyn FnMut(&Vec<f64>) -> Vec<f64> + '_>,
                 xt_new.push(xt[k].clone());
                 norm_min = norm_min.min(norm);
             } else {
-                println!("Drop eigvec {:?} with norm {:?}", k, dx_norm[k]);
+                println!("drop eigvec {:?} with norm {:?}", k, dx_norm[k]);
             }
         }
         xt = xt_new.clone();
@@ -260,6 +244,9 @@ pub fn davidson_solve(mut a_x: Box<dyn FnMut(&Vec<f64>) -> Vec<f64> + '_>,
         if xt.len() == 0 {
             println!("Linear dependency in trial subspace. |r| for each state {:?}",
                       dx_norm);
+            for k in 0..dx_norm.len() {
+                conv[k] = conv[k] || dx_norm[k] < tol.sqrt();
+            }
             break;
         }
 
