@@ -5,21 +5,19 @@ use typenum::{U2, Pow};
 use rayon::{prelude::*, collections::btree_map::IterMut, iter::Enumerate};
 use std::vec::IntoIter;
 
-use crate::{index::{TensorIndex, TensorIndexUncheck}, Tensors4D, TensorOpt, TensorOptMut, TensorSlice, TensorSliceMut, TensorOptUncheck, TensorSliceUncheck, TensorSliceMutUncheck, TensorOptMutUncheck, MatFormat};
+use crate::{index::{TensorIndex, TensorIndexUncheck}, Tensors4D, TensorOpt, TensorOptMut, TensorSlice, TensorSliceMut, TensorOptUncheck, TensorSliceUncheck, TensorSliceMutUncheck, TensorOptMutUncheck};
 //{Indexing,Tensors4D};
 
 
-//#[derive(Clone, Copy,Debug, PartialEq)]
-//pub enum MatFormat {
-//    Full,
-//    Upper,
-//    Lower
-//}
+#[derive(Clone, Copy,Debug, PartialEq)]
+pub enum MatFormat {
+    Full,
+    Upper,
+    Lower
+}
 #[derive(Clone,Debug,PartialEq)]
 pub struct MatrixFull<T:Clone+Display+Send+Sync> {
-    /// Coloum-major 4-D ERI designed for quantum chemistry calculations specifically.
-    //pub store_format : ERIFormat,
-    //pub rank: usize,
+    /// Coloum-major 2D array designed for quantum chemistry calculations specifically.
     pub size : [usize;2],
     pub indicing: [usize;2],
     pub data : Vec<T>
@@ -73,6 +71,7 @@ impl <T: Copy + Clone + Display + Send + Sync> MatrixFull<T> {
 
         }
     }
+    #[inline]
     /// Generate a borrowed vector from MatrixFull<T>
     pub fn as_vec_ref(&self) -> &Vec<T> {
         &self.data
@@ -253,7 +252,7 @@ impl <T: Copy + Clone + Display + Send + Sync> MatrixFull<T> {
     }
     #[inline]
     pub fn get_slices_mut(& mut self, x: Range<usize>, y: Range<usize>) -> Flatten<IntoIter<&mut [T]>> {
-        let mut tmp_slices: Vec<&mut [T]> = vec![];
+        let mut tmp_slices: Vec<&mut [T]> = Vec::with_capacity(y.len());
         let mut dd = self.data.split_at_mut(0).1;
         let len_slices_x = x.len();
         let len_y = self.indicing[1];
@@ -755,7 +754,7 @@ impl <'a, T: Copy + Clone + Display + Send + Sync> MatrixFullSliceMut<'a, T> {
     }
     #[inline]
     pub fn get_slices_mut(& mut self, x: Range<usize>, y: Range<usize>) -> Flatten<IntoIter<&mut [T]>> {
-        let mut tmp_slices: Vec<&mut [T]> = vec![];
+        let mut tmp_slices: Vec<&mut [T]> = Vec::with_capacity(y.len());
         let mut dd = self.data.split_at_mut(0).1;
         let len_slices_x = x.len();
         let len_y = self.indicing[1];

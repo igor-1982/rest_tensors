@@ -5,7 +5,11 @@ use blas::dcopy;
 use rayon::prelude::*;
 use itertools::iproduct;
 
-use crate::{index::{TensorIndex, TensorIndexUncheck}, Tensors4D, tensors_slice::{TensorsSliceMut, TensorsSlice}, matrix::{MatrixFullSliceMut, MatrixFullSlice}, MatrixFull, MatrixUpperSliceMut, MatrixUpperSlice, TensorOptUncheck, TensorOptMutUncheck, TensorSliceUncheck, TensorSliceMutUncheck};
+//use crate::index::{TensorIndex, TensorIndexUncheck}, Tensors4D, tensors_slice::{TensorsSliceMut, TensorsSlice}, matrix::{MatrixFullSliceMut, MatrixFullSlice}, MatrixFull, MatrixUpperSliceMut, MatrixUpperSlice, TensorOptUncheck, TensorOptMutUncheck, TensorSliceUncheck, TensorSliceMutUncheck};
+use crate::index::{TensorIndex, TensorIndexUncheck};
+//use crate::matrix::{MatrixFullSliceMut, MatrixFullSlice};
+use crate::matrix::{MatrixFullSliceMut, MatrixFullSlice,MatrixFull, MatrixUpperSliceMut, MatrixUpperSlice };
+use crate::{TensorOptUncheck, TensorOptMutUncheck, TensorSliceUncheck, TensorSliceMutUncheck};
 use crate::tensor_basic_operation::{TensorOpt, TensorOptMut, TensorSlice, TensorSliceMut};
 //use crate::matrix::
 //{Indexing,Tensors4D};
@@ -17,17 +21,17 @@ pub enum ERIFormat {
     Fold4,
     Fold8
 }
-//#[derive(Clone,Debug,PartialEq)]
-//pub struct ERIFull<T:Clone+Display> {
-//    /// Coloum-major 4-D ERI designed for quantum chemistry calculations specifically.
-//    //pub store_format : ERIFormat,
-//    //pub rank: usize,
-//    pub size : [usize;4],
-//    pub indicing: [usize;4],
-//    pub data : Vec<T>
-//}
+#[derive(Clone,Debug,PartialEq)]
+pub struct ERIFull<T:Clone+Display> {
+    /// Coloum-major 4-D ERI designed for quantum chemistry calculations specifically.
+    //pub store_format : ERIFormat,
+    //pub rank: usize,
+    pub size : [usize;4],
+    pub indicing: [usize;4],
+    pub data : Vec<T>
+}
 
-pub type ERIFull<T> = Tensors4D<T,U4>;
+//pub type ERIFull<T> = Tensors4D<T,U4>;
 //pub type ERI4F<T,D1,D2,D3,D4> = Tensors4D<T,D1,D2,D3,D4>;
 //pub type ERI8F<T,D1,D2,D3,D4> = Tensors4D<T,D1,D2,D3,D4>;
 
@@ -48,7 +52,7 @@ impl <T: Clone + Display + Send + Sync> ERIFull<T> {
         });
         //len *= size[3];
         ERIFull {
-            rank: U4::default(),
+            //rank: U4::default(),
             size,
             indicing,
             data: vec![new_default.clone(); len]
@@ -68,7 +72,7 @@ impl <T: Clone + Display + Send + Sync> ERIFull<T> {
         //    println!("Waring: the vector size ({}) is larger for the size of the new tensor ({})", new_vec.len(), len);
         //}
         ERIFull {
-            rank: U4::default(),
+            //rank: U4::default(),
             size,
             indicing,
             data: new_vec

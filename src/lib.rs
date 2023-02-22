@@ -1,3 +1,28 @@
+//! # rest-tensors
+//!
+//! The `rest-tensors` crate 
+//!
+//! In order to use the crate, the libcint should be installed with the outcome library `libcint.so` stored in a reachable path by users.
+//!
+//! Please visit <https://github.com/sunqm/libcint> for more details about the installation and the usage of libcint
+//!
+//! The `CINTR2CDATA` struct groups all necessary data for using `libcint`.
+//! Various kinds of analytical Gaussian-type orbital (GTO) integrals provided by `libcint` are then wrapped as the methods defined on the `CINTR2CDATA` struct.
+//!
+//! Currently, only four kinds of integrals are available for both spheric and Cartesian GTOs, including 
+//! 1) the one-electron kinetic integral (```CINTR2CDATA::cint_ijkin```),
+//! 2) the one-electron nuclear attractive integral (```CINT2CDATA::cint_ijnuc```), 
+//! 3) the one-electron overlap integral (```CINTR2CDATA::cint_ijovlp```), 
+//! 4) the two-electron repulsive integral (```CINTR2CDATA::cint_ijkl```).
+//! The other kinds of integrals are not yet ready in the current version.
+//!
+//! The integrals:```Vec<f64>``` produced by the CINTR2CDATA methods aformentioned are arranged in
+//! the convention of `column-major` matrices according to the definition by `libcint`. 
+//!
+//! # Examples
+//!
+//!
+//! ```
 #![allow(unused)]
 extern crate blas;
 extern crate lapack;
@@ -11,10 +36,10 @@ use anyhow;
 
 use lapack::{dsyev,dspevx,dspgvx};
 use blas::dgemm;
-mod tensors_slice;
+//mod tensors_slice;
 mod eri;
 mod index;
-mod tensors;
+//mod tensors;
 mod tensor_basic_operation;
 mod matrix;
 mod davidson;
@@ -22,12 +47,12 @@ mod davidson;
 pub mod matrix_blas_lapack;
 pub mod ri;
 //use typenum::{U1,U2,U3,U4};
-use crate::tensors_slice::{TensorsSliceMut,TensorsSlice};
+//use crate::tensors_slice::{TensorsSliceMut,TensorsSlice};
 //use itertools::iproduct;
 
 
 pub use crate::tensor_basic_operation::*;
-pub use crate::tensors::*;
+//pub use crate::tensors::*;
 pub use crate::eri::*;
 pub use crate::matrix::*;
 pub use crate::ri::*;
@@ -58,13 +83,12 @@ impl<T> RecFn<T> {
 }
 
 
-
 #[cfg(test)]
 mod tests {
     use itertools::{iproduct, Itertools};
     use libc::access;
 
-    use crate::{index::Indexing, tensors::Tensors, MatrixFull, RIFull, MatrixUpper, print_vec};
+    use crate::{index::Indexing, MatrixFull, RIFull, MatrixUpper, print_vec};
     //#[test]
     //fn test_matrix_index() {
     //    let size_a:Vec<usize>=vec![3,3];
@@ -95,105 +119,6 @@ mod tests {
         println!("c:{:?}", &c);
         println!("c:[{},{}]", c[[0,0]],c[[1,0]]);
         println!("c:[{},{}]", c[[0,1]],c[[1,1]]);
-    }
-    #[test]
-    fn test_upper_matrix() {
-        let size:Vec<usize>=vec![11,11];
-        let mut tmp_v = vec![0.0;(size[1]+1)*size[1]/2];
-        (0..tmp_v.len()).into_iter().for_each(|i| {
-            tmp_v[i] = i as f64;
-        });
-        //let size = vec![11,11];
-        let mut my_mat = Tensors::from_vec('U', size, tmp_v);
-        let mut tmp_v = if let Some(fvalue) = my_mat.get_mut(&[2,6]) {
-            fvalue
-        } else {
-            panic!("Error in getting a matrix element");
-        };
-        *tmp_v = 100.0;
-        println!("index: {}",&my_mat.indexing(&[2,6]));
-        println!("pos:   {:?}",&my_mat.reverse_indexing(0));
-        println!("value: {:?}",&my_mat.get(&[2,6]).unwrap());
-        //my_mat.formated_output(5, String::from("upper"));
-        //assert_eq!(my_mat.get(&[2,6]).unwrap(), 100.0);
-    }
-    #[test]
-    fn test_upper_tensor() {
-        let size:Vec<usize>=vec![11,11,2];
-        let mut tmp_v = vec![0.0;(size[0]+1)*size[1]/2*size[2]];
-        (0..tmp_v.len()).into_iter().for_each(|i| {
-            tmp_v[i] = i as f64;
-        });
-        let mut my_mat = Tensors::from_vec('U', size, tmp_v);
-        let mut tmp_v = if let Some(fvalue) = my_mat.get_mut(&[2,6,1]) {
-            fvalue
-        } else {
-            panic!("Error in getting a matrix element");
-        };
-        *tmp_v = 100.0;
-        println!("{:?}",&my_mat);
-        //my_mat.formated_output(5, String::from("full"));
-        let mut tmp_rd_mat = my_mat.get_reducing_tensor(1).unwrap();
-        tmp_rd_mat.formated_output(5, String::from("upper"));
-        tmp_rd_mat.set(&[2,6],50.0);
-        tmp_rd_mat.formated_output(5, String::from("upper"));
-        assert_eq!(*my_mat.get(&[2,6,1]).unwrap(), 50.0);
-    }
-    #[test]
-    fn test_dgemm() {
-        let size_a:Vec<usize>=vec![2,3];
-        let mut tmp_a = vec![
-            1.0,4.0,
-            2.0,5.0,
-            3.0,6.0];
-        let size_b:Vec<usize>=vec![3,4];
-        let mut tmp_b = vec![
-            1.0,5.0, 9.0,
-            2.0,6.0,10.0,
-            3.0,7.0,11.0,
-            4.0,8.0,11.0];
-        let mut my_a = Tensors::from_vec('F', size_a, tmp_a);
-        let mut my_b = Tensors::from_vec('F', size_b, tmp_b);
-        let mut my_c = my_a.dot(&mut my_b).unwrap();
-        //my_c.formated_oupput
-        my_c.formated_output(5,String::from("full"));
-        println!("{:?}", my_c);
-        //assert_eq!(my_c.get(&[2,6,1]).unwrap(), 50.0);
-    }
-    #[test]
-    fn test_diagonalize() {
-        let size_a:Vec<usize>=vec![3,3];
-        let mut tmp_a = vec![
-            3.0,1.0,1.0,
-            1.0,3.0,1.0,
-            1.0,1.0,3.0];
-        let mut my_a = Tensors::from_vec('F', size_a, tmp_a);
-        let (mut eigenvectors,mut eigenvalues,mut n) = my_a.diagonalize().unwrap();
-        my_a.formated_output(5,String::from("full"));
-        println!("eigenvalues: {:?}",eigenvalues);
-        eigenvectors.formated_output(5,String::from("full"));
-        let mut my_b = my_a.dot(&mut eigenvectors).unwrap();
-        my_b.formated_output(5,String::from("full"));
-        let mut eigenvectors_trans = eigenvectors.transpose().unwrap();
-        let mut my_c = eigenvectors_trans.dot(&mut my_b).unwrap();
-        my_c.formated_output(5,String::from("full"));
-
-        let mut tmp_a = vec![
-            3.0,1.0,3.0,1.0,1.0,3.0
-            ];
-        let size_a:Vec<usize>=vec![3,3];
-        let mut my_a = Tensors::from_vec('F', size_a, tmp_a);
-        let (mut full_eigenvectors,mut eigenvalues,mut n) = my_a.diagonalize().unwrap();
-        println!("{:?}",eigenvalues);
-        full_eigenvectors.formated_output(5,String::from("full"));
-        //let mut full_eigenvectors = eigenvectors.copy(String::from("full")).unwrap();
-        let mut full_my_a = my_a.duplicate('F').unwrap();
-        full_my_a.formated_output(5,String::from("full"));
-        //full_eigenvectors.formated_output(5,String::from("full"));
-        let mut my_b = full_my_a.dot(&mut full_eigenvectors).unwrap();
-        let mut full_eigenvectors_trans = full_eigenvectors.transpose().unwrap();
-        let mut my_c = full_eigenvectors_trans.dot(&mut my_b).unwrap();
-        my_c.formated_output(5,String::from("full"));
     }
     #[test]
     fn test_slice_concat() {

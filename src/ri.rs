@@ -1,3 +1,4 @@
+use std::ffi::{c_double, c_int};
 use std::iter::Flatten;
 use std::slice::{ChunksExactMut,ChunksExact};
 use std::vec::IntoIter;
@@ -10,7 +11,7 @@ use itertools::iproduct;
 
 use crate::matrix_blas_lapack::{_dgemm_nn,_dgemm_tn, _dgemm_tn_v02};
 use crate::{MatrixFullSliceMut, MatrixFullSlice, MatrixFull};
-use crate::{index::{TensorIndex, TensorIndexUncheck}, Tensors4D, TensorOpt, TensorOptMut, TensorSlice, TensorSliceMut, TensorOptUncheck, TensorSliceUncheck, TensorSliceMutUncheck, TensorOptMutUncheck, MatFormat};
+use crate::{index::{TensorIndex, TensorIndexUncheck}, Tensors4D, TensorOpt, TensorOptMut, TensorSlice, TensorSliceMut, TensorOptUncheck, TensorSliceUncheck, TensorSliceMutUncheck, TensorOptMutUncheck};
 
 #[derive(Clone,Debug,PartialEq)]
 pub struct RIFull<T:Clone+Display> {
@@ -109,8 +110,14 @@ impl <T: Clone + Display + Send + Sync> RIFull<T> {
         tmp_slices.into_iter().flatten()
     }
     #[inline]
-    pub fn get_slices_mut_old(& mut self, x: Range<usize>, y: Range<usize>, z: Range<usize>) -> Flatten<IntoIter<&mut [T]>> {
-        let mut tmp_slices: Vec<&mut [T]> = vec![];
+    pub fn get_slices_mut(& mut self, x: Range<usize>, y: Range<usize>, z: Range<usize>) -> Flatten<IntoIter<&mut [T]>> {
+        self.get_slices_mut_v01(x,y,z)
+    }
+    #[inline]
+    pub fn get_slices_mut_v01(& mut self, x: Range<usize>, y: Range<usize>, z: Range<usize>) -> Flatten<IntoIter<&mut [T]>> {
+        //let mut tmp_slices: Vec<&mut [T]> = vec![];
+        let length = y.len()*z.len();
+        let mut tmp_slices: Vec<&mut [T]> = Vec::with_capacity(length);
         let mut dd = self.data.split_at_mut(0).1;
         let len_slices_x = x.len();
         let len_y = self.indicing[1];
@@ -124,7 +131,7 @@ impl <T: Clone + Display + Send + Sync> RIFull<T> {
         tmp_slices.into_iter().flatten()
     }
     #[inline]
-    pub fn get_slices_mut(& mut self, x: Range<usize>, y: Range<usize>, z: Range<usize>) -> Flatten<IntoIter<&mut [T]>> {
+    pub fn get_slices_mut_v02(& mut self, x: Range<usize>, y: Range<usize>, z: Range<usize>) -> Flatten<IntoIter<&mut [T]>> {
         let length = y.len()*z.len();
         let mut tmp_slices: Vec<&mut [T]> = Vec::with_capacity(length);
         unsafe{tmp_slices.set_len(length)}
@@ -207,6 +214,10 @@ impl RIFull<f64> {
         }
     }
     #[inline]
+    pub fn ao2mo(&self, eigenvector: &MatrixFull<f64>) -> anyhow::Result<RIFull<f64>> {
+        self.ao2mo_v02(eigenvector)
+    }
+    #[inline]
     pub fn ao2mo_v01(&self, eigenvector: &MatrixFull<f64>) -> anyhow::Result<RIFull<f64>> {
         /// AO(num_basis, num_basis, num_auxbas) -> MO(num_auxbas, num_state, num_state)
         let num_basis = eigenvector.size.get(0).unwrap().clone();
@@ -222,9 +233,45 @@ impl RIFull<f64> {
             //              rimo.get_slices_mut_old(i_auxbas..i_auxbas+1, 0..num_basis, 0..num_state)
             //            )
             let tmp_aux2 = _dgemm_tn(&eigenvector.to_matrixfullslice(), &tmp_aux.to_matrixfullslice());
-            rimo.get_slices_mut_old(i_auxbas..i_auxbas+1, 0..num_basis, 0..num_state)
+            rimo.get_slices_mut(i_auxbas..i_auxbas+1, 0..num_basis, 0..num_state)
                 .zip(tmp_aux2.data.iter()).for_each(|(to, from)| {*to = *from});
         }
         Ok(rimo)
     }
+    #[inline]
+    pub fn ao2mo_v02(&self, eigenvector: &MatrixFull<f64>) -> anyhow::Result<RIFull<f64>> {
+        /// AO(num_basis, num_basis, num_auxbas) -> MO(num_auxbas, num_state, num_state)
+        let num_basis = eigenvector.size.get(0).unwrap().clone();
+        let num_states = eigenvector.size.get(1).unwrap().clone();
+        let num_auxbas = self.size.get(2).unwrap().clone();
+        let mut ri3mo = RIFull::new([num_auxbas,num_states,num_states],0.0);
+        //let mut buf = vec![0.0,num_basis*num_states*num_auxbas];
+        //let (c_buf, buf_len, buf_cap) = (buf.as_mut_ptr() as *mut f64, buf.len(), buf.capacity());
+        unsafe{
+            let eigenvector_ptr = eigenvector.data.as_ptr();
+            let ri3fn_ptr = self.data.as_ptr();
+            let ri3mo_ptr = ri3mo.data.as_mut_ptr();
+            ri_ao2mo_f_(eigenvector_ptr, 
+                ri3fn_ptr, 
+                ri3mo_ptr, 
+                &(num_states as i32), 
+                &(num_basis as i32), 
+                &(num_auxbas as i32));
+        }
+
+        Ok(ri3mo)
+    }
 }
+
+#[link(name="restmatr")]
+extern "C" {
+    pub fn ri_ao2mo_f_(eigenvector: *const c_double, 
+        ri3fn: *const c_double, 
+        ri3mo: *mut c_double, 
+        num_states: *const c_int,
+        num_basis: *const c_int,
+        num_auxbas: *const c_int,
+    );
+}
+
+
