@@ -1,11 +1,10 @@
-use std::fmt::Display;
-
-use typenum::Len;
+use std::{fmt::Display, ops::{Index, IndexMut, Range, RangeFull}, slice::SliceIndex};
 
 use crate::{index::{TensorIndex, TensorIndexUncheck}, 
             ERIFull, ERIFold4, MatrixFull, MatrixFullSliceMut, 
             MatrixFullSlice, MatrixUpperSliceMut, MatrixUpper, 
-            MatrixUpperSlice};
+            MatrixUpperSlice, RIFull};
+
 
 /// Trait definitions for tensor basic operations, mainly including
 ///    getting a (mutable) number, or a (mutable) slice from a defined tensor
@@ -72,8 +71,8 @@ pub trait TensorSliceMut<'a, T> where Self: TensorIndex+TensorOptMut<'a,T> {
 }
 
 /// Define for upper-formated tensors specifically, like 
-///  ERIFold4 with the indice of [i,j,k,l], and
-///  MatrixUpper with the indice of [i,j].
+///  ERIFold4 with the indice of `[i,j,k,l]`, and
+///  MatrixUpper with the indice of `[i,j]`.
 /// According to the upper-formated tensor definition, in principle, i=<j and k<=l.
 /// WARNING: For efficiency, "uncheck" here means that we don't check the index order during the tensor operations.
 /// WARNING: As a result, a wrong index order could lead to a wrong operation.
@@ -86,7 +85,7 @@ pub trait TensorSliceMutUncheck<'a, T> where Self: TensorIndexUncheck+TensorOptM
 
 
 /// Implementation of the traits for specific tensor structures
-impl<T: Clone+Display> TensorOpt<T> for ERIFull<T> {
+impl<T> TensorOpt<T> for ERIFull<T> {
     #[inline]
     fn get1d(&self, position:usize) -> Option<&T> {
         self.data.get(position)
@@ -101,7 +100,7 @@ impl<T: Clone+Display> TensorOpt<T> for ERIFull<T> {
         self.data.get(self.index4d(tp).unwrap())
     }
 }
-impl<'a, T: Clone+Display> TensorOptMut<'a, T> for ERIFull<T> {
+impl<'a, T> TensorOptMut<'a, T> for ERIFull<T> {
     #[inline]
     fn get1d_mut(&mut self, position:usize) -> Option<&mut T> {
         self.data.get_mut(position)
@@ -141,7 +140,7 @@ impl<'a, T: Clone+Display> TensorOptMut<'a, T> for ERIFull<T> {
     }
 }
 
-impl<T: Clone+Display> TensorSlice<T> for ERIFull<T> {
+impl<T> TensorSlice<T> for ERIFull<T> {
     #[inline]
     fn get1d_slice(&self, position:usize, length: usize) -> Option<&[T]> {
         Some(&self.data[position..position+length])
@@ -156,7 +155,7 @@ impl<T: Clone+Display> TensorSlice<T> for ERIFull<T> {
         self.get4d_slice([position[0],position[1],position[2],position[3]], length)
     }
 }
-impl<'a, T: Clone+Display> TensorSliceMut<'a,T> for ERIFull<T> {
+impl<'a, T> TensorSliceMut<'a,T> for ERIFull<T> {
     #[inline]
     fn get1d_slice_mut(&mut self, position:usize, length: usize) -> Option<&mut [T]> {
         Some(&mut self.data[position..position+length])
@@ -173,7 +172,7 @@ impl<'a, T: Clone+Display> TensorSliceMut<'a,T> for ERIFull<T> {
 }
 
 /// For ERIFold4
-impl<T: Clone+Display> TensorOpt<T> for ERIFold4<T> {
+impl<T> TensorOpt<T> for ERIFold4<T> {
     #[inline]
     fn get1d(&self, position:usize) -> Option<&T> {
         self.data.get(position)
@@ -194,13 +193,13 @@ impl<T: Clone+Display> TensorOpt<T> for ERIFold4<T> {
 
     fn get3d(&self, position:[usize;3]) -> Option<&T> {None}
 }
-impl<T: Clone+Display> TensorOptUncheck<T> for ERIFold4<T> {
+impl<T> TensorOptUncheck<T> for ERIFold4<T> {
     #[inline]
     fn get4d_uncheck(&self, position:[usize;4]) -> Option<&T> {
         self.data.get(self.index4d_uncheck(position).unwrap())
     }
 }
-impl<'a, T: Clone+Display> TensorOptMut<'a, T> for ERIFold4<T> {
+impl<'a, T> TensorOptMut<'a, T> for ERIFold4<T> {
     #[inline]
     fn get1d_mut(&mut self, position:usize) -> Option<&mut T> {
         self.data.get_mut(position)
@@ -252,7 +251,7 @@ impl<'a, T: Clone+Display> TensorOptMut<'a, T> for ERIFold4<T> {
         
     }
 }
-impl<'a, T: Clone+Display> TensorOptMutUncheck<'a, T> for ERIFold4<T> {
+impl<'a, T> TensorOptMutUncheck<'a, T> for ERIFold4<T> {
     #[inline]
     fn set4d_uncheck(&mut self, position:[usize;4], new_data: T) {
         let tp = self.index4d_uncheck(position).unwrap();
@@ -269,7 +268,7 @@ impl<'a, T: Clone+Display> TensorOptMutUncheck<'a, T> for ERIFold4<T> {
     }
 }
 
-impl<T: Clone+Display> TensorSlice<T> for ERIFold4<T> {
+impl<T> TensorSlice<T> for ERIFold4<T> {
     #[inline]
     fn get1d_slice(&self, position:usize, length: usize) -> Option<&[T]> {
         Some(&self.data[position..position+length])
@@ -290,7 +289,7 @@ impl<T: Clone+Display> TensorSlice<T> for ERIFold4<T> {
     }
 }
 
-impl<T: Clone+Display> TensorSliceUncheck<T> for ERIFold4<T> {
+impl<T> TensorSliceUncheck<T> for ERIFold4<T> {
     #[inline]
     fn get4d_slice_uncheck(&self, position:[usize;4], length: usize) -> Option<&[T]> {
         let tp = self.index4d_uncheck(position).unwrap();
@@ -298,7 +297,7 @@ impl<T: Clone+Display> TensorSliceUncheck<T> for ERIFold4<T> {
     }
 }
 
-impl<'a, T: Clone+Display> TensorSliceMut<'a,T> for ERIFold4<T> {
+impl<'a, T> TensorSliceMut<'a,T> for ERIFold4<T> {
     #[inline]
     fn get1d_slice_mut(&mut self, position:usize, length: usize) -> Option<&mut [T]> {
         Some(&mut self.data[position..position+length])
@@ -319,7 +318,7 @@ impl<'a, T: Clone+Display> TensorSliceMut<'a,T> for ERIFold4<T> {
     }
 }
 
-impl<'a, T: Clone+Display> TensorSliceMutUncheck<'a,T> for ERIFold4<T> {
+impl<'a, T> TensorSliceMutUncheck<'a,T> for ERIFold4<T> {
     #[inline]
     fn get4d_slice_mut_uncheck(&mut self, position:[usize;4], length: usize) -> Option<&mut [T]> {
         let tp = self.index4d_uncheck(position).unwrap();
@@ -328,7 +327,7 @@ impl<'a, T: Clone+Display> TensorSliceMutUncheck<'a,T> for ERIFold4<T> {
 }
 
 // Trait implementations for MatrixFull
-impl<'a,T: Clone+Display+Send+Sync> TensorOpt<T> for MatrixFull<T> {
+impl<'a,T> TensorOpt<T> for MatrixFull<T> {
     #[inline]
     fn get1d(&self, position:usize) -> Option<&T> {
         self.data.get(position)
@@ -343,7 +342,7 @@ impl<'a,T: Clone+Display+Send+Sync> TensorOpt<T> for MatrixFull<T> {
         self.data.get(self.index2d(tp).unwrap())
     }
 }
-impl<'a, T: Clone+Display+Send+Sync> TensorSlice<T> for MatrixFull<T> {
+impl<'a, T> TensorSlice<T> for MatrixFull<T> {
     #[inline]
     fn get1d_slice(&self, position:usize, length: usize) -> Option<&[T]> {
         Some(&self.data[position..position+length])
@@ -359,7 +358,7 @@ impl<'a, T: Clone+Display+Send+Sync> TensorSlice<T> for MatrixFull<T> {
     }
 }
 
-impl<'a, T: Clone+Display+Send+Sync> TensorOptMut<'a, T> for MatrixFull<T> {
+impl<'a, T> TensorOptMut<'a, T> for MatrixFull<T> {
     #[inline]
     fn get1d_mut(&mut self, position:usize) -> Option<&mut T> {
         self.data.get_mut(position)
@@ -397,8 +396,16 @@ impl<'a, T: Clone+Display+Send+Sync> TensorOptMut<'a, T> for MatrixFull<T> {
         self.set2d([position[0],position[1]], new_data);
         
     }
+
+    fn get3d_mut(&mut self, position:[usize;3]) -> Option<&mut T> {None}
+
+    fn get4d_mut(&mut self, position:[usize;4]) -> Option<&mut T> {None}
+
+    fn set3d(&mut self, position:[usize;3], new_data: T) {}
+
+    fn set4d(&mut self, position:[usize;4], new_data: T) {}
 }
-impl<'a, T: Clone+Display+Send+Sync> TensorSliceMut<'a, T> for MatrixFull<T> {
+impl<'a, T> TensorSliceMut<'a, T> for MatrixFull<T> {
     #[inline]
     fn get1d_slice_mut(&mut self, position:usize, length: usize) -> Option<&mut [T]> {
         Some(&mut self.data[position..position+length])
@@ -415,7 +422,7 @@ impl<'a, T: Clone+Display+Send+Sync> TensorSliceMut<'a, T> for MatrixFull<T> {
 }
 
 // Trait implementations for MatrixFullSliceMut
-impl<'a, T: Clone+Display> TensorOptMut<'a, T> for MatrixFullSliceMut<'a,T> {
+impl<'a, T> TensorOptMut<'a, T> for MatrixFullSliceMut<'a,T> {
     #[inline]
     fn get1d_mut(&mut self, position:usize) -> Option<&mut T> {
         self.data.get_mut(position)
@@ -454,7 +461,7 @@ impl<'a, T: Clone+Display> TensorOptMut<'a, T> for MatrixFullSliceMut<'a,T> {
         
     }
 }
-impl<'a, T: Clone+Display> TensorSliceMut<'a, T> for MatrixFullSliceMut<'a, T> {
+impl<'a, T> TensorSliceMut<'a, T> for MatrixFullSliceMut<'a, T> {
     #[inline]
     fn get1d_slice_mut(&mut self, position:usize, length: usize) -> Option<&mut [T]> {
         Some(&mut self.data[position..position+length])
@@ -471,7 +478,7 @@ impl<'a, T: Clone+Display> TensorSliceMut<'a, T> for MatrixFullSliceMut<'a, T> {
 }
 
 //Trait implementations for MatrixFullSlice
-impl<'a,T: Clone+Display> TensorOpt<T> for MatrixFullSlice<'a,T> {
+impl<'a,T> TensorOpt<T> for MatrixFullSlice<'a,T> {
     #[inline]
     fn get1d(&self, position:usize) -> Option<&T> {
         self.data.get(position)
@@ -486,7 +493,7 @@ impl<'a,T: Clone+Display> TensorOpt<T> for MatrixFullSlice<'a,T> {
         self.data.get(self.index2d(tp).unwrap())
     }
 }
-impl<'a, T: Clone+Display> TensorSlice<T> for MatrixFullSlice<'a, T> {
+impl<'a, T> TensorSlice<T> for MatrixFullSlice<'a, T> {
     #[inline]
     fn get1d_slice(&self, position:usize, length: usize) -> Option<&[T]> {
         Some(&self.data[position..position+length])
@@ -503,7 +510,7 @@ impl<'a, T: Clone+Display> TensorSlice<T> for MatrixFullSlice<'a, T> {
 }
 
 //Trait implementations for MatrixUpperSliceMut
-impl<'a, T: Clone+Display> TensorOptMut<'a, T> for MatrixUpperSliceMut<'a,T> {
+impl<'a, T> TensorOptMut<'a, T> for MatrixUpperSliceMut<'a,T> {
     #[inline]
     fn get1d_mut(&mut self, position:usize) -> Option<&mut T> {
         self.data.get_mut(position)
@@ -542,7 +549,7 @@ impl<'a, T: Clone+Display> TensorOptMut<'a, T> for MatrixUpperSliceMut<'a,T> {
         
     }
 }
-impl<'a, T: Clone+Display> TensorOptMutUncheck<'a, T> for MatrixUpperSliceMut<'a,T> {
+impl<'a, T> TensorOptMutUncheck<'a, T> for MatrixUpperSliceMut<'a,T> {
     #[inline]
     fn get2d_mut_uncheck(&mut self, position:[usize;2]) -> Option<&mut T> {
         let tp = self.index2d_uncheck(position).unwrap();
@@ -558,7 +565,7 @@ impl<'a, T: Clone+Display> TensorOptMutUncheck<'a, T> for MatrixUpperSliceMut<'a
         };
     }
 }
-impl<'a, T: Clone+Display> TensorSliceMut<'a, T> for MatrixUpperSliceMut<'a, T> {
+impl<'a, T> TensorSliceMut<'a, T> for MatrixUpperSliceMut<'a, T> {
     #[inline]
     fn get1d_slice_mut(&mut self, position:usize, length: usize) -> Option<&mut [T]> {
         Some(&mut self.data[position..position+length])
@@ -573,7 +580,7 @@ impl<'a, T: Clone+Display> TensorSliceMut<'a, T> for MatrixUpperSliceMut<'a, T> 
         self.get2d_slice_mut([position[0],position[1]], length)
     }
 }
-impl<'a, T: Clone+Display> TensorSliceMutUncheck<'a, T> for MatrixUpperSliceMut<'a, T> {
+impl<'a, T> TensorSliceMutUncheck<'a, T> for MatrixUpperSliceMut<'a, T> {
     #[inline]
     fn get2d_slice_mut_uncheck(&mut self, position:[usize;2], length: usize) -> Option<&mut [T]> {
         let tp = self.index2d_uncheck(position).unwrap();
@@ -582,7 +589,7 @@ impl<'a, T: Clone+Display> TensorSliceMutUncheck<'a, T> for MatrixUpperSliceMut<
 }
 
 //Trait implementations for MatrixUpperSlice
-impl<'a,T: Clone+Display> TensorOpt<T> for MatrixUpperSlice<'a,T> {
+impl<'a,T> TensorOpt<T> for MatrixUpperSlice<'a,T> {
     #[inline]
     fn get1d(&self, position:usize) -> Option<&T> {
         self.data.get(position)
@@ -597,13 +604,13 @@ impl<'a,T: Clone+Display> TensorOpt<T> for MatrixUpperSlice<'a,T> {
         self.data.get(self.index2d(tp).unwrap())
     }
 }
-impl<'a,T: Clone+Display> TensorOptUncheck<T> for MatrixUpperSlice<'a,T> {
+impl<'a,T> TensorOptUncheck<T> for MatrixUpperSlice<'a,T> {
     #[inline]
     fn get2d_uncheck(&self, position:[usize;2]) -> Option<&T> {
         self.data.get(self.index2d_uncheck(position).unwrap())
     }
 }
-impl<'a, T: Clone+Display> TensorSlice<T> for MatrixUpperSlice<'a, T> {
+impl<'a, T> TensorSlice<T> for MatrixUpperSlice<'a, T> {
     #[inline]
     fn get1d_slice(&self, position:usize, length: usize) -> Option<&[T]> {
         Some(&self.data[position..position+length])
@@ -618,7 +625,7 @@ impl<'a, T: Clone+Display> TensorSlice<T> for MatrixUpperSlice<'a, T> {
         self.get2d_slice([position[0],position[1]], length)
     }
 }
-impl<'a, T: Clone+Display> TensorSliceUncheck<T> for MatrixUpperSlice<'a, T> {
+impl<'a, T> TensorSliceUncheck<T> for MatrixUpperSlice<'a, T> {
     #[inline]
     fn get2d_slice_uncheck(&self, position:[usize;2], length: usize) -> Option<&[T]> {
         let tp = self.index2d_uncheck(position).unwrap();
@@ -627,7 +634,7 @@ impl<'a, T: Clone+Display> TensorSliceUncheck<T> for MatrixUpperSlice<'a, T> {
 }
 
 //Trait implementations for MatrixUpper
-impl<'a, T: Clone+Display> TensorOptMut<'a, T> for MatrixUpper<T> {
+impl<'a, T> TensorOptMut<'a, T> for MatrixUpper<T> {
     #[inline]
     fn get1d_mut(&mut self, position:usize) -> Option<&mut T> {
         self.data.get_mut(position)
@@ -666,7 +673,7 @@ impl<'a, T: Clone+Display> TensorOptMut<'a, T> for MatrixUpper<T> {
         
     }
 }
-impl<'a, T: Clone+Display> TensorOptMutUncheck<'a, T> for MatrixUpper<T> {
+impl<'a, T> TensorOptMutUncheck<'a, T> for MatrixUpper<T> {
     #[inline]
     fn get2d_mut_uncheck(&mut self, position:[usize;2]) -> Option<&mut T> {
         let tp = self.index2d_uncheck(position).unwrap();
@@ -682,7 +689,7 @@ impl<'a, T: Clone+Display> TensorOptMutUncheck<'a, T> for MatrixUpper<T> {
         };
     }
 }
-impl<'a, T: Clone+Display> TensorSliceMut<'a, T> for MatrixUpper<T> {
+impl<'a, T> TensorSliceMut<'a, T> for MatrixUpper<T> {
     #[inline]
     fn get1d_slice_mut(&mut self, position:usize, length: usize) -> Option<&mut [T]> {
         Some(&mut self.data[position..position+length])
@@ -697,14 +704,14 @@ impl<'a, T: Clone+Display> TensorSliceMut<'a, T> for MatrixUpper<T> {
         self.get2d_slice_mut([position[0],position[1]], length)
     }
 }
-impl<'a, T: Clone+Display> TensorSliceMutUncheck<'a, T> for MatrixUpper<T> {
+impl<'a, T> TensorSliceMutUncheck<'a, T> for MatrixUpper<T> {
     #[inline]
     fn get2d_slice_mut_uncheck(&mut self, position:[usize;2], length: usize) -> Option<&mut [T]> {
         let tp = self.index2d_uncheck(position).unwrap();
         Some(&mut self.data[tp..tp+length])
     }
 }
-impl<T: Clone+Display> TensorOpt<T> for MatrixUpper<T> {
+impl<T> TensorOpt<T> for MatrixUpper<T> {
     #[inline]
     fn get1d(&self, position:usize) -> Option<&T> {
         self.data.get(position)
@@ -719,13 +726,13 @@ impl<T: Clone+Display> TensorOpt<T> for MatrixUpper<T> {
         self.data.get(self.index2d(tp).unwrap())
     }
 }
-impl<T: Clone+Display> TensorOptUncheck<T> for MatrixUpper<T> {
+impl<T> TensorOptUncheck<T> for MatrixUpper<T> {
     #[inline]
     fn get2d_uncheck(&self, position:[usize;2]) -> Option<&T> {
         self.data.get(self.index2d_uncheck(position).unwrap())
     }
 }
-impl<T: Clone+Display> TensorSlice<T> for MatrixUpper<T> {
+impl<T> TensorSlice<T> for MatrixUpper<T> {
     #[inline]
     fn get1d_slice(&self, position:usize, length: usize) -> Option<&[T]> {
         Some(&self.data[position..position+length])
@@ -740,10 +747,70 @@ impl<T: Clone+Display> TensorSlice<T> for MatrixUpper<T> {
         self.get2d_slice([position[0],position[1]], length)
     }
 }
-impl<T: Clone+Display> TensorSliceUncheck<T> for MatrixUpper<T> {
+impl<T> TensorSliceUncheck<T> for MatrixUpper<T> {
     #[inline]
     fn get2d_slice_uncheck(&self, position:[usize;2], length: usize) -> Option<&[T]> {
         let tp = self.index2d_uncheck(position).unwrap();
         Some(&self.data[tp..tp+length])
+    }
+}
+
+
+//==========================================================================
+// Now implement the Index and IndexMut traits for different Structrues 
+//==========================================================================
+
+impl<T> Index<[usize;3]> for RIFull<T> {
+    type Output = T;
+    #[inline]
+    fn index(&self, position:[usize;3]) -> &Self::Output {
+        let tmp_p = position.iter()
+            .zip(self.indicing.iter())
+            .fold(0_usize,|acc, i| {acc + i.0*i.1});
+        Index::index(&self.data, tmp_p)
+    }
+}
+
+impl<T> IndexMut<[usize;3]> for RIFull<T> {
+    #[inline]
+    fn index_mut(&mut self, position:[usize;3]) -> &mut Self::Output {
+        let tmp_p = position.iter()
+            .zip(self.indicing.iter())
+            .fold(0_usize,|acc, i| {acc + i.0*i.1});
+        IndexMut::index_mut(&mut self.data, tmp_p)
+    }
+}
+
+impl<T, I:SliceIndex<[T]>> Index<I> for MatrixUpper<T> {
+    type Output = I::Output;
+    fn index(&self, index: I) -> &Self::Output {
+        Index::index(&self.data, index)
+    }
+}
+
+impl<T, I:SliceIndex<[T]>> IndexMut<I> for MatrixUpper<T> {
+    fn index_mut(&mut self, index: I) -> &mut Self::Output {
+        IndexMut::index_mut(&mut self.data, index)
+    }
+}
+
+impl<T> Index<[usize;2]> for ERIFold4<T> {
+    type Output = T;
+    #[inline]
+    fn index(&self, position:[usize;2]) -> &Self::Output {
+        let tmp_p = position.iter()
+            .zip(self.indicing.iter())
+            .fold(0_usize,|acc, i| {acc + i.0*i.1});
+        Index::index(&self.data, tmp_p)
+    }
+}
+
+impl<T> IndexMut<[usize;2]> for ERIFold4<T> {
+    #[inline]
+    fn index_mut(&mut self, position:[usize;2]) -> &mut Self::Output {
+        let tmp_p = position.iter()
+            .zip(self.indicing.iter())
+            .fold(0_usize,|acc, i| {acc + i.0*i.1});
+        IndexMut::index_mut(&mut self.data, tmp_p)
     }
 }

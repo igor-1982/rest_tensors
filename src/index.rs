@@ -1,11 +1,19 @@
 use std::{fmt::Display, ops::{IndexMut,Index}, slice::SliceIndex};
 
-use crate::{ERIFull, ERIFold4, MatrixFull, MatrixFullSliceMut, MatrixFullSlice, MatrixUpperSliceMut, MatrixUpper, MatrixUpperSlice, RIFull};
+
+//use crate::{ERIFull, ERIFold4, MatrixFull, MatrixFullSliceMut, MatrixFullSlice, MatrixUpperSliceMut, MatrixUpper, MatrixUpperSlice, RIFull, TensorOpt};
+
+use crate::*;
+//use crate::matrix::*;
+//use crate::matrix::matrixfull::*;
+//use crate::matrix::matrixfullslice::*;
+//use crate::matrix::matrixupper::*;
 
 
 fn contain_of(a:&[usize],b:&[usize]) -> bool {
     a.iter().zip(b.iter()).fold(true, |flg,(aa,bb)| flg && bb<aa)
 }
+
 
 // For the generic struct Tensors and its borrowed varians
 pub trait Indexing {
@@ -37,7 +45,7 @@ pub trait TensorIndexUncheck {
 }
 
 
-impl <T: Clone+Display> TensorIndex for ERIFull<T> {
+impl <T> TensorIndex for ERIFull<T> {
     #[inline]
     fn index1d(&self, position: usize) -> Option<usize>
     {
@@ -61,7 +69,7 @@ impl <T: Clone+Display> TensorIndex for ERIFull<T> {
     }
 }
 
-impl <T: Clone+Display> TensorIndex for ERIFold4<T> {
+impl <T> TensorIndex for ERIFold4<T> {
     #[inline]
     fn index1d(&self, position: usize) -> Option<usize>
     {
@@ -107,7 +115,7 @@ impl <T: Clone+Display> TensorIndex for ERIFold4<T> {
         }
     }
 }
-impl <T: Clone+Display> TensorIndexUncheck for ERIFold4<T> {
+impl <T> TensorIndexUncheck for ERIFold4<T> {
     fn index4d_uncheck(&self, position:[usize;4]) -> Option<usize> {
         let rp = [(position[1]+1)*position[1]/2+position[0],
                             (position[3]+1)*position[3]/2+position[2]];
@@ -124,7 +132,7 @@ impl <T: Clone+Display> TensorIndexUncheck for ERIFold4<T> {
 
 /// Indexing for MatrixFull and its (mut) borrowed variants.
 ///   MatrixFullSlice and MatrixFullMut
-impl <T: Clone+Display+Send+Sync> TensorIndex for MatrixFull<T> {
+impl <T> TensorIndex for MatrixFull<T> {
     #[inline]
     fn index1d(&self, position: usize) -> Option<usize>
     {
@@ -148,7 +156,7 @@ impl <T: Clone+Display+Send+Sync> TensorIndex for MatrixFull<T> {
     }
 }
 
-impl <'a, T: Clone+Display> TensorIndex for MatrixFullSliceMut<'a,T> {
+impl <'a, T> TensorIndex for MatrixFullSliceMut<'a,T> {
     #[inline]
     fn index1d(&self, position: usize) -> Option<usize>
     {
@@ -172,7 +180,7 @@ impl <'a, T: Clone+Display> TensorIndex for MatrixFullSliceMut<'a,T> {
     }
 }
 
-impl <'a, T: Clone+Display> TensorIndex for MatrixFullSlice<'a,T> {
+impl <'a, T> TensorIndex for MatrixFullSlice<'a,T> {
     #[inline]
     fn index1d(&self, position: usize) -> Option<usize>
     {
@@ -198,7 +206,7 @@ impl <'a, T: Clone+Display> TensorIndex for MatrixFullSlice<'a,T> {
 
 /// Indexing for MatrixUpper and its (mut) borrowed variants.
 ///   MatrixUpperSlice and MatrixUpperMut
-impl <T: Clone+Display> TensorIndex for MatrixUpper<T> {
+impl <T> TensorIndex for MatrixUpper<T> {
     #[inline]
     fn index1d(&self, position: usize) -> Option<usize>
     {
@@ -216,14 +224,14 @@ impl <T: Clone+Display> TensorIndex for MatrixUpper<T> {
         if tp < self.data.len() {Some(tp)} else {None}
     }
 }
-impl <T: Clone+Display> TensorIndexUncheck for MatrixUpper<T> {
+impl <T> TensorIndexUncheck for MatrixUpper<T> {
     #[inline]
     fn index2d_uncheck(&self, position:[usize;2]) -> Option<usize> {
         let tp = (position[1]+1)*position[1]/2+position[0];
         if tp < self.data.len() {Some(tp)} else {None}
     }
 }
-impl <'a, T: Clone+Display> TensorIndex for MatrixUpperSliceMut<'a,T> {
+impl <'a, T> TensorIndex for MatrixUpperSliceMut<'a,T> {
     #[inline]
     fn index1d(&self, position: usize) -> Option<usize>
     {
@@ -241,14 +249,14 @@ impl <'a, T: Clone+Display> TensorIndex for MatrixUpperSliceMut<'a,T> {
         if tp < self.data.len() {Some(tp)} else {None}
     }
 }
-impl <'a, T: Clone+Display> TensorIndexUncheck for MatrixUpperSliceMut<'a,T> {
+impl <'a, T> TensorIndexUncheck for MatrixUpperSliceMut<'a,T> {
     #[inline]
     fn index2d_uncheck(&self, position:[usize;2]) -> Option<usize> {
         let tp = (position[1]+1)*position[1]/2+position[0];
         if tp < self.data.len() {Some(tp)} else {None}
     }
 }
-impl <'a, T: Clone+Display> TensorIndex for MatrixUpperSlice<'a,T> {
+impl <'a, T> TensorIndex for MatrixUpperSlice<'a,T> {
     #[inline]
     fn index1d(&self, position: usize) -> Option<usize>
     {
@@ -265,8 +273,12 @@ impl <'a, T: Clone+Display> TensorIndex for MatrixUpperSlice<'a,T> {
         let tp = (j+1)*j/2+i;
         if tp < self.data.len() {Some(tp)} else {None}
     }
+
+    fn index3d(&self, position:[usize;3]) -> Option<usize> {None}
+
+    fn index4d(&self, position:[usize;4]) -> Option<usize> {None}
 }
-impl <'a, T: Clone+Display> TensorIndexUncheck for MatrixUpperSlice<'a,T> {
+impl <'a, T> TensorIndexUncheck for MatrixUpperSlice<'a,T> {
     #[inline]
     fn index2d_uncheck(&self, position:[usize;2]) -> Option<usize> {
         let tp = (position[1]+1)*position[1]/2+position[0];
@@ -274,61 +286,3 @@ impl <'a, T: Clone+Display> TensorIndexUncheck for MatrixUpperSlice<'a,T> {
     }
 }
 
-
-///==========================================================================
-/// Now implement the Index and IndexMut traits for different Structrues 
-///==========================================================================
-impl<T: Copy + Clone + Display + Send + Sync> Index<[usize;3]> for RIFull<T> {
-    type Output = T;
-    #[inline]
-    fn index(&self, position:[usize;3]) -> &Self::Output {
-        let tmp_p = position.iter()
-            .zip(self.indicing.iter())
-            .fold(0_usize,|acc, i| {acc + i.0*i.1});
-        Index::index(&self.data, tmp_p)
-    }
-}
-
-impl<T: Copy + Clone + Display + Send + Sync> IndexMut<[usize;3]> for RIFull<T> {
-    #[inline]
-    fn index_mut(&mut self, position:[usize;3]) -> &mut Self::Output {
-        let tmp_p = position.iter()
-            .zip(self.indicing.iter())
-            .fold(0_usize,|acc, i| {acc + i.0*i.1});
-        IndexMut::index_mut(&mut self.data, tmp_p)
-    }
-}
-
-impl<T: Copy + Clone + Display + Send + Sync, I:SliceIndex<[T]>> Index<I> for MatrixUpper<T> {
-    type Output = I::Output;
-    fn index(&self, index: I) -> &Self::Output {
-        Index::index(&self.data, index)
-    }
-}
-
-impl<T: Copy + Clone + Display + Send + Sync, I:SliceIndex<[T]>> IndexMut<I> for MatrixUpper<T> {
-    fn index_mut(&mut self, index: I) -> &mut Self::Output {
-        IndexMut::index_mut(&mut self.data, index)
-    }
-}
-
-impl<T: Copy + Clone + Display + Send + Sync> Index<[usize;2]> for ERIFold4<T> {
-    type Output = T;
-    #[inline]
-    fn index(&self, position:[usize;2]) -> &Self::Output {
-        let tmp_p = position.iter()
-            .zip(self.indicing.iter())
-            .fold(0_usize,|acc, i| {acc + i.0*i.1});
-        Index::index(&self.data, tmp_p)
-    }
-}
-
-impl<T: Copy + Clone + Display + Send + Sync> IndexMut<[usize;2]> for ERIFold4<T> {
-    #[inline]
-    fn index_mut(&mut self, position:[usize;2]) -> &mut Self::Output {
-        let tmp_p = position.iter()
-            .zip(self.indicing.iter())
-            .fold(0_usize,|acc, i| {acc + i.0*i.1});
-        IndexMut::index_mut(&mut self.data, tmp_p)
-    }
-}

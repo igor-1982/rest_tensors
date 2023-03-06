@@ -143,7 +143,7 @@ pub fn davidson_solve(mut a_x: Box<dyn FnMut(&Vec<f64>) -> Vec<f64> + '_>,
         let (mut eigvec, mut eigval, n_found) = heff_upper.to_matrixupperslicemut().lapack_dspevx().unwrap();
         e = eigval[0..nroots].to_vec();
         v = MatrixFull::from_vec([space, nroots], 
-                                         eigvec.get_slices(0..space, 0..nroots).map(|i| *i).collect()).unwrap();
+                                         eigvec.iter_submatrix(0..space, 0..nroots).map(|i| *i).collect()).unwrap();
         if print_level > 3 {
             println!("    heff {:?}", heff);
             println!("    eigval {:?}", eigval);
@@ -272,7 +272,7 @@ pub fn _qr(x:&mut Vec<Vec<f64>>, lindep:f64) -> (Vec<Vec<f64>>, MatrixFull<f64>)
     let mut nv = 0;
     for i in 0..nvec {
         let mut xi = x[i].clone();
-        rmat.iter_mut_j(nv).for_each(|r| *r = 0.0);
+        rmat.iter_column_mut(nv).for_each(|r| *r = 0.0);
         rmat.data[nv*nvec+nv] = 1.0;
         //println!("{:?}", rmat.data);
         for j in 0..nv {
@@ -280,7 +280,7 @@ pub fn _qr(x:&mut Vec<Vec<f64>>, lindep:f64) -> (Vec<Vec<f64>>, MatrixFull<f64>)
             let mut prod:f64 = qs[j].iter().zip(xi.iter()).map(|(q,x)| q*x).sum();
             xi.iter_mut().zip( qs[j].iter()).for_each(|(x,q)| *x -= *q *prod);
             let mut rmat_clone = rmat.clone(); 
-            rmat.iter_mut_j(nv).zip(rmat_clone.iter_j(j)).for_each(|(r, rj)| *r -= *rj *prod); 
+            rmat.iter_column_mut(nv).zip(rmat_clone.iter_column(j)).for_each(|(r, rj)| *r -= *rj *prod); 
         };
         //let mut innerprod:f64 = xi.iter().zip(xi.iter()).map(|(x1,x2)| x1*x2).sum();
         let mut xi_na = DVector::from(xi.clone());
@@ -290,7 +290,7 @@ pub fn _qr(x:&mut Vec<Vec<f64>>, lindep:f64) -> (Vec<Vec<f64>>, MatrixFull<f64>)
         //println!("{:?}", norm);
         if norm.powf(2.0) > lindep {
             qs[nv].iter_mut().zip(xi.iter()).for_each(|(q,x)| *q = *x / norm);
-            rmat.get_slices_mut(0..nv+1,nv..nv+1).for_each(|r| *r /= norm);
+            rmat.iter_submatrix_mut(0..nv+1,nv..nv+1).for_each(|r| *r /= norm);
             nv += 1;
         }
     };
@@ -389,7 +389,7 @@ fn _sort_elast(elast:Vec<f64>, convlast:Vec<bool>,
         let nroots = vlast.size[1];
         let mut ovlp = MatrixFull::new([nroots, nroots], 0.0f64);
         let mut v_head = MatrixFull::from_vec([head, nroots], 
-                                         v.get_slices(0..head, 0..nroots).map(|i| *i).collect()).unwrap();
+                                         v.iter_submatrix(0..head, 0..nroots).map(|i| *i).collect()).unwrap();
         ovlp.lapack_dgemm(&mut v_head, vlast, 'T', 'N', 1.0, 0.0);
         let mut idx:Vec<usize> = vec![];
         ovlp.iter_columns_full().for_each(|x| { 

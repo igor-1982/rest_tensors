@@ -1,22 +1,140 @@
-use std::{iter::Flatten, vec::IntoIter};
+use std::{iter::Flatten, vec::IntoIter, ops::Range};
 
 use blas::dgemm;
 use lapack::{dsyev, dspgvx, dspevx,dgetrf,dgetri};
-use rayon::prelude::{*};
+use nalgebra::matrix;
+use rayon::prelude::*;
 
-use crate::{MatrixFullSliceMut, MatrixFull, SAFE_MINIMUM, MatrixUpperSliceMut, TensorSlice, TensorSliceMut, MatrixFullSlice, MatrixFullSliceMut2};
+use crate::{MatrixFullSliceMut, MatrixFull, SAFE_MINIMUM, MatrixUpperSliceMut, TensorSlice, TensorSliceMut, MatrixFullSlice, MatrixFullSliceMut2, BasicMatrix};
 
 
-impl <'a> MatrixFullSliceMut<'a, f64> {
-    #[inline]
-    pub fn check_shape(&self, other:&MatrixFullSliceMut<f64>) -> bool {
-        let mut check = self.size[0] == other.size[0];
-        check = check && self.size[1] == other.size[1];
-        check = check && self.indicing[0] == other.indicing[0];
-        check = check && self.indicing[1] == other.indicing[1];
-        check
+pub fn general_check_shape<'a, T,Q,P>(matr_a: &'a T, matr_b: &'a Q, opa: char, opb: char) -> bool 
+where T: BasicMatrix<'a, P>,
+      Q: BasicMatrix<'a, P>
+{
+    match (opa, opb) {
+        ('N','N') => {
+            matr_a.size().iter().zip(matr_b.size().iter()).fold(true, |flag, (a,b)| flag && *a==*b)
+        },
+        ('T','N') => {
+            matr_a.size().iter().rev().zip(matr_b.size().iter()).fold(true, |flag, (a,b)| flag && *a==*b)
+        },
+        ('N','T') => {
+            matr_a.size().iter().rev().zip(matr_b.size().iter()).fold(true, |flag, (a,b)| flag && *a==*b)
+        },
+        ('T','T') => {
+            matr_a.size().iter().zip(matr_b.size().iter()).fold(true, |flag, (a,b)| flag && *a==*b)
+        },
+        _ => {false}
+
     }
-    pub fn ddot(&mut self, b: &mut MatrixFullSliceMut<f64>) -> Option<MatrixFull<f64>> {
+}
+
+/// # an efficient dgemm manipulation for the matrices equipped with the BasicMatrix trait:
+///  matr_c[(range_row_c, range_column_c)] =
+///      alpha * opa(matr_a[(range_row_a, range_column_a)])*opb(matr_b[(range_row_b, range_column_b)]) +
+///      beta * matr_c[(range_row_c, range_column_c)]
+/// ```
+///    use rest_tensors::matrix::MatrixFull;
+///    use rest_tensors::matrix::matrix_blas_lapack::_dgemm;
+///    let matr_a = MatrixFull::from_vec([3,3], (1..10).map(|x| x as f64).collect::<Vec<f64>>()).unwrap();
+///    //             | 1.0 | 4.0 | 7.0 |
+///    // matr_a =    | 2.0 | 5.0 | 8.0 |
+///    //             | 3.0 | 6.0 | 9.0 |
+///    let matr_b = MatrixFull::from_vec([3,3], (6..15).map(|x| x as f64).collect::<Vec<f64>>()).unwrap();
+///    //             | 6.0 | 9.0 |12.0 |
+///    // matr_b =    | 7.0 |10.0 |13.0 |
+///    //             | 8.0 |11.0 |14.0 |
+///    let mut matr_c = MatrixFull::new([3,3], 2.0);
+/// 
+///    _dgemm(&matr_a, (1..3, 1..3), 'N',
+///           &matr_b, (0..2, 0..2), 'N',
+///           &mut matr_c, (1..3, 0..2), 
+///          1.0, 1.0);
+///    //             |  2.0 |  2.0 | 2.0 |
+///    // matr_c =    | 88.0 |127.0 | 2.0 |
+///    //             |101.0 |144.0 | 2.0 |
+///    assert_eq!(matr_c.get_submatrix(1..3, 0..2).data(),vec![88.0,101.0,127.0,146.0]);
+/// 
+/// 
+///    let mut matr_c = MatrixFull::new([3,3],2.0);
+///    _dgemm(&matr_a,     (1..3, 1..2), 'T',
+///           &matr_b,     (0..2, 0..2), 'N',
+///           &mut matr_c, (1..2, 0..2), 
+///          1.0, 1.0);
+///    //             |  2.0 |  2.0 | 2.0 |
+///    // matr_c =    | 74.0 |107.0 | 2.0 |
+///    //             |  2.0 |  2.0 | 2.0 |
+///    assert_eq!(matr_c.get_submatrix(1..2, 0..2).data(),vec![74.0,107.0]);
+/// 
+///    let mut matr_c = MatrixFull::new([3,3],2.0);
+///    _dgemm(&matr_a,     (1..3, 0..2), 'N',
+///           &matr_b,     (0..1, 0..2), 'T',
+///           &mut matr_c, (0..2, 0..1), 
+///          1.0, 1.0);
+///    //             | 59.0 |  2.0 | 2.0 |
+///    // matr_c =    | 74.0 |  2.0 | 2.0 |
+///    //             |  2.0 |  2.0 | 2.0 |
+///    assert_eq!(matr_c.get_submatrix(0..2, 0..1).data(),vec![59.0,74.0])
+/// ```
+
+pub fn _dgemm<'a, T,Q,P>(
+    matr_a: &T, sub_a_dim: (Range<usize>, Range<usize>), opa: char, 
+    matr_b: &Q, sub_b_dim: (Range<usize>, Range<usize>), opb: char, 
+    matr_c: &mut P, sub_c_dim: (Range<usize>, Range<usize>),
+    alpha: f64, beta: f64,
+) 
+where T: BasicMatrix<'a, f64>,
+      Q: BasicMatrix<'a, f64>, 
+      P: BasicMatrix<'a, f64>
+{
+    let check_shape = match (&opa, &opb) {
+        ('N','N') => {
+            sub_a_dim.1.len() == sub_b_dim.0.len() && sub_a_dim.0.len() == sub_c_dim.0.len() && sub_b_dim.1.len() == sub_c_dim.1.len()
+        },
+        ('T','N') => {
+            sub_a_dim.0.len() == sub_b_dim.0.len() && sub_a_dim.1.len() == sub_c_dim.0.len() && sub_b_dim.1.len() == sub_c_dim.1.len()
+        },
+        ('N','T') => {
+            sub_a_dim.1.len() == sub_b_dim.1.len() && sub_a_dim.0.len() == sub_c_dim.0.len() && sub_b_dim.0.len() == sub_c_dim.1.len()
+        },
+        ('T','T') => {
+            sub_a_dim.0.len() == sub_b_dim.1.len() && sub_a_dim.1.len() == sub_c_dim.0.len() && sub_b_dim.0.len() == sub_c_dim.1.len()
+        },
+        _ => {false}
+    };
+    // check the shapes of the input matrices for the dgemm operation
+    if ! check_shape {panic!("ERROR:: Matr_A[{:},{:},{:}] * Matr_B[{:},{:},{:}] -> Matr_C[{:},{:}]",
+         sub_a_dim.0.len(), sub_a_dim.1.len(), &opa,
+         sub_b_dim.0.len(), sub_b_dim.1.len(), &opb,
+         sub_c_dim.0.len(), sub_c_dim.1.len()
+        )
+    }
+    let is_contiguous = matr_a.is_contiguous() && matr_b.is_contiguous() && matr_c.is_contiguous();
+    if is_contiguous {
+        let matr_c_size = [matr_c.size()[0],matr_c.size()[1]];
+        crate::external_libs::general_dgemm_f(
+            matr_a.data_ref().unwrap(), matr_a.size(), sub_a_dim.0, sub_a_dim.1, opa, 
+            matr_b.data_ref().unwrap(), matr_b.size(), sub_b_dim.0, sub_b_dim.1, opb, 
+            matr_c.data_ref_mut().unwrap(), &matr_c_size, sub_c_dim.0, sub_c_dim.1, 
+            alpha, beta)
+    } else {
+        panic!("the matrixs into the dgemm function should be all stored in a contiguous memory block");
+    }
+
+}
+
+impl <'a, T> MatrixFullSlice<'a, T> {
+    #[inline]
+    pub fn check_shape(&self, other: &MatrixFullSlice<T>, opa: char, opb: char) -> bool 
+    {
+        crate::matrix::matrix_blas_lapack::general_check_shape(self, other, opa, opb)
+    }
+}
+
+impl <'a> MatrixFullSlice<'a, f64> {
+    #[inline]
+    pub fn ddot(&self, b: &MatrixFullSlice<f64>) -> Option<MatrixFull<f64>> {
         /// for self a => a*b
         let flag = self.size[1]==b.size[0];
         if flag {
@@ -30,7 +148,15 @@ impl <'a> MatrixFullSliceMut<'a, f64> {
             None
         }
     }
-    pub fn lapack_dgemm(&mut self, a: &mut MatrixFullSliceMut<f64>, b: &mut MatrixFullSliceMut<f64>, opa: char, opb: char, alpha: f64, beta: f64) {
+}
+
+impl <'a> MatrixFullSliceMut<'a, f64> {
+    #[inline]
+    pub fn check_shape(&self, other: &MatrixFullSliceMut<f64>, opa: char, opb: char) -> bool 
+    {
+        crate::matrix::matrix_blas_lapack::general_check_shape(self, other, opa, opb)
+    }
+    pub fn lapack_dgemm(&mut self, a: &MatrixFullSlice<f64>, b: & MatrixFullSlice<f64>, opa: char, opb: char, alpha: f64, beta: f64) {
 
         /// for self c = alpha*opa(a)*opb(b) + beta*c
         /// 
@@ -187,8 +313,8 @@ impl <'a> MatrixFullSliceMut<'a, f64> {
 
 
             om.to_matrixfullslicemut().lapack_dgemm(
-                &mut eigenvector.to_matrixfullslicemut(), 
-                &mut eigenvector_b.to_matrixfullslicemut(), 
+                &mut eigenvector.to_matrixfullslice(), 
+                &mut eigenvector_b.to_matrixfullslice(), 
                 'N', 'T', 1.0, 0.0);
 
             Some(om)

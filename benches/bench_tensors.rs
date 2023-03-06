@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use fdqc_tensors::{RIFull,MatrixFull};
+use rest_tensors::{RIFull,MatrixFull};
 
 
 fn ao2mo() {

@@ -1,18 +1,22 @@
 use std::{fmt::Display, collections::binary_heap::Iter, ops::Range, iter::Flatten, vec::IntoIter};
 use libc::P_PID;
-use typenum::{U4};
 use blas::dcopy;
 use rayon::prelude::*;
 use itertools::iproduct;
 
 //use crate::index::{TensorIndex, TensorIndexUncheck}, Tensors4D, tensors_slice::{TensorsSliceMut, TensorsSlice}, matrix::{MatrixFullSliceMut, MatrixFullSlice}, MatrixFull, MatrixUpperSliceMut, MatrixUpperSlice, TensorOptUncheck, TensorOptMutUncheck, TensorSliceUncheck, TensorSliceMutUncheck};
-use crate::index::{TensorIndex, TensorIndexUncheck};
+//use crate::index::{TensorIndex, TensorIndexUncheck};
 //use crate::matrix::{MatrixFullSliceMut, MatrixFullSlice};
-use crate::matrix::{MatrixFullSliceMut, MatrixFullSlice,MatrixFull, MatrixUpperSliceMut, MatrixUpperSlice };
-use crate::{TensorOptUncheck, TensorOptMutUncheck, TensorSliceUncheck, TensorSliceMutUncheck};
-use crate::tensor_basic_operation::{TensorOpt, TensorOptMut, TensorSlice, TensorSliceMut};
+//use crate::matrix::{MatrixFullSliceMut, MatrixFullSlice,MatrixFull, MatrixUpperSliceMut, MatrixUpperSlice };
+//use crate::{TensorOptUncheck, TensorOptMutUncheck, TensorSliceUncheck, TensorSliceMutUncheck};
+//use crate::tensor_basic_operation::{TensorOpt, TensorOptMut, TensorSlice, TensorSliceMut};
 //use crate::matrix::
 //{Indexing,Tensors4D};
+use crate::index::*; 
+use crate::tensor_basic_operation::*;
+use crate::matrix::matrixfullslice::*;
+use crate::matrix::matrixfull::*;
+use crate::matrix::matrixupper::*;
 
 
 #[derive(Clone, Copy,Debug, PartialEq)]
@@ -22,7 +26,7 @@ pub enum ERIFormat {
     Fold8
 }
 #[derive(Clone,Debug,PartialEq)]
-pub struct ERIFull<T:Clone+Display> {
+pub struct ERIFull<T> {
     /// Coloum-major 4-D ERI designed for quantum chemistry calculations specifically.
     //pub store_format : ERIFormat,
     //pub rank: usize,
@@ -164,7 +168,7 @@ impl <T: Clone + Display + Send + Sync> ERIFull<T> {
 
 
 #[derive(Clone,Debug,PartialEq)]
-pub struct ERIFold4<T:Clone+Display> {
+pub struct ERIFold4<T> {
     /// Coloum-major 4-D ERI designed for quantum chemistry calculations specifically.
     pub size : [usize;2],
     pub indicing: [usize;2],

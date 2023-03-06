@@ -1,23 +1,41 @@
 extern crate dunce;
 //use std::{env, path::PathBuf};
-use std::{env};
+use std::{env, process::Command};
 
 fn main() {
 
-    let library_names = ["restmatr","openblas"];
-    library_names.iter().for_each(|name| {
-    //    println!("cargo:rustc-link-lib=static={}",*name);
-        println!("cargo:rustc-link-lib={}",*name);
-    });
-    let library_path = [
-        //dunce::canonicalize(root.join("external_libs")).unwrap(),
-        dunce::canonicalize("/share/home/wenxinzy/export/REST/fdqc/external_libs").unwrap(),
-        //dunce::canonicalize("/share/apps/lib/libcint/build").unwrap(),
-        //dunce::canonicalize("/share/apps/rust/HDF5/lib").unwrap(),
-        //dunce::canonicalize(root.join("src/dft/libxc")).unwrap(),
-        dunce::canonicalize("/share/apps/rust/OpenBLAS-0.3.17").unwrap()
-    ];
-    library_path.iter().for_each(|path| {
-        println!("cargo:rustc-link-search=native={}",env::join_paths(&[path]).unwrap().to_str().unwrap())
-    });
+    let external_dir = if let Ok(external_dir) = env::var("REST_EXT_DIR") {
+        external_dir
+    } else {"".to_string()};
+    let blas_dir = if let Ok(blas_dir) = env::var("REST_BLAS_DIR") {
+        blas_dir
+    } else {"".to_string()};
+    let fortran_compiler = if let Ok(fortran_compiler) = env::var("REST_FORTRAN_COMPILER") {
+        fortran_compiler
+    } else {"gfortran".to_string()};
+
+    //let external_dir = "/share/home/wenxinzy/export/REST/rest_tensors/src/external_libs".to_string();
+    //let blas_dir = "//share/apps/rust/OpenBLAS-0.3.17".to_string();
+    //let fortran_compiler = "ifort".to_string();
+
+
+    let restmatr_file = format!("{}/restmatr.f90",&external_dir);
+    let restmatr_libr = format!("{}/librestmatr.so",&external_dir);
+    let restmatr_link = format!("-L{} -lopenblas",&blas_dir);
+
+    Command::new(fortran_compiler)
+        .args(&["-shared", "-fpic", "-O2",&restmatr_file,"-o",&restmatr_libr,&restmatr_link])
+        .status().unwrap();
+
+
+    println!("cargo:rustc-link-lib=restmatr");
+    println!("cargo:rustc-link-search=native={}",&external_dir);
+
+
+    println!("cargo:rustc-link-lib=openblas");
+    println!("cargo:rustc-link-search=native={}",&blas_dir);
+
+    println!("cargo:rerun-if-changed={}/restmatr.f90", &external_dir);
+    println!("cargo:rerun-if-changed={}/librestmatr.so", &external_dir);
+
 }

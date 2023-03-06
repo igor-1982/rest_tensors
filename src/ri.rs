@@ -9,12 +9,13 @@ use rayon::{prelude::*,slice};
 use itertools::iproduct;
 
 
+use crate::external_libs::ri_ao2mo_f;
 use crate::matrix_blas_lapack::{_dgemm_nn,_dgemm_tn, _dgemm_tn_v02};
-use crate::{MatrixFullSliceMut, MatrixFullSlice, MatrixFull};
+use crate::{MatrixFullSliceMut, MatrixFullSlice, MatrixFull, BasicMatrix};
 use crate::{index::{TensorIndex, TensorIndexUncheck}, Tensors4D, TensorOpt, TensorOptMut, TensorSlice, TensorSliceMut, TensorOptUncheck, TensorSliceUncheck, TensorSliceMutUncheck, TensorOptMutUncheck};
 
 #[derive(Clone,Debug,PartialEq)]
-pub struct RIFull<T:Clone+Display> {
+pub struct RIFull<T> {
     /// Coloum-major 4-D ERI designed for quantum chemistry calculations specifically.
     pub size : [usize;3],
     pub indicing: [usize;3],
@@ -233,7 +234,7 @@ impl RIFull<f64> {
             //              rimo.get_slices_mut_old(i_auxbas..i_auxbas+1, 0..num_basis, 0..num_state)
             //            )
             let tmp_aux2 = _dgemm_tn(&eigenvector.to_matrixfullslice(), &tmp_aux.to_matrixfullslice());
-            rimo.get_slices_mut(i_auxbas..i_auxbas+1, 0..num_basis, 0..num_state)
+            rimo.get_slices_mut_v01(i_auxbas..i_auxbas+1, 0..num_basis, 0..num_state)
                 .zip(tmp_aux2.data.iter()).for_each(|(to, from)| {*to = *from});
         }
         Ok(rimo)
@@ -247,31 +248,25 @@ impl RIFull<f64> {
         let mut ri3mo = RIFull::new([num_auxbas,num_states,num_states],0.0);
         //let mut buf = vec![0.0,num_basis*num_states*num_auxbas];
         //let (c_buf, buf_len, buf_cap) = (buf.as_mut_ptr() as *mut f64, buf.len(), buf.capacity());
-        unsafe{
-            let eigenvector_ptr = eigenvector.data.as_ptr();
-            let ri3fn_ptr = self.data.as_ptr();
-            let ri3mo_ptr = ri3mo.data.as_mut_ptr();
-            ri_ao2mo_f_(eigenvector_ptr, 
-                ri3fn_ptr, 
-                ri3mo_ptr, 
-                &(num_states as i32), 
-                &(num_basis as i32), 
-                &(num_auxbas as i32));
-        }
+
+        ri_ao2mo_f(&eigenvector.data_ref().unwrap(),
+                   &self.data[..], 
+                   &mut ri3mo.data[..],
+                   num_states, num_basis, num_auxbas
+                );
+        //unsafe{
+        //    let eigenvector_ptr = eigenvector.data.as_ptr();
+        //    let ri3fn_ptr = self.data.as_ptr();
+        //    let ri3mo_ptr = ri3mo.data.as_mut_ptr();
+        //    ri_ao2mo_f_(eigenvector_ptr, 
+        //        ri3fn_ptr, 
+        //        ri3mo_ptr, 
+        //        &(num_states as i32), 
+        //        &(num_basis as i32), 
+        //        &(num_auxbas as i32));
+        //}
 
         Ok(ri3mo)
     }
 }
-
-#[link(name="restmatr")]
-extern "C" {
-    pub fn ri_ao2mo_f_(eigenvector: *const c_double, 
-        ri3fn: *const c_double, 
-        ri3mo: *mut c_double, 
-        num_states: *const c_int,
-        num_basis: *const c_int,
-        num_auxbas: *const c_int,
-    );
-}
-
 
