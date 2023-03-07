@@ -124,14 +124,6 @@ where T: BasicMatrix<'a, f64>,
 
 }
 
-impl <'a, T> MatrixFullSlice<'a, T> {
-    #[inline]
-    pub fn check_shape(&self, other: &MatrixFullSlice<T>, opa: char, opb: char) -> bool 
-    {
-        crate::matrix::matrix_blas_lapack::general_check_shape(self, other, opa, opb)
-    }
-}
-
 impl <'a> MatrixFullSlice<'a, f64> {
     #[inline]
     pub fn ddot(&self, b: &MatrixFullSlice<f64>) -> Option<MatrixFull<f64>> {
@@ -151,11 +143,11 @@ impl <'a> MatrixFullSlice<'a, f64> {
 }
 
 impl <'a> MatrixFullSliceMut<'a, f64> {
-    #[inline]
-    pub fn check_shape(&self, other: &MatrixFullSliceMut<f64>, opa: char, opb: char) -> bool 
-    {
-        crate::matrix::matrix_blas_lapack::general_check_shape(self, other, opa, opb)
-    }
+    //#[inline]
+    //pub fn check_shape(&self, other: &MatrixFullSliceMut<f64>, opa: char, opb: char) -> bool 
+    //{
+    //    crate::matrix::matrix_blas_lapack::general_check_shape(self, other, opa, opb)
+    //}
     pub fn lapack_dgemm(&mut self, a: &MatrixFullSlice<f64>, b: & MatrixFullSlice<f64>, opa: char, opb: char, alpha: f64, beta: f64) {
 
         /// for self c = alpha*opa(a)*opb(b) + beta*c
@@ -418,7 +410,7 @@ pub fn _dgemm_nn(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>) -> 
     if (ax==0||by==0) {return MatrixFull::new([ax,by],0.0)};
     let mut mat_c = MatrixFull::new([ax,by],0.0);
     //let mat_aa = mat_a.transpose();
-    mat_c.par_iter_mut_columns_full().zip(mat_b.par_iter_columns_full()).for_each(|(mat_c,mat_b)| {
+    mat_c.par_iter_columns_full_mut().zip(mat_b.par_iter_columns_full()).for_each(|(mat_c,mat_b)| {
         mat_b.iter().zip(mat_a.iter_columns_full()).for_each(|(mat_b,mat_a)| {
             mat_c.iter_mut().zip(mat_a.iter()).for_each(|(mat_c,mat_a)| {
                 *mat_c += mat_a*mat_b;
@@ -439,7 +431,7 @@ pub fn _dgemm_tn(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>) -> 
     if (ay==0||by==0) {return MatrixFull::new([ay,by],0.0)};
     let mut mat_c = MatrixFull::new([ay,by],0.0);
     //let mat_aa = mat_a.transpose();
-    mat_c.par_iter_mut_columns_full().zip(mat_b.par_iter_columns_full()).for_each(|(mat_c,mat_b)| {
+    mat_c.par_iter_columns_full_mut().zip(mat_b.par_iter_columns_full()).for_each(|(mat_c,mat_b)| {
         mat_c.iter_mut().zip(mat_a.iter_columns_full()).for_each(|(mat_c,mat_a)| {
             *mat_c = mat_a.iter().zip(mat_b.iter()).fold(0.0,|acc,(a,b)| acc + a*b)
         });
@@ -473,7 +465,7 @@ pub fn _einsum_01(mat_a: &MatrixFullSlice<f64>, vec_b: &[f64]) -> MatrixFull<f64
     if (i_len == 0 || j_len ==0) {return MatrixFull::new([i_len,j_len],0.0)};
     let mut om = MatrixFull::new([i_len,j_len],0.0);
 
-    om.par_iter_mut_columns_full().zip(mat_a.par_iter_columns(0..j_len).unwrap())
+    om.par_iter_columns_full_mut().zip(mat_a.par_iter_columns(0..j_len).unwrap())
     .map(|(om_j,mat_a_j)| {(om_j,mat_a_j)})
     .zip(vec_b.par_iter())
     .for_each(|((om_j,mat_a_j),vec_b_j)| {

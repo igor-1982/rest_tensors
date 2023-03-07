@@ -478,9 +478,22 @@ pub trait BasicMatrix<'a, T> {
         self.size().len() == 2 && self.indicing().len() == 2
     }
 
+    /// by default, the matrix should be contiguous, unless specify explicitly.
     fn is_contiguous(&self) -> bool {true}
 
     fn data_ref(&self) -> Option<&[T]>; 
 
     fn data_ref_mut(&mut self) -> Option<&mut [T]>; 
+
+    fn general_check_shape<Q>(&'a self, other: &'a Q, opa: char, opb: char) -> bool 
+    where Q : BasicMatrix<'a, T>, Self: Sized
+    {
+        crate::matrix::matrix_blas_lapack::general_check_shape(self, other, opa, opb)
+    }
+    fn check_shape<Q>(&self, other:&'a Q) -> bool 
+    where Q:BasicMatrix<'a,T> {
+        self.size().iter().zip(other.size().iter()).fold(true, |check,size| {
+            check && size.0==size.1
+        })
+    }
 }
