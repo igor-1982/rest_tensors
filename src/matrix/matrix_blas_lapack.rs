@@ -1,7 +1,7 @@
 use std::{iter::Flatten, vec::IntoIter, ops::Range};
 
-use blas::dgemm;
-use lapack::{dsyev, dspgvx, dspevx,dgetrf,dgetri};
+use blas::{dgemm,dtrmm};
+use lapack::{dsyev, dspgvx, dspevx,dgetrf,dgetri,dlamch, dsyevx, dpotrf, dtrtri, dpotri};
 use nalgebra::matrix;
 use rayon::prelude::*;
 
@@ -53,7 +53,7 @@ where T: BasicMatrix<'a, P>,
 ///          1.0, 1.0);
 ///    //             |  2.0 |  2.0 | 2.0 |
 ///    // matr_c =    | 88.0 |127.0 | 2.0 |
-///    //             |101.0 |144.0 | 2.0 |
+///    //             |101.0 |146.0 | 2.0 |
 ///    assert_eq!(matr_c.get_submatrix(1..3, 0..2).data(),vec![88.0,101.0,127.0,146.0]);
 /// 
 /// 
@@ -110,6 +110,18 @@ where T: BasicMatrix<'a, f64>,
          sub_c_dim.0.len(), sub_c_dim.1.len()
         )
     }
+    let check_within = sub_a_dim.0.end <= matr_a.size()[0] && sub_a_dim.1.end <= matr_a.size()[1]
+                          && sub_b_dim.0.end <= matr_b.size()[0] && sub_b_dim.1.end <= matr_b.size()[1]
+                          && sub_c_dim.0.end <= matr_c.size()[0] && sub_c_dim.1.end <= matr_b.size()[1];
+    // check if the sub matrix block is within the matrix
+    if ! check_within {
+        panic!("ERROR:: Matr_A.size: {:?}, SubMatr_A: ({:?},{:?}). Matr_B.size: {:?}, SubMatr_B: ({:?},{:?}); Matr_C.size: {:?}, SubMatr_C: ({:?},{:?});  ",
+        matr_a.size(), sub_a_dim.0, sub_a_dim.1,
+        matr_b.size(), sub_b_dim.0, sub_b_dim.1,
+        matr_c.size(), sub_c_dim.0, sub_c_dim.1,
+        )
+    }
+
     let is_contiguous = matr_a.is_contiguous() && matr_b.is_contiguous() && matr_c.is_contiguous();
     if is_contiguous {
         let matr_c_size = [matr_c.size()[0],matr_c.size()[1]];
@@ -213,6 +225,61 @@ impl <'a> MatrixFullSliceMut<'a, f64> {
             None
         }
     }
+
+    pub fn lapack_dsyevx(&mut self) -> Option<(MatrixFull<f64>,Vec<f64>,i32)> {
+
+        // Set absolute tolerance for eigenvalue precision
+        // 2*SAFE_MINIMUM is the recommended for the most precise choice.
+        // WARNING: SAFE_MINIMUM = dmach('S' as usize), which might give zero if overoptimized by the compiler.
+        // In this case, try a lowermost value of 1E-12 instead
+
+        let abs_tol = unsafe{dlamch(b'S')}*2.0_f64;
+        let threshold = -1E10;
+
+        let job_z = b'V';
+        let my_range = b'V';
+        let uplo = b'U';
+        let i_lower = 1;
+        let i_upper = self.size[0] as i32;
+        let v_lower = threshold;
+        let v_upper = 1E5;
+
+        /// eigenvalues and eigenvectors of self a
+        if self.size[0]==self.size[1] {
+            let ndim = self.size[0];
+            let n= ndim as i32;
+            let mut a: Vec<f64> = self.data.to_vec().clone();
+            let mut w: Vec<f64> = vec![0.0;ndim];
+            let mut work: Vec<f64> = vec![0.0;8*ndim];
+            let mut iwork: Vec<i32> = vec![0; 5*ndim];
+            let mut lwork = 8*ndim as i32;
+            let mut ifail:Vec<i32> = vec![0;ndim];
+            let mut info = 0;
+            let mut n_found = 0_i32;
+            unsafe {
+                //dsyevx(b'V',b'L',n,&mut a, n, &mut w, &mut work, lwork, &mut info);
+                dsyevx(job_z, my_range, uplo, n, &mut self.data, n, v_lower, v_upper, i_lower, i_upper,
+                abs_tol, &mut n_found, & mut w, &mut a, n, &mut work, lwork, &mut iwork, &mut ifail, &mut info);
+            }
+            if info<0 {
+                println!("ERROR :: Eigenvalue solver dsyevx():");
+                panic!  ("         The {}th argument in dspevx() has an illegal value. Check", -info);
+            } else if info>0 {
+                println!("ERROR :: Eigenvalue solver dsyevx():");
+                panic!  ("         {} eigenvectors failed to converged. ifail: {:?}", info, ifail);
+            }
+
+            if n_found < n {
+                println!("Matrix is singular: please use {} out of a possible {} specified spectrums", n_found, n);
+            }
+            let eigenvectors = MatrixFull::from_vec([ndim,ndim], a).unwrap();
+            //let eigenvalues = Tensors::from_vec(String::from("full"),vec![self.size[0]], w);
+            Some((eigenvectors, w,n_found))
+        } else {
+            None
+        }
+    }
+
     pub fn lapack_dgetrf(&mut self) -> Option<MatrixFull<f64>> {
         if self.size[0]==self.size[1] {
             let ndim = self.size[0];
@@ -263,12 +330,111 @@ impl <'a> MatrixFullSliceMut<'a, f64> {
         }
     }
 
+    pub fn lapack_dpotrf(&mut self, uplo: u8) {
+        if self.size[0]==self.size[1] {
+            let n = self.size[0] as i32;
+            let mut info = 0;
+            unsafe{dpotrf(uplo, n, &mut self.data,n, &mut info)};
+            if info!=0 {
+                panic!("ERROR: DPOTRF failed with {}", info);
+            }
+        } else {
+            panic!("ERROR: cannot make Cholesky factorization of a matrix with different row and column lengths");
+        }
+    }
+
+    pub fn lapack_dtrtri(&mut self, uplo: u8) {
+        if self.size[0]==self.size[1] {
+            let n = self.size[0] as i32;
+            let mut info = 0;
+            let diag = b'N';
+            unsafe{dtrtri(uplo, diag, n, &mut self.data,n, &mut info)};
+            if info!=0 {
+                panic!("ERROR: DTRITI failed with {}", info);
+            }
+        } else {
+            panic!("ERROR: cannot make Cholesky factorization of a matrix with different row and column lengths");
+        }
+
+    }
+
+    pub fn cholesky_decompose_inverse(&mut self,uplo:char) -> Option<MatrixFull<f64>> {
+        let size = [self.size[0], self.size[1]];
+        let n = size[0] as i32;
+
+        if size[0] == size[1] {
+            let ndim = size[0];
+            let mut info = 0;
+            let mut data = self.data.iter().map(|x| *x).collect::<Vec<f64>>();
+
+            //perform Cholesky decomposition on the matrix A -> A = L*L'
+            unsafe{dpotrf(uplo.clone() as u8, n, &mut data,n, &mut info)};
+            if info!=0 {
+                panic!("ERROR: DPOTRF failed with {}", info);
+            }
+            // compute the inverse of L 
+            unsafe{dpotri(uplo.clone() as u8, n, &mut data,n, &mut info)};
+            if info!=0 {
+                panic!("ERROR: DPOTRI failed with {}", info);
+            }
+
+            let mut l_matr = MatrixFull::from_vec(size.clone(), data).unwrap();
+
+            if uplo.eq(&'L') {
+                for j in 0..ndim {
+                    for i in j+1..ndim {
+                        l_matr[(j,i)] = l_matr[(i,j)];
+                    }
+                }
+            } else if uplo.eq(&'U') {
+                for j in 0..ndim {
+                    for i in j+1..ndim {
+                        l_matr[(i,j)] = l_matr[(j,i)];
+                    }
+                }
+            }
+
+            unsafe{dpotrf(uplo.clone() as u8, n, &mut l_matr.data, n, &mut info)};
+
+            if uplo.eq(&'L') {
+                for j in 0..ndim {
+                    for i in j+1..ndim {
+                        l_matr[(j,i)] = 0.0_f64;
+                    }
+                }
+            } else if uplo.eq(&'U') {
+                for j in 0..ndim {
+                    for i in j+1..ndim {
+                        l_matr[(i,j)] = 0.0_f64;
+                    }
+                }
+            }
+            //let mut out_matr = l_matr.clone();
+
+            //unsafe{dtrmm(b'L', b'U', b'T', b'N', n, n, 1.0, 
+            //    &l_matr.data, n, &mut out_matr.data, n)};
+
+            //unsafe{dtrmm(b'R', b'U', b'N', b'N', n, n, 1.0, 
+            //    &l_matr.data, n, &mut a_matr.data, n)};
+
+
+            //out_matr.to_matrixfullslicemut().lapack_dgemm(&cf.to_matrixfullslice(), &cf.to_matrixfullslice(), 'N', 'N', 1.0, 0.0);
+
+            Some(l_matr)
+
+        } else {
+            None
+        }
+        
+
+    }
+
     pub fn lapack_power(&mut self,p:f64, threshold: f64) -> Option<MatrixFull<f64>> {
         let mut om = MatrixFull::new([self.size[0],self.size[1]],0.0);
-        om.data.iter_mut().zip(self.data.iter()).for_each(|value| {*value.0=*value.1});
+        om.data.par_iter_mut().zip(self.data.par_iter()).for_each(|value| {*value.0=*value.1});
         if self.size[0]==self.size[1] {
             // because lapack sorts eigenvalues from small to large
-            om.self_multiple(-1.0);
+            om.par_self_multiple(-1.0);
             // diagonalize the matrix
             let (mut eigenvector, mut eigenvalues, mut n) = om.to_matrixfullslicemut().lapack_dsyev().unwrap();
             // now we get the eigenvectors with the eigenvalues from large to small
@@ -291,22 +457,20 @@ impl <'a> MatrixFullSliceMut<'a, f64> {
             //    //println!("{}: {:?}", ev_sqrt,&tmp_slice);
             //});
 
-            &eigenvector.data.chunks_exact_mut(self.size[0]).enumerate()
-                .take_while(|(i,value)| i<&n_nonsigular)
+            &eigenvector.data.par_chunks_exact_mut(self.size[0]).enumerate()
+                .filter(|(i,value)| i<&n_nonsigular)
                 .for_each(|(i,value)| {
-                if let Some(ev) = eigenvalues.get_mut(i) {
+                if let Some(ev) = eigenvalues.get(i) {
                     let ev_sqrt = ev.sqrt();
                     value.iter_mut().for_each(|v| {*v = *v*ev_sqrt.powf(p)});
                 }
             });
 
-
-            let mut eigenvector_b = eigenvector.clone();
-
+            //let eigenvector_b = eigenvector.clone();
 
             om.to_matrixfullslicemut().lapack_dgemm(
-                &mut eigenvector.to_matrixfullslice(), 
-                &mut eigenvector_b.to_matrixfullslice(), 
+                &eigenvector.to_matrixfullslice(), 
+                &eigenvector.to_matrixfullslice(), 
                 'N', 'T', 1.0, 0.0);
 
             Some(om)
@@ -401,6 +565,39 @@ impl <'a> MatrixUpperSliceMut<'a, f64> {
     }
 }
 
+/// An matrix operation for the Vxc preparation: Contraction of a slice with a full matrix
+/// `(mat_b[num_basis, num_grid], slice_c[num_grid]) -> mat_a[num_basis, num_grid]`
+/// einsum(ij,i->ij)
+pub fn contract_vxc_0_serial<'a, T,Q>(mat_a: &mut T, mat_b: &Q, slice_c: &[f64], scaling_factor: Option<f64>) 
+where T: BasicMatrix<'a, f64>,
+      Q: BasicMatrix<'a, f64>
+{
+    let mat_a_size = [mat_a.size()[0],mat_a.size()[1]];
+    match scaling_factor {
+        None =>  {
+            mat_a.data_ref_mut().unwrap().chunks_exact_mut(mat_a_size[0])
+                .zip(mat_b.data_ref().unwrap().chunks_exact(mat_a_size[0]))
+                .zip(slice_c.iter())
+                .for_each(|((mat_a,mat_b),slice_c)| {
+                    mat_a.iter_mut().zip(mat_b.iter()).for_each(|(mat_a, mat_b)| {
+                        *mat_a += mat_b*slice_c
+                });
+            });
+        },
+        Some(s) => {
+            mat_a.data_ref_mut().unwrap().chunks_exact_mut(mat_a_size[0])
+                .zip(mat_b.data_ref().unwrap().chunks_exact(mat_a_size[0]))
+                .zip(slice_c.iter())
+                .for_each(|((mat_a,mat_b),slice_c)| {
+                    mat_a.iter_mut().zip(mat_b.iter()).for_each(|(mat_a, mat_b)| {
+                        *mat_a += mat_b*slice_c*s
+                });
+            });
+
+        }
+    }
+}
+
 // for c = a*b
 #[inline]
 pub fn _dgemm_nn(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>) -> MatrixFull<f64> {
@@ -422,6 +619,24 @@ pub fn _dgemm_nn(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>) -> 
     });
     mat_c
 }
+// for c = a*b
+#[inline]
+pub fn _dgemm_nn_serial(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>) -> MatrixFull<f64> {
+    let (ax,ay) = (mat_a.size[0], mat_a.size[1]);
+    let (bx,by) = (mat_b.size[0], mat_b.size[1]);
+    if ay!=bx {panic!("For the input matrices: mat_a[ax,ay], mat_b[bx,by], ay!=bx. dgemm false")};
+    if (ax==0||by==0) {return MatrixFull::new([ax,by],0.0)};
+    let mut mat_c = MatrixFull::new([ax,by],0.0);
+    //let mat_aa = mat_a.transpose();
+    mat_c.iter_columns_full_mut().zip(mat_b.iter_columns_full()).for_each(|(mat_c,mat_b)| {
+        mat_b.iter().zip(mat_a.iter_columns_full()).for_each(|(mat_b,mat_a)| {
+            mat_c.iter_mut().zip(mat_a.iter()).for_each(|(mat_c,mat_a)| {
+                *mat_c += mat_a*mat_b;
+            })
+        });
+    });
+    mat_c
+}
 // for c = a**T*b
 #[inline]
 pub fn _dgemm_tn(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>) -> MatrixFull<f64> {
@@ -432,6 +647,22 @@ pub fn _dgemm_tn(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>) -> 
     let mut mat_c = MatrixFull::new([ay,by],0.0);
     //let mat_aa = mat_a.transpose();
     mat_c.par_iter_columns_full_mut().zip(mat_b.par_iter_columns_full()).for_each(|(mat_c,mat_b)| {
+        mat_c.iter_mut().zip(mat_a.iter_columns_full()).for_each(|(mat_c,mat_a)| {
+            *mat_c = mat_a.iter().zip(mat_b.iter()).fold(0.0,|acc,(a,b)| acc + a*b)
+        });
+    });
+    mat_c
+}
+// for c = a**T*b
+#[inline]
+pub fn _dgemm_tn_serial(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>) -> MatrixFull<f64> {
+    let (ax,ay) = (mat_a.size[0], mat_a.size[1]);
+    let (bx,by) = (mat_b.size[0], mat_b.size[1]);
+    if ax!=bx {panic!("For the input matrices: mat_a[ax,ay], mat_b[bx,by], ay!=bx. dgemm false")};
+    if (ay==0||by==0) {return MatrixFull::new([ay,by],0.0)};
+    let mut mat_c = MatrixFull::new([ay,by],0.0);
+    //let mat_aa = mat_a.transpose();
+    mat_c.iter_columns_full_mut().zip(mat_b.iter_columns_full()).for_each(|(mat_c,mat_b)| {
         mat_c.iter_mut().zip(mat_a.iter_columns_full()).for_each(|(mat_c,mat_a)| {
             *mat_c = mat_a.iter().zip(mat_b.iter()).fold(0.0,|acc,(a,b)| acc + a*b)
         });
@@ -502,5 +733,52 @@ fn test_einsum_02() {
     let mut mat_b = mat_a.clone();
     let mut mat_c = _einsum_02(&mat_a.to_matrixfullslice(), &mat_b.to_matrixfullslice());
     println!("{:?}", mat_c);
+
+}
+
+#[test]
+fn test_sqrt_inverse() {
+    let mut mat_a = MatrixFull::from_vec([3,3], vec![
+         4.0,  12.0, -16.0,
+        12.0,  37.0, -43.0,
+       -16.0, -43.0,  98.0
+    ]).unwrap();
+
+    let sqrt_inverse_mat_a = mat_a.to_matrixfullslicemut().lapack_power(-0.5, 1e-10).unwrap();
+
+    sqrt_inverse_mat_a.formated_output(3, "full");
+
+    let mut inverse_01 = MatrixFull::new([3,3],0.0);
+
+    inverse_01.to_matrixfullslicemut().lapack_dgemm(
+        &sqrt_inverse_mat_a.to_matrixfullslice(),
+        &sqrt_inverse_mat_a.to_matrixfullslice(),'N','N',1.0,0.0);
+
+    inverse_01.formated_output(3,"full");
+
+    let cholesky_inverse = mat_a.to_matrixfullslicemut().cholesky_decompose_inverse('L').unwrap();
+
+    cholesky_inverse.formated_output(3, "full");
+
+    let mut inverse_02 = MatrixFull::new([3,3],0.0);
+
+    inverse_02.to_matrixfullslicemut().lapack_dgemm(
+        &cholesky_inverse.to_matrixfullslice(),
+        &cholesky_inverse.to_matrixfullslice(),'N','T',1.0,0.0);
+
+    inverse_02.formated_output(3,"full");
+
+    let cholesky_inverse = mat_a.to_matrixfullslicemut().cholesky_decompose_inverse('U').unwrap();
+
+    cholesky_inverse.formated_output(3, "full");
+
+    let mut inverse_03 = MatrixFull::new([3,3],0.0);
+
+    inverse_03.to_matrixfullslicemut().lapack_dgemm(
+        &cholesky_inverse.to_matrixfullslice(),
+        &cholesky_inverse.to_matrixfullslice(),'T','N',1.0,0.0);
+
+    inverse_02.formated_output(3,"full");
+
 
 }

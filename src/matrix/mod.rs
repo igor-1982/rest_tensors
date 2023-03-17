@@ -13,10 +13,12 @@ pub mod matrixfull;
 pub mod matrixfullslice;
 pub mod matrixupper;
 pub mod submatrixfull;
+pub mod matrixconst;
 pub mod matrix_blas_lapack;
 
 
 use crate::matrix::matrixfull::*;
+use crate::matrix::matrixconst::*;
 use crate::matrix::matrixfullslice::*;
 use crate::matrix::matrixupper::*;
 use crate::matrix::submatrixfull::*;
@@ -148,7 +150,8 @@ use crate::matrix::matrix_blas_lapack::*;
 ///   1. Add or subtract for two matrices: `MatrixFull<T>` +/- `MatrixFull<T>`. 
 ///   **NOTE**: 1) The size of two matrices should be the same. Otherwise, the program stops with **panic!**
 /// 
-///   - [More matrix operations for the REST package] (#more-matrix-operations-for-the-rest-package)
+///   - [More matrix operations for the REST package](#more-matrix-operations-for-the-rest-package)
+///   - [`_dgemm`](_dgemm)
 /// ```
 ///   use rest_tensors::MatrixFull;
 ///   let vec_a = vec![

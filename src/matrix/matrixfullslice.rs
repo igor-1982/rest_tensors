@@ -12,6 +12,7 @@ use crate::tensor_basic_operation::*;
 use crate::matrix::matrixfull::*;
 use crate::matrix::matrixupper::*;
 
+
 #[derive(Debug,PartialEq)]
 pub struct MatrixFullSliceMut<'a,T> {
     pub size : &'a [usize],
@@ -186,5 +187,33 @@ impl <'a, T: Copy + Clone + Display + Send + Sync> MatrixFullSlice<'a, T> {
             .for_each(|(to,from)| {*to = *from})
         });
         trans_mat
+    }
+}
+
+#[derive(Debug,PartialEq)]
+pub struct SubMatrixFullSlice<'a,T> {
+    pub size : [usize;2],
+    pub indicing: [usize;2],
+    pub data : &'a [T]
+    //pub data : [&'a mut T]
+}
+
+impl <'a, T> BasicMatrix<'a, T> for SubMatrixFullSlice<'a,T> {
+    #[inline]
+    /// `matr_a.size()' return &matr_a.size;
+    fn size(&self) -> &[usize] {
+        &self.size
+    }
+    #[inline]
+    /// `matr_a.indicing()' return &matr_a.indicing;
+    fn indicing(&self) -> &[usize] {
+        &self.indicing
+    }
+
+    fn data_ref(&self) -> Option<&[T]> {
+        Some(&self.data)
+    }
+    fn data_ref_mut(&mut self) -> Option<&mut [T]> {
+        None
     }
 }

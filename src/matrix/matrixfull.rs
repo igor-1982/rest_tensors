@@ -6,7 +6,7 @@ use typenum::{U2, Pow};
 use rayon::{prelude::*, collections::btree_map::IterMut, iter::Enumerate};
 use std::vec::IntoIter;
 
-use crate::matrix::{MatrixFull, BasicMatrix, MatFormat};
+use crate::{matrix::{MatrixFull, BasicMatrix, MatFormat}, external_libs::matr_copy};
 use crate::index::*; 
 use crate::tensor_basic_operation::*;
 use crate::matrix::matrixfullslice::*;
@@ -565,6 +565,16 @@ impl <T: Copy + Clone> MatrixFull<T> {
             size: &self.size[0..2],
             indicing: &self.indicing[0..2],
             data: & self.data[..],
+        }
+    }
+    #[inline]
+    pub fn to_matrixfullslice_columns(&self,range_columns: Range<usize>) -> SubMatrixFullSlice<T> {
+        let start = range_columns.start*self.indicing[1];
+        let end = start + range_columns.len()*self.indicing[1];
+        SubMatrixFullSlice {
+            size: [self.size[0],range_columns.len()],
+            indicing: [0,self.size[0]],
+            data: & self.data[start..end],
         }
     }
 }
@@ -1352,6 +1362,17 @@ impl MatrixFull<f64> {
         });
         println!("{}",tmp_s);
     }
+
+    pub fn copy_from_matr<'a, T>(&mut self, x: Range<usize>, y: Range<usize>, matr_a: &T, f_x: Range<usize>, f_y: Range<usize>) 
+    where T: BasicMatrix<'a,f64>
+    {
+        let size = self.size.clone();
+        unsafe{matr_copy(
+            matr_a.data_ref().unwrap(), matr_a.size(), f_x, f_y, 
+            self.data_ref_mut().unwrap(), &size,x,y 
+        )}
+    }
+
     pub fn lapack_dgemm(&mut self, a: &mut MatrixFull<f64>, b: &mut MatrixFull<f64>, opa: char, opb: char, alpha: f64, beta: f64) {
         self.to_matrixfullslicemut().lapack_dgemm(
             &mut a.to_matrixfullslice(),

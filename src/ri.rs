@@ -9,9 +9,9 @@ use rayon::{prelude::*,slice};
 use itertools::iproduct;
 
 
-use crate::external_libs::ri_ao2mo_f;
+use crate::external_libs::{ri_ao2mo_f, ri_copy_from_ri, ri_copy_from_matr};
 use crate::matrix_blas_lapack::{_dgemm_nn,_dgemm_tn, _dgemm_tn_v02};
-use crate::{MatrixFullSliceMut, MatrixFullSlice, MatrixFull, BasicMatrix};
+use crate::{MatrixFullSliceMut, MatrixFullSlice, MatrixFull, BasicMatrix, SubMatrixFullSlice};
 use crate::{index::{TensorIndex, TensorIndexUncheck}, Tensors4D, TensorOpt, TensorOptMut, TensorSlice, TensorSliceMut, TensorOptUncheck, TensorSliceUncheck, TensorSliceMutUncheck, TensorOptMutUncheck};
 
 #[derive(Clone,Debug,PartialEq)]
@@ -98,6 +98,21 @@ impl <T: Clone + Display + Send + Sync> RIFull<T> {
         )
     }
     #[inline]
+    pub fn get_reducing_matrix_columns(&self, range_columns:Range<usize>, i_reduced: usize) -> Option<SubMatrixFullSlice<T>> {
+        let z_length = if let Some(value) = self.indicing.get(2) {value} else {return None};
+        let y_length = if let Some(value) = self.indicing.get(1) {value} else {return None};
+        let start = z_length * i_reduced + y_length* range_columns.start;
+        let end = start + y_length*range_columns.len();
+        let size = [self.size[0],range_columns.len()];
+        let indicing = [1,size[1]];
+        //let p_start = p_length * i_reduced;
+        Some(SubMatrixFullSlice {
+            size,
+            indicing,
+            data : &self.data[start..end]}
+        )
+    }
+    #[inline]
     pub fn get_slices(&self, x: Range<usize>, y: Range<usize>, z: Range<usize>) -> Flatten<IntoIter<&[T]>> {
         let mut tmp_slices = vec![&self.data[..]; y.len()*z.len()];
         let len_slices_x = x.len();
@@ -153,6 +168,12 @@ impl <T: Clone + Display + Send + Sync> RIFull<T> {
         let start = z*self.indicing[2] + y*self.indicing[1];
         let end = start + self.indicing[1];
         self.data[start..end].iter()
+    }
+    #[inline]
+    pub fn par_iter_slices_x(&self, y: usize, z: usize) -> rayon::slice::Iter<T> {
+        let start = z*self.indicing[2] + y*self.indicing[1];
+        let end = start + self.indicing[1];
+        self.data[start..end].par_iter()
     }
     #[inline]
     pub fn iter_mut_auxbas(&mut self, auxbas_range: Range<usize>) -> Option<ChunksExactMut<T>> {
@@ -267,6 +288,31 @@ impl RIFull<f64> {
         //}
 
         Ok(ri3mo)
+    }
+    #[inline]
+    pub fn copy_from_ri(&mut self, range_x:Range<usize>, range_y:Range<usize>,range_z:Range<usize>,
+        from_ri: &RIFull<f64>,f_range_x:Range<usize>, f_range_y:Range<usize>, f_range_z:Range<usize>) {
+
+            let self_size = self.size.clone();
+
+            ri_copy_from_ri(
+                &from_ri.data, &from_ri.size, f_range_x,f_range_y,f_range_z,
+                &mut self.data, &self_size, range_x,range_y,range_z
+            )
+    }
+    #[inline]
+    pub fn copy_from_matr<'a, T>(&mut self, range_x:Range<usize>, range_y:Range<usize>, i_z: usize, copy_mod:i32,
+        from_matr: & T,f_range_x:Range<usize>, f_range_y:Range<usize>)
+        where T: BasicMatrix<'a,f64>
+        {
+
+            let self_size = self.size.clone();
+
+            ri_copy_from_matr(
+                from_matr.data_ref().unwrap(), from_matr.size(), 
+                f_range_x,f_range_y,
+                &mut self.data, &self_size, range_x,range_y, i_z, copy_mod
+            )
     }
 }
 

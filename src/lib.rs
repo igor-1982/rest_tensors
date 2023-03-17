@@ -2,13 +2,18 @@
 //!
 //! **rest_tensors** is a linear algebra library, which aims at providing efficient tensor operations for the Rust-based electronic structure tool (REST):
 //!    * [`MatrixFull`](MatrixFull): the `column-major` 2-dimention matrix, which is used for the molecular geometries, 
-//!                   orbital coefficients, density matrix, and most of intermediate data for REST
-//!    * [`RIFull`]:     the `column-major` 3-dimention tensors, which is used for the three-center integrals 
-//!                   in the resoution-of-identity approximation (RI). For example, ri3ao, ri3mo, and so forth
-//!    **NOTE**:: Although RIFull is created for very specific purpose use in REST, most of the relevant operations provided here are quite general and can be easily extended to any other 3-rank tensors 
-//!    * [`ERIFull`]:    the `column-major` 4-dimention tensors for electronic repulsive integral (ERI)
+//!                   orbital coefficients, density matrix, and most of intermediate data for REST.\\
+//!                   There are several relevant structures for the 2-dimention matrix, which share the same trait, namely
+//!                   [`BasicMatrix`](BasicMatrix). 
+//!    * [`RIFull`](RIFull):  the `column-major` 3-dimention tensors, which is used for the three-center integrals 
+//!                   in the resoution-of-identity approximation (RI). For example, ri3ao, ri3mo, and so forth.
+//!      **NOTE**:: Although RIFull is created for very specific purpose use in REST, most of the relevant operations provided here are quite general and can be easily extended to any other 3-rank tensors 
+//!    * [`ERIFull`](ERIFull): the `column-major` 4-dimention tensors for electronic repulsive integral (ERI).\\
+//!    **NOTE**:: ERIFull is created to handle the analytic electronic-repulsive integrals in REST. 
+//!               Because REST mainly uses the Resolution-of-Identity (RI) technique. The analytic ERI is provided for benchmark, and thus is not fully optimized.
 //! 
-//! The detailed usage of these tensors can be found in the relevant struct pages.
+//!      Detailed usage of [`MatrixFull`](MatrixFull) can be find in the corresponding pages; while those of [`RIFull`] and [`ERIFull`] are not yet ready.
+//! 
 //!
 #![allow(unused)]
 extern crate blas;
@@ -21,7 +26,7 @@ use std::marker::PhantomData;
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 use anyhow;
 
-use lapack::{dsyev,dspevx,dspgvx};
+use lapack::{dsyev,dspevx,dspgvx, dlamch};
 use blas::dgemm;
 //mod tensors_slice;
 pub mod matrix;

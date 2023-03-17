@@ -14,10 +14,6 @@ fn main() {
         fortran_compiler
     } else {"gfortran".to_string()};
 
-    //let external_dir = "/share/home/wenxinzy/export/REST/rest_tensors/src/external_libs".to_string();
-    //let blas_dir = "//share/apps/rust/OpenBLAS-0.3.17".to_string();
-    //let fortran_compiler = "ifort".to_string();
-
 
     let restmatr_file = format!("{}/restmatr.f90",&external_dir);
     let restmatr_libr = format!("{}/librestmatr.so",&external_dir);
