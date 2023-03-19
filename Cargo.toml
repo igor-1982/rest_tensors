@@ -1,6 +1,6 @@
 [package]
 name = "rest_tensors"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Igor Ying Zhang <igor_zhangying@fudan.edu.cn>"]
 description = "Provide efficient tensor operations for the Rust-based Electronic Structure Tool (REST)"
