@@ -7,6 +7,8 @@ use rayon::prelude::*;
 
 use crate::{MatrixFullSliceMut, MatrixFull, SAFE_MINIMUM, MatrixUpperSliceMut, TensorSlice, TensorSliceMut, MatrixFullSlice, MatrixFullSliceMut2, BasicMatrix};
 
+use super::ParMathMatrix;
+
 
 pub fn general_check_shape<'a, T,Q,P>(matr_a: &'a T, matr_b: &'a Q, opa: char, opb: char) -> bool 
 where T: BasicMatrix<'a, P>,
@@ -136,6 +138,118 @@ where T: BasicMatrix<'a, f64>,
 
 }
 
+/// # computes all eigenvalues and , optionally, eigenvectors of a real symmetric matrix A  
+///    jobz: char, 'N' or 'V'  
+///  = 'N': compute eigenvalues only;  
+///  = 'V': compute eigenvalues and eigenvectors.  
+/// 
+/// Example:
+/// ```
+///    use rest_tensors::{MatrixFull, MatrixUpper};
+///    use rest_tensors::matrix::matrix_blas_lapack::_dsyev;
+///    // generate a matrix with only the upper triangle of A is stored in `MatrixUpper`.
+///    let matr_a = MatrixUpper::from_vec(6, (1..7).map(|x| x as f64).collect::<Vec<f64>>()).unwrap();
+///    //             | 1.0 | 2.0 | 4.0 |
+///    // matr_a =    | 0.0 | 3.0 | 5.0 |
+///    //             | 0.0 | 0.0 | 6.0 |
+///    // transfer it to a MatrixFull format and store in matr_b
+///    let matr_b = matr_a.to_matrixfull().unwrap();
+/// 
+///    // jobz = 'V': computes all eigenvalues and eigenvectors
+///    let(eigenvectors, eigenvalues, ndim) = _dsyev(&matr_b, 'V');
+///    // the eigenvectors reference data
+///    let eigvec_benchmark = vec![
+///         -0.6827362941552275, -0.38559063640162244, 0.6206375864887483, 
+///          0.6202872696512856, -0.7547821848190948, 0.21341873532627673, 
+///         -0.3861539275363389, -0.5306823104260265, -0.7544941548144386];
+///    let diff = &eigenvectors.clone().unwrap().data.iter().zip(eigvec_benchmark.iter()).fold(0.0,|acc,(a,b)| acc + (a-b).powf(2.0));
+///    assert!(diff < &10E-7, "eigenvectors: {:?}, {:?}", &eigenvectors.unwrap().data, &eigvec_benchmark);
+///    // the eigenvalues reference data
+///    let eigval_benchmark = vec![-1.5066326307865059, -0.05739624271478554, 11.564028873501286];
+///    let diff = eigenvalues.iter().zip(eigval_benchmark.iter()).fold(0.0,|acc,(a,b)| acc + (a-b).powf(2.0));
+///    assert!(diff < 10E-7, "eigenvalues: {:?}, {:?}", &eigenvalues, &eigval_benchmark);
+/// 
+///    // jobz = 'N': computes all eigenvalues only
+///    let(eigenvectors, eigenvalues, ndim) = _dsyev(&matr_b, 'N');
+///    assert_eq!(eigenvectors, None);
+///    // the eigenvalues reference data
+///    let eigval_benchmark = vec![-1.5066326307865059, -0.05739624271478554, 11.564028873501286];
+///    let diff = eigenvalues.iter().zip(eigval_benchmark.iter()).fold(0.0,|acc,(a,b)| acc + (a-b).powf(2.0));
+///    assert!(diff < 10E-7, "eigenvalues: {:?}, {:?}", eigenvalues, eigval_benchmark);
+/// ```
+pub fn _dsyev<'a, T>(matr_a: &T, jobz: char) -> (Option<MatrixFull<f64>>,Vec<f64>,i32) 
+where T: BasicMatrix<'a, f64>
+{
+    let ndim = matr_a.size()[0];
+    let size = [ndim, matr_a.size()[1]];
+    if size[0]==size[1] {
+        let n= ndim as i32;
+        let mut a = matr_a.data_ref().unwrap().iter().map(|x| *x).collect::<Vec<f64>>();
+        let mut w: Vec<f64> = vec![0.0;ndim];
+        let mut work: Vec<f64> = vec![0.0;4*ndim];
+        let lwork = 4*n;
+        let mut info = 0;
+        unsafe {
+            dsyev(jobz.clone() as u8,b'L',n,&mut a, n, &mut w, &mut work, lwork, &mut info);
+        }
+        if info<0 {
+            panic!("Error in _dsyev: the {}-th argument had an illegal value", -info);
+        } else if info>0 {
+            panic!("Error in _dsyev: the algorithm failed to converge; {}-off-diagonal elements of an intermediate tridiagonal form did not converge to zero", -info);
+
+        }
+        let eigenvectors = if jobz.eq(&'V') {
+            Some(MatrixFull::from_vec([ndim,ndim], a).unwrap())
+        } else {None};
+        //let eigenvalues = Tensors::from_vec(String::from("full"),vec![self.size[0]], w);
+        (eigenvectors, w,n)
+    } else {
+        panic!("Error in _dsyev: the algorithm is only vaild for real symmetric matrices")
+    }
+}
+
+/// # computes the Cholesky factorization of a real symmetric positive definite matrix A  
+/// uplo: char, `U` or `L`
+/// = `U`: Upper triangle of A is stored  
+/// = `V`: Lower triangle of A is stored  
+/// 
+/// **Note**: [`_dpotrf`] destroys the input matrix `matr_a`, which, on exist is the factor 'U' or 'L' from
+/// the Cholesky factorizatoin A = U**T*U or A = L*L**T  
+/// 
+/// Example
+/// ```
+///    use rest_tensors::{MatrixFull, MatrixUpper};
+///    use rest_tensors::matrix::matrix_blas_lapack::_dpotrf;
+///    // generate a matrix with only the upper triangle of A is stored in `MatrixUpper`.
+///    let matr_0 = MatrixUpper::from_vec(6, vec![4.0,12.0,37.0,-16.0,-43.0,98.0]).unwrap();
+///    // transfer it to a MatrixFull format and store in matr_a
+///    let mut matr_a = matr_0.to_matrixfull().unwrap();
+///    //println!("{:?}", &matr_a);
+///    //            |  4.0 | 12.0 |-16.0 |
+///    // matr_a =   | 12.0 | 37.0 |-43.0 |
+///    //            |-16.0 |-43.0 | 98.0 |
+///    _dpotrf(&mut matr_a, 'U');
+///    let U = matr_a.iter_matrixupper().unwrap().map(|x| *x).collect::<Vec<f64>>();
+///    assert_eq!(U, vec![2.0,6.0,1.0,-8.0,5.0,3.0]);
+/// ```
+pub fn _dpotrf<'a, T>(matr_a: &mut T, uplo: char)  
+where T: BasicMatrix<'a, f64>
+{
+    let size = [matr_a.size()[0], matr_a.size()[1]];
+    if size[0]==size[1] {
+        let n = size[0] as i32;
+        let mut info = 0;
+        unsafe{dpotrf(uplo as u8, n, &mut matr_a.data_ref_mut().unwrap(),n, &mut info)};
+        if info<0 {
+            panic!("ERROR in DPOTRF: The {}-th argument has an illegal value", info);
+        } else if info >0 {
+            panic!("ERROR in DPOTRF: The leading minor of order {} is not positive definite, and the factorization could not be completed", info);
+        }
+    } else {
+        panic!("ERROR: cannot make Cholesky factorization of a matrix with different row and column lengths");
+    }
+}
+
 impl <'a> MatrixFullSlice<'a, f64> {
     #[inline]
     pub fn ddot(&self, b: &MatrixFullSlice<f64>) -> Option<MatrixFull<f64>> {
@@ -195,12 +309,6 @@ impl <'a> MatrixFullSliceMut<'a, f64> {
         } else {
             panic!("Error: Inconsistency happens to perform dgemm w.r.t. op(a)*op(b) -> c");
         }
-    }
-    pub fn multiple(&mut self, scaled_factor: f64) {
-        /// for self a => a*scaled_factor
-        self.data.iter_mut().for_each(|i| {
-            *i *= scaled_factor;
-        });
     }
     pub fn lapack_dsyev(&mut self) -> Option<(MatrixFull<f64>,Vec<f64>,i32)> {
         /// eigenvalues and eigenvectors of self a

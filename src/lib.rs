@@ -1,18 +1,45 @@
 //! # rest_tensors
 //!
-//! **rest_tensors** is a linear algebra library, which aims at providing efficient tensor operations for the Rust-based electronic structure tool (REST):
-//!    * [`MatrixFull`](MatrixFull): the `column-major` 2-dimention matrix, which is used for the molecular geometries, 
-//!                   orbital coefficients, density matrix, and most of intermediate data for REST.\\
-//!                   There are several relevant structures for the 2-dimention matrix, which share the same trait, namely
-//!                   [`BasicMatrix`](BasicMatrix). 
-//!    * [`RIFull`](RIFull):  the `column-major` 3-dimention tensors, which is used for the three-center integrals 
-//!                   in the resoution-of-identity approximation (RI). For example, ri3ao, ri3mo, and so forth.
-//!      **NOTE**:: Although RIFull is created for very specific purpose use in REST, most of the relevant operations provided here are quite general and can be easily extended to any other 3-rank tensors 
-//!    * [`ERIFull`](ERIFull): the `column-major` 4-dimention tensors for electronic repulsive integral (ERI).\\
-//!    **NOTE**:: ERIFull is created to handle the analytic electronic-repulsive integrals in REST. 
-//!               Because REST mainly uses the Resolution-of-Identity (RI) technique. The analytic ERI is provided for benchmark, and thus is not fully optimized.
+//! **rest_tensors** is a linear algebra library, which aims at providing efficient tensor operations for the Rust-based electronic structure tool (REST).
 //! 
-//!      Detailed usage of [`MatrixFull`](MatrixFull) can be find in the corresponding pages; while those of [`RIFull`] and [`ERIFull`] are not yet ready.
+//!  ### Using rest_tensors
+//! 
+//! - Several global environment variables should be specified  
+//!   1) REST_BLAS_DIR:           The path to the openblas library: `libopenblas.so`  
+//!   2) REST_FORTRAN_COMPILER:   The compiler to build a fortran library for effcient tensor operations:  `restmatr.f90` -> `librestmatr.so`  
+//!   3) REST_EXT_DIR:            The path to store the fortran library: `librestmatr.so` after compilation 
+//!   4) LD_LIBRARY_PATH:         attach REST_BLAS_DIR and REST_EXT_DIR to LD_LIBRARY_PATH: `export LD_LIBRARY_PATH="$REST_BLAS_DIR:$REST_EXT_DIR:$LD_LIBRARY_PATH"` 
+//! 
+//! - Simply add the following to your Carto.toml file:
+//! ```ignore
+//! [dependencies]
+//! // replace the * by the latest version
+//! rest_tensors = "*"
+//! ```
+//! 
+//!  ### Fetures
+//! 
+//!    * [`MatrixFull`](MatrixFull): the `column-major` rank-2 tensor, i.e. `matrix`, which is used for the molecular geometries, 
+//!                   orbital coefficients, density matrix, and most of intermediate data for REST.  
+//! There are several relevant structures for matrix, which share the same trait, namely
+//!                   [`BasicMatrix`](BasicMatrix), [`BasicMatrixOpt`](BasicMatrixOpt), [`MathMatrix`](MathMatrix) and so forth. 
+//!    * [`MatrixUpper`](MatrixUpper): the structure storing the upper triangle of the matrix, which is used for Hamiltonian matrix, and many other Hermitian matrices in the REST package.
+//!    * [`RIFull`](RIFull):  the `column-major` rank-3 tensor structure, which is used for the three-center integrals 
+//!                   in the resoution-of-identity approximation (RI). For example, ri3ao, ri3mo, and so forth.   
+//! **NOTE**:: Although RIFull is created for very specific purpose use in REST, most of the relevant operations provided here are quite general and can be easily extended to any other 3-rank tensors 
+//!    * [`ERIFull`](ERIFull): the `column-major` 4-dimention tensors for electronic repulsive integrals (ERI).  
+//! **NOTE**:: ERIFull is created to handle the analytic electronic-repulsive integrals in REST. 
+//! Because REST mainly uses the Resolution-of-Identity (RI) technique. The analytic ERI is provided for benchmark, and thus is not fully optimized.
+//! 
+//! 
+//!    *  Detailed usage of [`MatrixFull`](MatrixFull) can be find in the corresponding pages; while those of [`RIFull`] and [`ERIFull`] are not yet ready.
+//! 
+//!  ### To-Do-List
+//! 
+//!   * Introduce more LAPACK and BLAS functions to the 2-dimention matrix struct in rest-tensors, like [`MatrixFull`](MatrixFull), [`MatrixFullSlice`](MatrixFullSlice), [`SubMatrixFull`](SubMatrixFull) and so forth.
+//!   * Reoptimize the API for the rank-3 tensor, mainly [`RIFull`](RIFull) and complete the detailed usage accordingly.
+//!   * Enable the ScaLAPCK (scalable linear algebra package) functions to the 2-dimention matrix struct in rest-tensors, like [`MatrixFull`](MatrixFull).
+//!   * Conversions between `rest_tensors` and `numpy` in python
 //! 
 //!
 #![allow(unused)]
@@ -138,52 +165,6 @@ mod tests {
         //    println!{"index: {}, value: {}", i.0,i.1};
         //})
     }
-    //#[test]
-    //fn test_ri() {
-    //    let orig_a = vec![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
-    //    let mut tmp_ri = RIFull::from_vec([3,3,2],orig_a).unwrap();
-    //    println!("{:?}",tmp_ri);
-    //    println!("{}",tmp_ri[[0,0,0]]);
-    //    println!("{}",tmp_ri[[0,0,1]]);
-    //    println!("{}",tmp_ri[[2,2,1]]);
-    //    tmp_ri[[0,0,0]] = 100;
-    //    println!("{}",tmp_ri[[0,0,0]]);
-    //    println!("{:?}",tmp_ri);
-
-    //    //now test get_slices
-    //    let dd = tmp_ri.get_slices(0..2, 1..3, 0..2);
-    //    dd.enumerate().for_each(|i| {
-    //        println!("{},{}",i.0,i.1)}
-    //    );
-    //    let dd = tmp_ri.get_slices_mut(0..2, 1..3, 0..2);
-    //    dd.enumerate().for_each(|i| {
-    //        *i.1 += 2}
-    //    );
-    //    println!("{:?}",&tmp_ri.data);
-
-    //    iproduct!(2..5,1..4,0..3).for_each(|f| {
-    //        println!("x:{}, y:{},z:{}", f.2,f.1,f.0);
-    //    });
-
-    //    let orig_b = vec![1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
-    //    let mut tmp_aux = MatrixFull::from_vec([4,4],orig_b).unwrap();
-    //    let dd = tmp_aux.iter_submatrix_mut(0..1, 2..4);
-    //    dd.enumerate().for_each(|i| {println!("{},{}",i.0,i.1)});
-
-
-    //    //(0..5).into_iter().for_each(|i| {
-    //    //    (0..5).into_iter().for_each(|j| {
-    //    //        
-    //    //    })
-    //    //})
-
-    //    //let orig_b = vec![1,2,3,4,5,6];
-    //    //let mut tmp_mat = MatrixUpper::from_vec(6,orig_b).unwrap();
-    //    //println!("{:?}",tmp_mat[1]);
-    //    //let orig_c = vec![1,2,3,4,5,6];
-    //    //println!("{:?}", &orig_c[1..3]);
-
-
     //}
     #[test]
     fn matfull_inverse_and_power() {

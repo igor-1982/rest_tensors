@@ -6,7 +6,7 @@ use typenum::{U2, Pow};
 use rayon::{prelude::*, collections::btree_map::IterMut, iter::Enumerate};
 use std::vec::IntoIter;
 
-use crate::matrix::{MatrixFull, BasicMatrix, MatFormat};
+use crate::{MatrixFull, BasicMatrix, MatFormat, BasicMatrixOpt, MathMatrix, ParMathMatrix};
 use crate::index::*; 
 use crate::tensor_basic_operation::*;
 use crate::matrix::matrixfull::*;
@@ -40,6 +40,12 @@ impl <'a, T> BasicMatrix<'a, T> for MatrixFullSliceMut<'a,T> {
         Some(self.data)
     }
 }
+
+impl<'a, T> BasicMatrixOpt<'a, T> for MatrixFullSliceMut<'a, T> where T: Copy + Clone {}
+
+impl<'a, T> MathMatrix<'a, T> for MatrixFullSliceMut<'a, T> where T: Copy + Clone {}
+
+impl<'a, T> ParMathMatrix<'a, T> for MatrixFullSliceMut<'a, T> where T: Copy + Clone + Send + Sync {}
 
 impl <'a, T: Copy + Clone + Display + Send + Sync> MatrixFullSliceMut<'a, T> {
     //pub fn from_slice(sl: &[T]) -> MatrixFullSlice<'a, T> {
@@ -114,6 +120,12 @@ impl <'a, T> BasicMatrix<'a, T> for MatrixFullSlice<'a,T> {
 
     fn data_ref_mut(&mut self) -> Option<&mut [T]> {None}
 }
+
+impl<'a, T> BasicMatrixOpt<'a, T> for MatrixFullSlice<'a, T> where T: Copy + Clone {}
+
+impl<'a, T> MathMatrix<'a, T> for MatrixFullSlice<'a, T> where T: Copy + Clone {}
+
+impl<'a, T> ParMathMatrix<'a, T> for MatrixFullSlice<'a, T> where T: Copy + Clone + Send + Sync {}
 
 impl <'a, T: Copy + Clone + Display + Send + Sync> MatrixFullSlice<'a, T> {
     #[inline]

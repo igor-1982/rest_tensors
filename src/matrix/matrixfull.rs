@@ -6,7 +6,8 @@ use typenum::{U2, Pow};
 use rayon::{prelude::*, collections::btree_map::IterMut, iter::Enumerate};
 use std::vec::IntoIter;
 
-use crate::{matrix::{MatrixFull, BasicMatrix, MatFormat}, external_libs::matr_copy};
+use crate::matrix::{MatrixFull, BasicMatrix, MatFormat, MathMatrix, ParMathMatrix, BasicMatrixOpt};
+use crate::{external_libs::matr_copy, check_shape};
 use crate::index::*; 
 use crate::tensor_basic_operation::*;
 use crate::matrix::matrixfullslice::*;
@@ -35,6 +36,96 @@ impl <'a, T> BasicMatrix<'a, T> for MatrixFull<T> {
         Some(&mut self.data[..])
     }
 }
+
+impl<'a, T> BasicMatrixOpt<'a, T> for MatrixFull<T> where T: Copy + Clone {}
+
+/// # more math operations for the rest package
+/// 
+///  These operators are provided by the trait of [`MathMatrix`](MathMatrix).  
+///  Here, we illustrate the usage mainly using the [`MatrixFull`] struct. You can perform these operations for [`MatrixFullSlice`], 
+///  [`MatrixFullSliceMut`], [`SubMatrixFull`], and [`SubMatrixFullMut`].
+/// 
+///  We also provide the rayon parallel version of these operators by the trait of [`ParMathMatrix`](ParMathMatrix).
+/// 
+///  - For  C = A + B, use [`MathMatrix::add`] and [`ParMathMatrix::par_add`]
+///  - For  C = A + c*B, use [`MathMatrix::scaled_add`] and [`ParMathMatrix::par_scaled_add`]
+///  - For  A += B, use [`MathMatrix::self_add`] and [`ParMathMatrix::par_self_add`]
+///  - For  A += c*B, using [`MathMatrix::self_scaled_add`] and [`ParMathMatrix::par_scaled_add`]
+///  - For  a*A + b*B -> A, using [`MathMatrix::self_general_add`] and [`ParMathMatrix::par_self_general_add`]
+///  - For  C = A -B, use [`MathMatrix::sub`] and [`ParMathMatrix::par_sub`]
+///  - For  A -= B, use [`MathMatrix::self_sub`] and [`ParMathMatrix::par_self_sub`]
+///  - For  A *= a, use [`MathMatrix::self_multiple`] and [`ParMathMatrix::par_self_multiple`]
+/// 
+/// Several examples are given as follow:
+/// 
+/// * 1) add and self_sub
+/// ```
+///   use rest_tensors::{MatrixFull, MathMatrix};
+///   let vec_a = vec![
+///          1.0,  2.0,  3.0, 
+///          4.0,  5.0,  6.0, 
+///          7.0,  8.0,  9.0, 
+///         10.0, 11.0, 12.0];
+///   let matr_a = MatrixFull::from_vec([3,4],vec_a).unwrap();
+///   //          |  1.0 |  4.0 |  7.0 | 10.0 |
+///   //matr_a =  |  2.0 |  5.0 |  8.0 | 11.0 |
+///   //          |  3.0 |  6.0 |  9.0 | 12.0 |
+/// 
+///   let vec_b = (13..25).map(|x| x as f64).collect::<Vec<f64>>();
+///   let matr_b = MatrixFull::from_vec([3,4],vec_b).unwrap();
+///   //          | 13.0 | 16.0 | 19.0 | 22.0 |
+///   //matr_b =  | 14.0 | 17.0 | 20.0 | 23.0 |
+///   //          | 15.0 | 18.0 | 21.0 | 24.0 |
+/// 
+///   // matr_c = matr_a + matr_b;   
+///   let mut matr_c = MatrixFull::add(&matr_a, &matr_b).unwrap();
+///   //          | 14.0 | 20.0 | 26.0 | 32.0 |
+///   //matr_c =  | 16.0 | 22.0 | 28.0 | 34.0 |
+///   //          | 18.0 | 24.0 | 30.0 | 36.0 |
+///   assert_eq!(matr_c[(..,3)], [32.0,34.0,36.0]);
+/// 
+///   // matr_c_ref: MatrixFullSliceMut<f64>
+///   let mut matr_c_ref = matr_c.to_matrixfullslicemut();
+///   // matr_c -= matr_b = matr_a
+///   matr_c_ref.self_sub(&matr_b);
+///   assert_eq!(matr_c, matr_a);
+/// 
+/// ```
+///  * 2) scaled add and self_sub 
+/// ```
+///   use rest_tensors::{MatrixFull, MathMatrix, ParMathMatrix};
+///   let vec_a = vec![
+///          1.0,  2.0,  3.0, 
+///          4.0,  5.0,  6.0, 
+///          7.0,  8.0,  9.0, 
+///         10.0, 11.0, 12.0];
+///   let matr_a = MatrixFull::from_vec([3,4],vec_a).unwrap();
+///   //          |  1.0 |  4.0 |  7.0 | 10.0 |
+///   //matr_a =  |  2.0 |  5.0 |  8.0 | 11.0 |
+///   //          |  3.0 |  6.0 |  9.0 | 12.0 |
+/// 
+///   let vec_b = (13..25).map(|x| x as f64).collect::<Vec<f64>>();
+///   let mut matr_b = MatrixFull::from_vec([3,4],vec_b).unwrap();
+///   //          | 13.0 | 16.0 | 19.0 | 22.0 |
+///   //matr_b =  | 14.0 | 17.0 | 20.0 | 23.0 |
+///   //          | 15.0 | 18.0 | 21.0 | 24.0 |
+/// 
+///   // matr_c = 1.0*matr_a + matr_b
+///   let mut matr_c = matr_b.scaled_add(&matr_a, 1.0).unwrap();
+///   //          | 14.0 | 20.0 | 26.0 | 32.0 |
+///   //matr_c =  | 16.0 | 22.0 | 28.0 | 34.0 |
+///   //          | 18.0 | 24.0 | 30.0 | 36.0 |
+///   assert_eq!(matr_c[(..,3)], [32.0,34.0,36.0]);
+/// 
+///   // matr_c_ref: MatrixFullSliceMut<f64>
+///   let mut matr_c_ref = matr_c.to_matrixfullslicemut();
+///   // matr_c -= matr_b = matr_a, using the rayon parallel version
+///   matr_c_ref.par_self_sub(&matr_b);
+///   assert_eq!(matr_c, matr_a);
+/// ```
+impl<'a, T> MathMatrix<'a, T> for MatrixFull<T> where T: Copy + Clone {}
+
+impl<'a, T> ParMathMatrix<'a, T> for MatrixFull<T> where T: Copy + Clone + Send + Sync {}
 
 
 pub struct IncreaseStepBy<I> {
@@ -194,6 +285,25 @@ impl <T> MatrixFull<T> {
     pub fn empty() -> MatrixFull<T> {
         unsafe{MatrixFull::from_vec_unchecked([0,0],Vec::new())}
     }
+    /// generate a new MatrixFull entity, where all elemental values as "new_default"
+    pub fn new(size: [usize;2], new_default: T) -> MatrixFull<T> 
+    where T: Copy + Clone
+    {
+        let mut indicing = [0usize;2];
+        let mut len = size.iter()
+            .zip(indicing.iter_mut())
+            .fold(1usize,|len,(di,ii)| {
+            *ii = len;
+            len * di
+        });
+        MatrixFull {
+            size,
+            indicing,
+            data: vec![new_default.clone(); len]
+        }
+    }
+    pub fn data(&self) -> Vec<T> where T: Copy + Clone {self.data.clone()}
+
     pub unsafe fn from_vec_unchecked(size: [usize;2], new_vec: Vec<T>) -> MatrixFull<T> {
         let mut indicing = [0usize;2];
         let mut len = size.iter().zip(indicing.iter_mut()).fold(1usize,|len,(di,ii)| {
@@ -220,7 +330,7 @@ impl <T> MatrixFull<T> {
 
         }
     }
-    #[inline]
+    /// reshape the matrix without change the data and its ordering
     pub fn reshape(&mut self, size:[usize;2]) {
         if size.iter().product::<usize>() !=self.data.len() {
             panic!("Cannot reshape a matrix ({:?}) and change the data length in the meantime: {:?}", &self.size,&size);
@@ -240,7 +350,7 @@ impl <T> MatrixFull<T> {
         self.data.iter_mut()
     }
     #[inline]
-    /// `iter_submatrix` provides a home-ade submatrix StepBy iterator for the elements in the sub-matrix one by one
+    /// `iter_submatrix` provides a home-made submatrix StepBy iterator for the elements in the sub-matrix one by one
     /// Example
     /// ```
     ///   use rest_tensors::MatrixFull;
@@ -253,8 +363,6 @@ impl <T> MatrixFull<T> {
     ///   //          |  3 |  6 |  9 | 12 |
     ///   let mut tmp_iter = matr_a.iter_submatrix_mut(1..2,0..4).collect::<Vec<&mut i32>>();
     ///   assert_eq!(tmp_iter, vec![&2,&5,&8,&11])
-    /// 
-    ///   
     /// ```
     pub fn iter_submatrix(&self, x: Range<usize>, y: Range<usize>) ->  SubMatrixStepBy<slice::Iter<T>>{
         self.iter().submatrix_step_by(x, y, self.size.clone())
@@ -450,28 +558,54 @@ impl <T> MatrixFull<T> {
         &mut self.data[start..end]
     }
 }
-impl <T: Copy + Clone> MatrixFull<T> {
-    /// generate a new MatrixFull entity, where all elemental values as "new_default"
-    pub fn new(size: [usize;2], new_default: T) -> MatrixFull<T> {
-        let mut indicing = [0usize;2];
-        let mut len = size.iter()
-            .zip(indicing.iter_mut())
-            .fold(1usize,|len,(di,ii)| {
-            *ii = len;
-            len * di
-        });
-        MatrixFull {
-            size,
-            indicing,
-            data: vec![new_default.clone(); len]
-        }
-    }
-    pub fn data(&self) -> Vec<T> {
-        self.data.clone()
-    }
-}
 
-///# more matrix operations for the rest package
+/// # more matrix operations needed by the rest package
+/// - For transpose A -> A^{T}, use [`MatrixFull::transpose`] and [`MatrixFull::transpose_and_drop`]
+/// ```
+///   use rest_tensors::MatrixFull;
+///   let mut matr_a = MatrixFull::from_vec(
+///     [3,4],
+///     (1..13).collect::<Vec<i32>>()
+/// ).unwrap();
+///   //          |  1 |  4 |  7 | 10 |
+///   //matr_a =  |  2 |  5 |  8 | 11 |  with the type of MatrixFull<i32>
+///   //          |  3 |  6 |  9 | 12 |
+/// 
+///   // the second-row elements of matr_a
+///   let row_2 = matr_a.iter_row(2).map(|x| *x).collect::<Vec<i32>>();
+///   assert_eq!(row_2,vec![3,6,9,12]);
+/// 
+///   // transpose matr_a to matr_b
+///   let mut matr_b = matr_a.transpose();
+///   // the second-column elements of matr_b
+///   let column_2 = matr_b.iter_column(2).map(|x| *x).collect::<Vec<i32>>();
+///   assert_eq!(column_2,vec![3,6,9,12]);
+///   
+///   assert_eq!(column_2, row_2)
+/// ```
+/// - Collect the (mut)-refs of the diagonal elements in a vector, use [`MatrixFull::get_diagonal_terms`] and [`MatrixFull::get_diagonal_terms_mut`]  
+///  **NOTE**: because this operation creates a new vector to store the (mut)-refs, it is not efficient. A better way to maniputate the diagonal terms
+///  is to use the iterators of [`MatrixFull::iter_diagonal`] and [`MatrixFull::iter_diagonal_mut`] directly
+/// ```
+///   use rest_tensors::MatrixFull;
+///   let mut matr_a = MatrixFull::from_vec(
+///     [4,4],
+///     (1..17).collect::<Vec<i32>>()
+/// ).unwrap();
+///   //          |  1 |  5 |  9 | 13 |
+///   //matr_a =  |  2 |  6 | 10 | 14 |  with the type of MatrixFull<i32>
+///   //          |  3 |  7 | 11 | 15 |
+///   //          |  4 |  8 | 12 | 16 |
+/// 
+///   // the second-row elements of matr_a
+///   let diagonal = matr_a.get_diagonal_terms().unwrap();
+///   assert_eq!(diagonal,vec![&1,&6,&11,&16]);
+/// ```
+/// - Collect and copy the upper part of the matrix into the [`MatrixUpper`](MatrixUpper) Struct, use [`MatrixFull::to_matrixupper`]
+/// - Get the (mutable) reference to the matrix, and encapsulate in various structs for different uses:  
+/// -- [`MatrixFull::to_matrixfullslice`] to [`MatrixFullSlice`]  
+/// -- [`MatrixFull::to_matrixfullslicemut`] to [`MatrixFullSliceMut`]  
+/// -- [`MatrixFull::to_matrixfullslice_columns`] to [`SubMatrixFullSlice`]
 impl <T: Copy + Clone> MatrixFull<T> {
     /// Transpose the matrix: A -> A^{T}
     #[inline]
@@ -538,14 +672,6 @@ impl <T: Copy + Clone> MatrixFull<T> {
         if self.size[0]!=self.size[1] {
             panic!("Error: Nonsymmetric matrix cannot be converted to the upper format");
         }
-        //unsafe{MatrixUpper::from_vec_unchecked(
-        //    self.size[0]*(self.size[0]+1)/2,
-        //    self.data.iter().enumerate()
-        //        .filter(|id| id.0%self.size[0]<=id.0/self.size[0])
-        //        .map(|ad| ad.1.clone())
-        //        .collect::<Vec<_>>()
-        //)}
-
         unsafe{MatrixUpper::from_vec_unchecked(
             self.size[0]*(self.size[0]+1)/2,
             self.iter_matrixupper().unwrap().map(|ad| ad.clone()).collect::<Vec<T>>()
@@ -621,7 +747,6 @@ impl <T: Copy + Clone + Send + Sync + Sized> MatrixFull<T> {
 }
 
 
-
 //==========================================================================
 // Now implement the Index and IndexMut traits for MatrixFull
 //==========================================================================
@@ -695,19 +820,6 @@ impl<T> IndexMut<(RangeFull,usize)> for MatrixFull<T> {
     }
 }
 
-//pub struct MatrixIndex {
-//    x: Range<usize>,
-//    y: Range<usize>
-//}
-
-//impl<'a, T> Index<(Range<usize>,Range<usize>)> for MatrixFull<T> 
-//{
-//    type Output = SubMatrixFull<'a, T>;
-//    fn index(&self, p:(Range<usize>,Range<usize>)) -> &Self::Output {
-//        &self.get_submatrix(p.0, p.1)
-//    }
-//}
-
 //==========================================================================
 // Now implement Add and Sub traits for MatrixFull and SubMatrixFull(Mut)
 //==========================================================================
@@ -716,7 +828,7 @@ impl<T: Clone + Add + AddAssign> Add<MatrixFull<T>> for MatrixFull<T> {
     type Output = Self;
 
     fn add(self, other: MatrixFull<T>) -> MatrixFull<T> {
-        if ! self.check_shape(&other) {
+        if ! check_shape(&self, &other) {
             panic!("It is not allowed to add two matrices with different size: {:?}, {:?}", &self.size, &other.size);
         }
         let mut new_tensor: MatrixFull<T> = self.clone();
@@ -727,7 +839,7 @@ impl<T: Clone + Add + AddAssign> Add<MatrixFull<T>> for MatrixFull<T> {
 impl<T: Clone + Add + AddAssign> AddAssign<MatrixFull<T>> for MatrixFull<T> {
     fn add_assign(&mut self, other: MatrixFull<T>) {
         //let mut new_tensor: MatrixFull<T> = self.clone();
-        if ! self.check_shape(&other) {
+        if ! check_shape(self, &other) {
             panic!("It is not allowed to add two matrices with different size: {:?}, {:?}", &self.size, &other.size);
         }
         self.data.iter_mut().zip(other.data.iter()).for_each(|(t,f)| {*t += f.clone()});
@@ -888,7 +1000,7 @@ impl<'a, T: Copy + Clone + Add + AddAssign> AddAssign<SubMatrixFull<'a, T>> for 
 impl<T: Clone + Sub + SubAssign> Sub<MatrixFull<T>> for MatrixFull<T> {
     type Output = Self;
     fn sub(self, other: MatrixFull<T>) -> MatrixFull<T> {
-        if ! self.check_shape(&other) {
+        if ! check_shape(&self, &other) {
             panic!("It is not allowed to subtract two matrices with different size: {:?}, {:?}", &self.size, &other.size);
         }
         let mut new_tensors: MatrixFull<T> = self.clone();
@@ -902,7 +1014,7 @@ impl<T: Clone + Sub + SubAssign> Sub<MatrixFull<T>> for MatrixFull<T> {
 }
 impl<T: Clone + Sub + SubAssign> SubAssign<MatrixFull<T>> for MatrixFull<T> {
     fn sub_assign(&mut self, other: MatrixFull<T>){
-        if ! self.check_shape(&other) {
+        if ! check_shape(self, &other) {
             panic!("It is not allowed to subtract two matrices with different size: {:?}, {:?}", &self.size, &other.size);
         }
         self.data.iter_mut()
@@ -1153,204 +1265,6 @@ impl <'a, T> IntoIterator for &'a MatrixFull<T> {
     }
 }
 
-/// More math operations for the REST package
-impl<T> MatrixFull<T> 
-    //where T: Copy + Clone + Add<Output=T> + AddAssign + Sub<Output=T> + SubAssign + Mul<Output=T> + MulAssign + Div + DivAssign
-{
-    /// For  C = A + B
-    /// Example
-    /// ```
-    ///   use rest_tensors::MatrixFull;
-    ///   let vec_a = vec![
-    ///          1.0,  2.0,  3.0, 
-    ///          4.0,  5.0,  6.0, 
-    ///          7.0,  8.0,  9.0, 
-    ///         10.0, 11.0, 12.0];
-    ///   let matr_a = MatrixFull::from_vec([3,4],vec_a).unwrap();
-    ///   //          |  1.0 |  4.0 |  7.0 | 10.0 |
-    ///   //matr_a =  |  2.0 |  5.0 |  8.0 | 11.0 |
-    ///   //          |  3.0 |  6.0 |  9.0 | 12.0 |
-    /// 
-    ///   let vec_b = (13..25).map(|x| x as f64).collect::<Vec<f64>>();
-    ///   let matr_b = MatrixFull::from_vec([3,4],vec_b).unwrap();
-    ///   //          | 13.0 | 16.0 | 19.0 | 22.0 |
-    ///   //matr_b =  | 14.0 | 17.0 | 20.0 | 23.0 |
-    ///   //          | 15.0 | 18.0 | 21.0 | 24.0 |
-    /// 
-    ///   // matr_c = matr_a + matr_b;   
-    ///   let mut matr_c = MatrixFull::add(&matr_a, &matr_b).unwrap();
-    ///   //          | 14.0 | 20.0 | 26.0 | 32.0 |
-    ///   //matr_c =  | 16.0 | 22.0 | 28.0 | 34.0 |
-    ///   //          | 18.0 | 24.0 | 30.0 | 36.0 |
-    ///   assert_eq!(matr_c[(..,3)], [32.0,34.0,36.0]);
-    /// ```
-    pub fn add(&self, other: &MatrixFull<T>) -> Option<MatrixFull<T>> 
-    where T: Copy + Clone + Add<Output=T> + AddAssign
-    {
-        if self.check_shape(other) {
-            let mut new_tensors: MatrixFull<T> = self.clone();
-            new_tensors.data_ref_mut().unwrap().iter_mut()
-                .zip(other.data_ref().unwrap().iter()).for_each(|(t,f)| {*t += *f});
-            Some(new_tensors)
-        } else {
-            None
-        }
-    }
-    /// For C = A + s*B  where s is a scale factor
-    /// Example
-    /// ```
-    ///   use rest_tensors::MatrixFull;
-    ///   let vec_a = vec![
-    ///          1.0,  2.0,  3.0, 
-    ///          4.0,  5.0,  6.0, 
-    ///          7.0,  8.0,  9.0, 
-    ///         10.0, 11.0, 12.0];
-    ///   let matr_a = MatrixFull::from_vec([3,4],vec_a).unwrap();
-    ///   //          |  1.0 |  4.0 |  7.0 | 10.0 |
-    ///   //matr_a =  |  2.0 |  5.0 |  8.0 | 11.0 |
-    ///   //          |  3.0 |  6.0 |  9.0 | 12.0 |
-    /// 
-    ///   let vec_b = (13..25).map(|x| x as f64).collect::<Vec<f64>>();
-    ///   let mut matr_b = MatrixFull::from_vec([3,4],vec_b).unwrap();
-    ///   //          | 13.0 | 16.0 | 19.0 | 22.0 |
-    ///   //matr_b =  | 14.0 | 17.0 | 20.0 | 23.0 |
-    ///   //          | 15.0 | 18.0 | 21.0 | 24.0 |
-    /// 
-    ///   let matr_c = matr_b.scaled_add(&matr_a, 1.0).unwrap();
-    ///   //          | 14.0 | 20.0 | 26.0 | 32.0 |
-    ///   //matr_c =  | 16.0 | 22.0 | 28.0 | 34.0 |
-    ///   //          | 18.0 | 24.0 | 30.0 | 36.0 |
-    ///   assert_eq!(matr_c[(..,3)], [32.0,34.0,36.0]);
-    /// ```
-    pub fn scaled_add(&self, other: &MatrixFull<T>,scale_factor: T) -> Option<MatrixFull<T>> 
-    where T: Copy + Clone + Add + AddAssign + Mul<Output=T>
-    {
-        if self.check_shape(other) {
-            let mut new_tensors: MatrixFull<T> = self.clone();
-            new_tensors.data_ref_mut().unwrap().iter_mut()
-                .zip(other.data_ref().unwrap().iter()).for_each(|(t,f)| {*t += scale_factor * (*f)});
-            Some(new_tensors)
-        } else {
-            None
-        }
-    }
-    /// For A += B
-    #[inline]
-    pub fn self_add(&mut self, bm: &MatrixFull<T>) 
-    where T: Copy + Clone + Add + AddAssign
-    {
-        /// A = A + B 
-        if self.check_shape(bm) {
-            self.data_ref_mut().unwrap().iter_mut()
-                .zip(bm.data_ref().unwrap().iter())
-                .for_each(|(c,p)| {*c += *p});
-        } else {
-            panic!("Error: Shape inconsistency happens when plus two matrices");
-        }
-    }
-    /// For A += c*B where c is a scale factor
-    #[inline]
-    pub fn self_scaled_add(&mut self, bm: &MatrixFull<T>,b: T) 
-    where T: Copy + Clone + Add + AddAssign + Mul<Output=T>
-    {
-        /// A = A + b*B
-        if self.check_shape(bm) {
-            self.data.iter_mut()
-                .zip(bm.data.iter())
-                .for_each(|(c,p)| {*c +=*p*b});
-        } else {
-            panic!("Error: Shape inconsistency happens when plus two matrices");
-        }
-    }
-    /// For a*A + b*B -> A
-    #[inline]
-    pub fn self_general_add(&mut self, bm: &MatrixFull<T>,a: T, b:T) 
-    where T: Copy + Clone + Add<Output=T> + AddAssign + Mul<Output=T>
-    {
-        /// A = a*A + b*B
-        if self.check_shape(bm) {
-            //let mut new_tensors: MatrixFull<f64> = self.clone();
-            self.data.iter_mut().zip(bm.data.iter()).for_each(|(c,p)| {*c =*c*a+(*p)*b});
-        } else {
-            panic!("Error: Shape inconsistency happens when plus two matrices");
-        }
-    }
-    /// For A - B -> C
-    pub fn sub(&self, other: &MatrixFull<T>) -> Option<MatrixFull<T>> 
-    where T: Copy + Clone + Sub + SubAssign
-    {
-        if self.check_shape(other) {
-            let mut new_tensors: MatrixFull<T> = self.clone();
-            new_tensors.data.iter_mut().zip(other.data.iter()).for_each(|(c,p)| {*c -= *p});
-            Some(new_tensors)
-        } else {
-            None
-        }
-    }
-    /// For A - B -> A
-    pub fn self_sub(&mut self, bm: &MatrixFull<T>) 
-    where T: Copy + Clone + Sub + SubAssign
-    {
-        if self.check_shape(bm) {
-            self.data.iter_mut().zip(bm.data.iter()).for_each(|(c,p)| {*c -= *p});
-        } else {
-            panic!("Error: Shape inconsistency happens when subtract two matrices");
-        }
-    }
-    /// For a*A -> A
-    #[inline]
-    pub fn self_multiple(&mut self, a: T) 
-    where T: Copy + Clone + Mul<Output = T> + MulAssign
-    {
-        /// A = a*A
-        self.data.iter_mut().for_each(|c| {*c *= a});
-    }
-
-    /// Parallel version for A + B -> A
-    #[inline]
-    pub fn par_self_add(&mut self, bm: &MatrixFull<T>) 
-    where T: Copy + Clone + Send + Sync + Add + AddAssign
-    {
-        if self.check_shape(bm) {
-            self.data.par_iter_mut().zip(bm.data.par_iter())
-                .for_each(|(c,p)| {*c += *p});
-        } else {
-            panic!("Error: Shape inconsistency happens when plus two matrices");
-        }
-    }
-
-    /// Parallel version for A + b*B -> A
-    #[inline]
-    pub fn par_self_scaled_add(&mut self, bm: &MatrixFull<T>,b: T) 
-    where T: Copy + Clone + Send + Sync + Add + AddAssign + Mul<Output=T> + MulAssign
-    {
-        if self.check_shape(bm) {
-            self.data.par_iter_mut().zip(bm.data.par_iter()).for_each(|(c,p)| {*c += *p*b});
-        } else {
-            panic!("Error: Shape inconsistency happens when plus two matrices");
-        }
-    }
-    /// Parallel version for A - B -> A
-    pub fn par_self_sub(&mut self, bm: &MatrixFull<T>) 
-    where T: Copy + Clone + Send + Sync + Sub + SubAssign
-    {
-        if self.check_shape(bm) {
-            self.data.par_iter_mut().zip(bm.data.par_iter()).for_each(|(c,p)| {*c -= *p});
-        } else {
-            panic!("Error: Shape inconsistency happens when plus two matrices");
-        }
-    }
-    /// Parallel version for a*A -> A
-    #[inline]
-    pub fn par_self_multiple(&mut self, a: T) 
-    where T: Copy + Clone + Send + Sync + Mul<Output=T> + MulAssign
-    {
-        self.data.par_iter_mut().for_each(|c| {*c *= a});
-    }
-
-
-
-}
 
 /// More math operations for T: f64
 impl MatrixFull<f64> {
@@ -1477,73 +1391,3 @@ impl MatrixFull<f64> {
     }
     
 }
-
-// some functions that will be dropped soon
-//impl <T: Copy + Clone + Display + Send + Sync + Sized> MatrixFull<T> {
-//    #[inline]
-//    pub fn transpose_old(&self) -> MatrixFull<T> {
-//        let mut trans_mat = self.clone();
-//        trans_mat.size[0] = self.size[1];
-//        trans_mat.size[1] = self.size[0];
-//        trans_mat.indicing = [0usize;2];
-//        let mut len = trans_mat.size.iter()
-//            .zip(trans_mat.indicing.iter_mut())
-//            .fold(1usize,|len,(di,ii)| {
-//                *ii = len;
-//                len * di
-//            });
-//        for i in (0..self.size[0]) {
-//            for j in (0..self.size[1]) {
-//                let tvalue = self.get2d([i,j]).unwrap();
-//                trans_mat.set2d([j,i],tvalue.clone());
-//            }
-//        }
-//        trans_mat
-//    }
-//    #[inline]
-//    pub fn transpose_and_drop_old(self) -> MatrixFull<T> {
-//        let mut trans_mat = self.clone();
-//        trans_mat.size[0] = self.size[1];
-//        trans_mat.size[1] = self.size[0];
-//        trans_mat.indicing = [0usize;2];
-//        let mut len = trans_mat.size.iter()
-//            .zip(trans_mat.indicing.iter_mut())
-//            .fold(1usize,|len,(di,ii)| {
-//                *ii = len;
-//                len * di
-//            });
-//        for i in (0..self.size[0]) {
-//            for j in (0..self.size[1]) {
-//                let tvalue = self.get2d([i,j]).unwrap();
-//                trans_mat.set2d([j,i],tvalue.clone());
-//            }
-//        }
-//        trans_mat
-//    }
-//
-//    #[inline]
-//    pub fn iter_submatrix_mut_new(& mut self, x: Range<usize>, y: Range<usize>) -> Flatten<IntoIter<&mut [T]>> {
-//        //let mut tmp_slices: Vec<&mut [T]> = vec![];
-//        let mut tmp_slices: Vec<&mut [T]> = Vec::with_capacity(y.len());
-//        unsafe{tmp_slices.set_len(y.len());}
-//        let mut dd = self.data.split_at_mut(0).1;
-//        let len_slices_x = x.len();
-//        let len_y = self.indicing[1];
-//        y.zip(tmp_slices.iter_mut()).fold((dd,0_usize),|(ee, offset), (y,to_slice)| {
-//            let start = x.start + y*len_y;
-//            let gg = ee.split_at_mut(start-offset).1.split_at_mut(len_slices_x);
-//            *to_slice = gg.0;
-//            (gg.1,start+len_slices_x)
-//        });
-//        tmp_slices.into_iter().flatten()
-//    }
-//    //#[inline]
-//    //pub fn iter_rows(&self) -> Option<ChunksExact<T>>{
-//    //    //let tmp_v = vec![]
-//    //    if let Some(n_chunk) = self.size.get(1) {
-//    //        //Some(self.data.chunks_exact(*n_chunk))
-//    //    }  else {
-//    //        //None
-//    //    }
-//    //}
-//}

@@ -6,7 +6,7 @@ use typenum::{U2, Pow};
 use rayon::{prelude::*, collections::btree_map::IterMut, iter::Enumerate};
 use std::vec::IntoIter;
 
-use crate::matrix::{MatrixFull, BasicMatrix, MatFormat};
+use crate::matrix::{MatrixFull, BasicMatrix, MatFormat, BasicMatrixOpt, MathMatrix, ParMathMatrix};
 use crate::index::*; 
 use crate::tensor_basic_operation::*;
 use crate::matrix::matrixfullslice::*;
@@ -58,6 +58,13 @@ impl <'a, T: Copy + Clone> BasicMatrix<'a, T> for SubMatrixFull<'a, T> {
 
 }
 
+impl<'a, T> BasicMatrixOpt<'a, T> for SubMatrixFull<'a, T> where T: Copy + Clone {}
+
+impl<'a, T> MathMatrix<'a, T> for SubMatrixFull<'a, T> where T: Copy + Clone {}
+
+impl<'a, T> ParMathMatrix<'a, T> for SubMatrixFull<'a, T> where T: Copy + Clone + Send + Sync {}
+
+
 impl <'a, T> BasicMatrix<'a, T> for SubMatrixFullMut<'a, T> {
     #[inline]
     /// `matr_a.size()' return &matr_a.size;
@@ -96,6 +103,11 @@ impl <'a, T> BasicMatrix<'a, T> for SubMatrixFullMut<'a, T> {
     }
 }
 
+impl<'a, T> BasicMatrixOpt<'a, T> for SubMatrixFullMut<'a, T> where T: Copy + Clone {}
+
+impl<'a, T> MathMatrix<'a, T> for SubMatrixFullMut<'a, T> where T: Copy + Clone {}
+
+impl<'a, T> ParMathMatrix<'a, T> for SubMatrixFullMut<'a, T> where T: Copy + Clone + Send + Sync {}
 
 impl <'a, T: Copy + Clone> SubMatrixFull<'a, T> {
     pub fn data(&self) -> Vec<T> {

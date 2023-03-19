@@ -55,6 +55,11 @@ impl <T> MatrixUpper<T> {
         }
     }
 
+    pub fn size(&self) -> [usize;2] {
+        let ndim = ((1.0+8.0*(self.size as f64)).sqrt()*0.5-0.5) as usize;
+        [ndim, ndim]
+    }
+
     pub fn get_diagonal_terms(&self) -> Option<Vec<&T>> {
         let tmp_len = self.size as f64;
         let new_size = ((1.0+8.0*tmp_len).sqrt()*0.5-0.5) as usize;

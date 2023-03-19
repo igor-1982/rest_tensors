@@ -1,12 +1,18 @@
-extern crate dunce;
-//use std::{env, path::PathBuf};
-use std::{env, process::Command};
+//extern crate dunce;
+use std::path::PathBuf;
+use std::{fs, env, process::Command};
 
 fn main() {
 
-    let external_dir = if let Ok(external_dir) = env::var("REST_EXT_DIR") {
-        external_dir
-    } else {"".to_string()};
+    // the lib directory to store librestmatr.so
+    let external_dir = if let Ok(target_dir) = env::var("REST_EXT_DIR") {
+        PathBuf::from(target_dir)
+    } else {PathBuf::from("".to_string())};
+
+    if ! external_dir.is_dir() {
+        fs::create_dir(&external_dir).unwrap();
+    };
+
     let blas_dir = if let Ok(blas_dir) = env::var("REST_BLAS_DIR") {
         blas_dir
     } else {"".to_string()};
@@ -15,8 +21,8 @@ fn main() {
     } else {"gfortran".to_string()};
 
 
-    let restmatr_file = format!("{}/restmatr.f90",&external_dir);
-    let restmatr_libr = format!("{}/librestmatr.so",&external_dir);
+    let restmatr_file = format!("src/external_libs/restmatr.f90");
+    let restmatr_libr = format!("{}/librestmatr.so",&external_dir.to_str().unwrap());
     let restmatr_link = format!("-L{} -lopenblas",&blas_dir);
 
     Command::new(fortran_compiler)
@@ -25,13 +31,13 @@ fn main() {
 
 
     println!("cargo:rustc-link-lib=restmatr");
-    println!("cargo:rustc-link-search=native={}",&external_dir);
+    println!("cargo:rustc-link-search=native={}",&external_dir.to_str().unwrap());
 
 
     println!("cargo:rustc-link-lib=openblas");
     println!("cargo:rustc-link-search=native={}",&blas_dir);
 
-    println!("cargo:rerun-if-changed={}/restmatr.f90", &external_dir);
-    println!("cargo:rerun-if-changed={}/librestmatr.so", &external_dir);
+    println!("cargo:rerun-if-changed=src/external_libs/restmatr.f90");
+    println!("cargo:rerun-if-changed={}/librestmatr.so", &external_dir.to_str().unwrap());
 
 }
