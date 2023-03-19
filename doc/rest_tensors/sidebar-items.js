@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":[["davidson",""],["eri",""],["external_libs",""],["matrix",""],["ri",""],["tensor_basic_operation",""]],"struct":[["Tensors4D",""]]};

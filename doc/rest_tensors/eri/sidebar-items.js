@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":[["ERIFormat",""]],"struct":[["ERIFold4",""],["ERIFull",""]]};
