@@ -23,7 +23,7 @@ fn main() -> std::io::Result<()> {
 
     let restmatr_file = format!("src/external_libs/restmatr.f90");
     //let restmatr_libr = format!("{}/librestmatr.so",&external_dir.to_str().unwrap());
-    let restmatr_libr = format!("src/external_libs/librestmatr.so",&external_dir.to_str().unwrap());
+    let restmatr_libr = format!("src/external_libs/librestmatr.so");
     let restmatr_link = format!("-L{} -lopenblas",&blas_dir);
 
     Command::new(fortran_compiler)
