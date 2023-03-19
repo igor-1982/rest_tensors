@@ -10,7 +10,7 @@ fn main() {
     } else {PathBuf::from("".to_string())};
 
     if ! external_dir.is_dir() {
-        fs::create_dir(&external_dir).unwrap();
+        fs::create_dir(&external_dir).unwrap_or_else(println!("cannot create the external_dir: {}", &external_dir));
     };
 
     let blas_dir = if let Ok(blas_dir) = env::var("REST_BLAS_DIR") {
