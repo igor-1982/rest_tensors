@@ -22,8 +22,7 @@ fn main() -> std::io::Result<()> {
 
 
     let restmatr_file = format!("src/external_libs/restmatr.f90");
-    //let restmatr_libr = format!("{}/librestmatr.so",&external_dir.to_str().unwrap());
-    let restmatr_libr = format!("src/external_libs/librestmatr.so");
+    let restmatr_libr = format!("{}/librestmatr.so",&external_dir.to_str().unwrap());
     let restmatr_link = format!("-L{} -lopenblas",&blas_dir);
 
     Command::new(fortran_compiler)
@@ -39,8 +38,7 @@ fn main() -> std::io::Result<()> {
     println!("cargo:rustc-link-search=native={}",&blas_dir);
 
     println!("cargo:rerun-if-changed=src/external_libs/restmatr.f90");
-    //println!("cargo:rerun-if-changed={}/librestmatr.so", &external_dir.to_str().unwrap());
-    println!("cargo:rerun-if-changed=src/external_libs/librestmatr.so");
+    println!("cargo:rerun-if-changed={}/librestmatr.so", &external_dir.to_str().unwrap());
 
     Ok(())
 
