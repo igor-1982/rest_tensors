@@ -39,7 +39,8 @@ fn main() -> std::io::Result<()> {
     println!("cargo:rustc-link-search=native={}",&blas_dir);
 
     println!("cargo:rerun-if-changed=src/external_libs/restmatr.f90");
-    println!("cargo:rerun-if-changed={}/librestmatr.so", &external_dir.to_str().unwrap());
+    //println!("cargo:rerun-if-changed={}/librestmatr.so", &external_dir.to_str().unwrap());
+    println!("cargo:rerun-if-changed=src/external_libs/librestmatr.so");
 
     Ok(())
 
