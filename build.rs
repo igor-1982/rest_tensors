@@ -2,7 +2,7 @@
 use std::path::PathBuf;
 use std::{fs, env, process::Command};
 
-fn main() {
+fn main() -> std::io::Result<()> {
 
     // the lib directory to store librestmatr.so
     let external_dir = if let Ok(target_dir) = env::var("REST_EXT_DIR") {
@@ -10,7 +10,7 @@ fn main() {
     } else {PathBuf::from("".to_string())};
 
     if ! external_dir.is_dir() {
-        fs::create_dir(&external_dir).unwrap_or_else(println!("cannot create the external_dir: {}", &external_dir.to_str().unwrap()));
+        fs::create_dir(&external_dir)?
     };
 
     let blas_dir = if let Ok(blas_dir) = env::var("REST_BLAS_DIR") {
@@ -39,5 +39,7 @@ fn main() {
 
     println!("cargo:rerun-if-changed=src/external_libs/restmatr.f90");
     println!("cargo:rerun-if-changed={}/librestmatr.so", &external_dir.to_str().unwrap());
+
+    Ok(())
 
 }
