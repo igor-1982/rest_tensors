@@ -1,0 +1,40 @@
+[package]
+name = "rest_tensors"
+version = "0.1.1"
+edition = "2021"
+authors = ["Igor Ying Zhang <igor_zhangying@fudan.edu.cn>"]
+description = "Provide efficient tensor operations for the Rust-based Electronic Structure Tool (REST)"
+license = "MIT OR Apache-2.0"
+
+#build = "build.rs"
+[build_dependencies]
+dunce = "1.0.0"
+
+[lib]
+bench = true
+crate-type = ["dylib", "rlib"]
+#crate-type = ["lib"]
+
+[dev-dependencies]
+criterion = "0.4"
+
+[[bench]]
+name = "bench_tensors"
+harness = false
+
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+lapack-sys = "0.14"
+lapack = "0.19"
+blas-sys = "0.7"
+blas = "0.22"
+num-complex = "0.4"
+libc = "0.2"
+typenum = "1.14"
+rayon = "1.5.1"
+itertools = "0.10.3"
+anyhow = "1"
+nalgebra = "0.31.1"
+
