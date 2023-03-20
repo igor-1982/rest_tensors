@@ -209,7 +209,7 @@ where T: BasicMatrix<'a, f64>
 }
 
 /// # computes the Cholesky factorization of a real symmetric positive definite matrix A  
-/// uplo: char, `U` or `L`
+/// uplo: char, `U` or `L`  
 /// = `U`: Upper triangle of A is stored  
 /// = `V`: Lower triangle of A is stored  
 /// 
