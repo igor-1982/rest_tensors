@@ -834,6 +834,44 @@ pub fn _einsum_02(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>) ->
     });
     out_vec
 }
+//i, j -> ij
+//vec_a: column vec of i rows, vec_b: row vec of j columns
+//produces matrix of i,j
+pub fn _einsum_03(vec_a: &[f64], vec_b: &[f64]) -> MatrixFull<f64> {
+
+    let i_len = vec_a.len();
+    let j_len = vec_b.len();
+    if (i_len == 0 || j_len ==0) {return MatrixFull::new([i_len,j_len],0.0)};
+    let mut om = MatrixFull::new([i_len,j_len],0.0);
+
+    om.iter_columns_full_mut().zip(vec_b.iter())
+    .map(|(om_j, vec_b)| {(om_j, vec_b)})
+    .for_each(|(om_j, vec_b)| {
+        om_j.iter_mut().zip(vec_a.iter()).for_each(|(om_ij, vec_a)| {
+            *om_ij = *vec_a*vec_b
+        });
+    });
+
+    om
+}
+
+pub fn _einsum_03_forvec(vec_a: &Vec<f64>, vec_b: &Vec<f64>) -> MatrixFull<f64> {
+
+    let i_len = vec_a.len();
+    let j_len = vec_b.len();
+    if (i_len == 0 || j_len ==0) {return MatrixFull::new([i_len,j_len],0.0)};
+    let mut om = MatrixFull::new([i_len,j_len],0.0);
+
+    om.iter_columns_full_mut().zip(vec_b.iter())
+    .map(|(om_j, vec_b)| {(om_j, vec_b)})
+    .for_each(|(om_j, vec_b)| {
+        om_j.iter_mut().zip(vec_a.iter()).for_each(|(om_ij, vec_a)| {
+            *om_ij = *vec_a*vec_b
+        })
+    });
+
+    om
+}
 
 #[test]
 fn test_einsum_02() {
