@@ -1265,6 +1265,58 @@ impl <'a, T> IntoIterator for &'a MatrixFull<T> {
     }
 }
 
+/// Add by Tianyi Gao
+impl<T> MatrixFull<T> {
+    pub fn get_antidiag_terms(&self) -> Option<Vec<&T>> {
+        //let tmp_len = self.size;
+        let new_size = self.size.get(0).unwrap();
+        let new_size_y = self.size.get(1).unwrap();
+        if *new_size == 0 || new_size != new_size_y {
+            return None
+        } else if self.size[0] == self.size[1] {
+           let tmp_v = 
+               self.data.iter()
+               .enumerate().filter(|(i,data)| {i%(new_size-1) == 0 && *i!=0 && *i!=(new_size-1)*(new_size+1)})
+               .map(|(i,data)| data).collect::<Vec<&T>>();
+            return Some(tmp_v)
+        } else {
+            return None
+        }
+
+    }
+
+    pub fn get_sub_antidiag_terms(&self, ijsum: usize) -> Option<Vec<T>> //{
+    where T: Copy + Clone {
+        
+        let mut return_vec: Vec<T> = vec![];
+        let order = &self.size[0];
+
+        let result = 
+            if (ijsum == 0) {
+                Some(vec![self.data[0]])
+            } else if (ijsum > 0 && ijsum <= order-1 ) {
+                let submat = MatrixFull::from_vec([ijsum,ijsum],self.iter_submatrix(0..(ijsum+1), 0..(ijsum+1)).map(|x| *x).collect::<Vec<T>>()).unwrap();
+                let return_vec = submat.get_antidiag_terms().unwrap().iter().map(|x| **x).collect::<Vec<T>>();
+                //return_vec = new_vec.into_iter().map(|v| *v).collect();
+                Some(return_vec)
+            } else if (ijsum < (order*2 - 2) && ijsum > order-1) {
+                let diff = ijsum - order + 1;
+                let submat = MatrixFull::from_vec([ijsum,ijsum],self.iter_submatrix(diff..*order,diff..*order).map(|x| *x).collect::<Vec<T>>()).unwrap();
+                //println!("submatrix = {:?}", submat);
+                let return_vec = submat.get_antidiag_terms().unwrap().iter().map(|x| **x).collect::<Vec<T>>();
+                //let new_vec = submat.get_antidiag_terms().unwrap();
+                //return_vec = new_vec.into_iter().map(|v| *v).collect();
+                Some(return_vec)
+            } else if (ijsum == (order*2 - 2)) {
+                Some(vec![self.data[&self.data.len()-1]])
+            } else {
+                None
+            };
+        //new_vec.into_iter().map(|v| return_vec.push(*v));
+        result
+    }
+}
+
 
 /// More math operations for T: f64
 impl MatrixFull<f64> {
