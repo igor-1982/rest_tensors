@@ -121,7 +121,7 @@ use crate::matrix::matrix_blas_lapack::*;
 ///   //| 3.0 | 6.0 || 9.0 ||12.0 |
 ///   //             -------
 /// ```
-///   4. For the elements in several continued columns, they are accessable via `(RangeFull, Range<usize>)` or `(RangeFull, Range<usize>)`, and return as a **slice**
+///   4. For the elements in several continued columns, they are accessable via `(RangeFull, Range<usize>)`, and return as a **slice**
 /// ```
 ///   use rest_tensors::MatrixFull;
 ///   let new_vec = vec![
