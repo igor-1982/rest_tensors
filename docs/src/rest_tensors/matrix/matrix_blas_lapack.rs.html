@@ -928,6 +928,67 @@
 <span id="928">928</span>
 <span id="929">929</span>
 <span id="930">930</span>
+<span id="931">931</span>
+<span id="932">932</span>
+<span id="933">933</span>
+<span id="934">934</span>
+<span id="935">935</span>
+<span id="936">936</span>
+<span id="937">937</span>
+<span id="938">938</span>
+<span id="939">939</span>
+<span id="940">940</span>
+<span id="941">941</span>
+<span id="942">942</span>
+<span id="943">943</span>
+<span id="944">944</span>
+<span id="945">945</span>
+<span id="946">946</span>
+<span id="947">947</span>
+<span id="948">948</span>
+<span id="949">949</span>
+<span id="950">950</span>
+<span id="951">951</span>
+<span id="952">952</span>
+<span id="953">953</span>
+<span id="954">954</span>
+<span id="955">955</span>
+<span id="956">956</span>
+<span id="957">957</span>
+<span id="958">958</span>
+<span id="959">959</span>
+<span id="960">960</span>
+<span id="961">961</span>
+<span id="962">962</span>
+<span id="963">963</span>
+<span id="964">964</span>
+<span id="965">965</span>
+<span id="966">966</span>
+<span id="967">967</span>
+<span id="968">968</span>
+<span id="969">969</span>
+<span id="970">970</span>
+<span id="971">971</span>
+<span id="972">972</span>
+<span id="973">973</span>
+<span id="974">974</span>
+<span id="975">975</span>
+<span id="976">976</span>
+<span id="977">977</span>
+<span id="978">978</span>
+<span id="979">979</span>
+<span id="980">980</span>
+<span id="981">981</span>
+<span id="982">982</span>
+<span id="983">983</span>
+<span id="984">984</span>
+<span id="985">985</span>
+<span id="986">986</span>
+<span id="987">987</span>
+<span id="988">988</span>
+<span id="989">989</span>
+<span id="990">990</span>
+<span id="991">991</span>
 </pre><pre class="rust"><code><span class="kw">use </span>std::{iter::Flatten, vec::IntoIter, ops::Range};
 
 <span class="kw">use </span>blas::{dgemm,dtrmm};
@@ -1178,6 +1239,67 @@
     } <span class="kw">else </span>{
         <span class="macro">panic!</span>(<span class="string">&quot;ERROR: cannot make Cholesky factorization of a matrix with different row and column lengths&quot;</span>);
     }
+}
+<span class="doccomment">/// #  Compute a matrix inversion
+/// 
+///    A -&gt; A^{-1}
+/// 
+/// Example
+/// ```
+///    use rest_tensors::{MatrixFull, MatrixUpper, BasicMatrix};
+///    use rest_tensors::matrix::matrix_blas_lapack::{_dinverse, _dgemm};
+///    // generate a matrix with only the upper triangle of A is stored in `MatrixUpper`.
+///    let matr_0 = MatrixUpper::from_vec(6, vec![4.0,12.0,37.0,-16.0,-43.0,98.0]).unwrap();
+///    // transfer it to a MatrixFull format and store in matr_a
+///    let mut matr_a = matr_0.to_matrixfull().unwrap();
+///    //println!(&quot;{:?}&quot;, &amp;matr_a);
+///    //            |  4.0 | 12.0 |-16.0 |
+///    // matr_a =   | 12.0 | 37.0 |-43.0 |
+///    //            |-16.0 |-43.0 | 98.0 |
+///    let matr_a_inv = _dinverse(&amp;mut matr_a).unwrap();
+/// 
+///    // matr_b = matr_a * matr_a_inv = unit_matrix
+///    let mut matr_b = MatrixFull::new([3,3],0.0);
+///    _dgemm(
+///        &amp;matr_a, (0..3,0..3),&#39;N&#39;,
+///        &amp;matr_a_inv, (0..3,0..3),&#39;N&#39;,
+///        &amp;mut matr_b, (0..3,0..3),
+///        1.0, 0.0
+///    );
+///    let unit_matr = MatrixFull::from_vec([3,3], vec![
+///       1.0, 0.0, 0.0,
+///       0.0, 1.0, 0.0,
+///       0.0, 0.0, 1.0]).unwrap();
+///    let diff = unit_matr.data_ref().unwrap().iter().zip(matr_b.data_ref().unwrap().iter()).fold(0.0,|acc, (x,y)| {acc + (x-y).powf(2.0)});
+///    assert!(diff &lt; 10E-7, &quot;matr_b is not a unit matrix: {:?}&quot;, &amp;matr_b);
+/// ```
+</span><span class="kw">pub fn </span>_dinverse&lt;<span class="lifetime">&#39;a</span>, T&gt;(matr_a: <span class="kw-2">&amp;</span>T) -&gt; <span class="prelude-ty">Option</span>&lt;MatrixFull&lt;f64&gt;&gt; 
+<span class="kw">where </span>T: BasicMatrix&lt;<span class="lifetime">&#39;a</span>, f64&gt;
+{
+    <span class="kw">let </span>size = [matr_a.size()[<span class="number">0</span>], matr_a.size()[<span class="number">1</span>]];
+    <span class="kw">if </span>size[<span class="number">0</span>]==size[<span class="number">1</span>] {
+        <span class="kw">let </span>ndim = size[<span class="number">0</span>];
+        <span class="kw">let </span>n= ndim <span class="kw">as </span>i32;
+        <span class="kw">let </span><span class="kw-2">mut </span>a = matr_a.data_ref().unwrap().iter().map(|x| <span class="kw-2">*</span>x).collect::&lt;Vec&lt;f64&gt;&gt;();
+        <span class="kw">let </span><span class="kw-2">mut </span>w: Vec&lt;f64&gt; = <span class="macro">vec!</span>[<span class="number">0.0</span>;ndim];
+        <span class="kw">let </span><span class="kw-2">mut </span>work: Vec&lt;f64&gt; = <span class="macro">vec!</span>[<span class="number">0.0</span>;<span class="number">4</span><span class="kw-2">*</span>ndim];
+        <span class="kw">let </span><span class="kw-2">mut </span>ipiv: Vec&lt;i32&gt; = <span class="macro">vec!</span>[<span class="number">0</span>;ndim];
+        <span class="kw">let </span>lwork = <span class="number">4</span><span class="kw-2">*</span>n;
+        <span class="kw">let </span><span class="kw-2">mut </span>info1 = <span class="number">0</span>;
+        <span class="kw">let </span><span class="kw-2">mut </span>info2 = <span class="number">0</span>;
+        <span class="kw">unsafe </span>{
+            dgetrf(n,n,<span class="kw-2">&amp;mut </span>a,n, <span class="kw-2">&amp;mut </span>ipiv, <span class="kw-2">&amp;mut </span>info1);
+            dgetri(n,<span class="kw-2">&amp;mut </span>a,n, <span class="kw-2">&amp;mut </span>ipiv, <span class="kw-2">&amp;mut </span>work, lwork, <span class="kw-2">&amp;mut </span>info2);
+        }
+        <span class="kw">if </span><span class="macro">info1!</span>=<span class="number">0 </span>|| <span class="macro">info2!</span>=<span class="number">0 </span>{
+            <span class="macro">panic!</span>(<span class="string">&quot;Error happens when inversing the matrix. dgetrf info: {}; dgetri info: {}&quot;</span>, info1, info2);
+        }
+        <span class="kw">let </span>inv_mat = MatrixFull::from_vec([ndim,ndim], a).unwrap();
+        <span class="prelude-val">Some</span>(inv_mat)
+    } <span class="kw">else </span>{
+        <span class="macro">println!</span>(<span class="string">&quot;Error: The matrix for inversion should be NxN&quot;</span>);
+        <span class="prelude-val">None
+    </span>}
 }
 
 <span class="kw">impl </span>&lt;<span class="lifetime">&#39;a</span>&gt; MatrixFullSlice&lt;<span class="lifetime">&#39;a</span>, f64&gt; {
