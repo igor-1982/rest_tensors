@@ -750,6 +750,7 @@
 <span id="750">750</span>
 <span id="751">751</span>
 <span id="752">752</span>
+<span id="753">753</span>
 </pre><pre class="rust"><code><span class="comment">//#![warn(missing_docs)]
 </span><span class="kw">use </span>std::{fmt::Display, collections::binary_heap::Iter, iter::{Filter,Flatten, Map}, convert, slice::{ChunksExact,ChunksExactMut, <span class="self">self</span>}, mem::ManuallyDrop, marker, cell::RefCell, ops::{IndexMut, RangeFull, MulAssign, DivAssign, Div, DerefMut, Deref}, thread::panicking};
 <span class="kw">use </span>std::ops::{Add, Sub, Mul, AddAssign, SubAssign, Index, Range};
@@ -801,7 +802,8 @@
 /// 1) perform the matrix-matrix operation for C = alpha\*op( A )\*op( B ) + beta\*C: &lt;span style=&quot;float:right;&quot;&gt; [`_dgemm`]&lt;/span&gt;  
 /// 2) compute the eigenvalues and, optionally, eigenvectors: &lt;span style=&quot;float:right;&quot;&gt; [`_dsyev`]&lt;/span&gt;  
 /// 3) compute the Cholesky factorization of a real symmetric positive definite matrix A:&lt;span style=&quot;float:right;&quot;&gt; [`_dpotrf`]&lt;/span&gt;  
-/// 4) many others ...  
+/// 4) perform the matrix inversion:&lt;span style=&quot;float:right;&quot;&gt; [`_dinverse`]&lt;/span&gt;  
+/// 5) many others ...  
 /// **NOTE**:: all functions in lapack and blas libraries can be imported in the similar way.
 /// 
 /// 
