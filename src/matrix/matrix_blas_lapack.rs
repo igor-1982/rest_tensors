@@ -249,6 +249,67 @@ where T: BasicMatrix<'a, f64>
         panic!("ERROR: cannot make Cholesky factorization of a matrix with different row and column lengths");
     }
 }
+/// #  Compute a matrix inversion
+/// 
+///    A -> A^{-1}
+/// 
+/// Example
+/// ```
+///    use rest_tensors::{MatrixFull, MatrixUpper, BasicMatrix};
+///    use rest_tensors::matrix::matrix_blas_lapack::{_dinverse, _dgemm};
+///    // generate a matrix with only the upper triangle of A is stored in `MatrixUpper`.
+///    let matr_0 = MatrixUpper::from_vec(6, vec![4.0,12.0,37.0,-16.0,-43.0,98.0]).unwrap();
+///    // transfer it to a MatrixFull format and store in matr_a
+///    let mut matr_a = matr_0.to_matrixfull().unwrap();
+///    //println!("{:?}", &matr_a);
+///    //            |  4.0 | 12.0 |-16.0 |
+///    // matr_a =   | 12.0 | 37.0 |-43.0 |
+///    //            |-16.0 |-43.0 | 98.0 |
+///    let matr_a_inv = _dinverse(&mut matr_a).unwrap();
+/// 
+///    // matr_b = matr_a * matr_a_inv = unit_matrix
+///    let mut matr_b = MatrixFull::new([3,3],0.0);
+///    _dgemm(
+///        &matr_a, (0..3,0..3),'N',
+///        &matr_a_inv, (0..3,0..3),'N',
+///        &mut matr_b, (0..3,0..3),
+///        1.0, 0.0
+///    );
+///    let unit_matr = MatrixFull::from_vec([3,3], vec![
+///       1.0, 0.0, 0.0,
+///       0.0, 1.0, 0.0,
+///       0.0, 0.0, 1.0]).unwrap();
+///    let diff = unit_matr.data_ref().unwrap().iter().zip(matr_b.data_ref().unwrap().iter()).fold(0.0,|acc, (x,y)| {acc + (x-y).powf(2.0)});
+///    assert!(diff < 10E-7, "matr_b is not a unit matrix: {:?}", &matr_b);
+/// ```
+pub fn _dinverse<'a, T>(matr_a: &T) -> Option<MatrixFull<f64>> 
+where T: BasicMatrix<'a, f64>
+{
+    let size = [matr_a.size()[0], matr_a.size()[1]];
+    if size[0]==size[1] {
+        let ndim = size[0];
+        let n= ndim as i32;
+        let mut a = matr_a.data_ref().unwrap().iter().map(|x| *x).collect::<Vec<f64>>();
+        let mut w: Vec<f64> = vec![0.0;ndim];
+        let mut work: Vec<f64> = vec![0.0;4*ndim];
+        let mut ipiv: Vec<i32> = vec![0;ndim];
+        let lwork = 4*n;
+        let mut info1 = 0;
+        let mut info2 = 0;
+        unsafe {
+            dgetrf(n,n,&mut a,n, &mut ipiv, &mut info1);
+            dgetri(n,&mut a,n, &mut ipiv, &mut work, lwork, &mut info2);
+        }
+        if info1!=0 || info2!=0 {
+            panic!("Error happens when inversing the matrix. dgetrf info: {}; dgetri info: {}", info1, info2);
+        }
+        let inv_mat = MatrixFull::from_vec([ndim,ndim], a).unwrap();
+        Some(inv_mat)
+    } else {
+        println!("Error: The matrix for inversion should be NxN");
+        None
+    }
+}
 
 impl <'a> MatrixFullSlice<'a, f64> {
     #[inline]
@@ -833,6 +894,44 @@ pub fn _einsum_02(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>) ->
             {acc + mat_a_ip*mat_b_ip});
     });
     out_vec
+}
+//i, j -> ij
+//vec_a: column vec of i rows, vec_b: row vec of j columns
+//produces matrix of i,j
+pub fn _einsum_03(vec_a: &[f64], vec_b: &[f64]) -> MatrixFull<f64> {
+
+    let i_len = vec_a.len();
+    let j_len = vec_b.len();
+    if (i_len == 0 || j_len ==0) {return MatrixFull::new([i_len,j_len],0.0)};
+    let mut om = MatrixFull::new([i_len,j_len],0.0);
+
+    om.iter_columns_full_mut().zip(vec_b.iter())
+    .map(|(om_j, vec_b)| {(om_j, vec_b)})
+    .for_each(|(om_j, vec_b)| {
+        om_j.iter_mut().zip(vec_a.iter()).for_each(|(om_ij, vec_a)| {
+            *om_ij = *vec_a*vec_b
+        });
+    });
+
+    om
+}
+
+pub fn _einsum_03_forvec(vec_a: &Vec<f64>, vec_b: &Vec<f64>) -> MatrixFull<f64> {
+
+    let i_len = vec_a.len();
+    let j_len = vec_b.len();
+    if (i_len == 0 || j_len ==0) {return MatrixFull::new([i_len,j_len],0.0)};
+    let mut om = MatrixFull::new([i_len,j_len],0.0);
+
+    om.iter_columns_full_mut().zip(vec_b.iter())
+    .map(|(om_j, vec_b)| {(om_j, vec_b)})
+    .for_each(|(om_j, vec_b)| {
+        om_j.iter_mut().zip(vec_a.iter()).for_each(|(om_ij, vec_a)| {
+            *om_ij = *vec_a*vec_b
+        })
+    });
+
+    om
 }
 
 #[test]

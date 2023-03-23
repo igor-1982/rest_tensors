@@ -49,8 +49,9 @@ use crate::matrix::matrix_blas_lapack::*;
 /// 1) perform the matrix-matrix operation for C = alpha\*op( A )\*op( B ) + beta\*C: <span style="float:right;"> [`_dgemm`]</span>  
 /// 2) compute the eigenvalues and, optionally, eigenvectors: <span style="float:right;"> [`_dsyev`]</span>  
 /// 3) compute the Cholesky factorization of a real symmetric positive definite matrix A:<span style="float:right;"> [`_dpotrf`]</span>  
-/// 4) many others ...  
-/// **NOTE**:: all functions in lapack and blas libraries can be imported in the similar way.
+/// 4) perform the matrix inversion:<span style="float:right;"> [`_dinverse`]</span>  
+/// 5) many others ...  
+/// **NOTE**:: all functions in lapack and blas libraries can be imported in the similar way for any matrix struct with the [`BasicMatrix`] trait .
 /// 
 /// 
 /// # Construction 
@@ -121,7 +122,7 @@ use crate::matrix::matrix_blas_lapack::*;
 ///   //| 3.0 | 6.0 || 9.0 ||12.0 |
 ///   //             -------
 /// ```
-///   4. For the elements in several continued columns, they are accessable via `(RangeFull, Range<usize>)` or `(RangeFull, Range<usize>)`, and return as a **slice**
+///   4. For the elements in several continued columns, they are accessable via `(RangeFull, Range<usize>)`, and return as a **slice**
 /// ```
 ///   use rest_tensors::MatrixFull;
 ///   let new_vec = vec![
