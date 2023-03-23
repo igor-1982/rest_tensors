@@ -5,6 +5,7 @@ use libc::{CLOSE_RANGE_CLOEXEC, SYS_userfaultfd};
 use typenum::{U2, Pow};
 use rayon::{prelude::*, collections::btree_map::IterMut, iter::Enumerate};
 use std::vec::IntoIter;
+use lapack::dgesv;
 
 use crate::{matrix::{MatrixFull, BasicMatrix, MatFormat}, external_libs::matr_copy};
 use crate::index::*; 
@@ -1383,6 +1384,31 @@ impl MatrixFull<f64> {
             beta);
     }
 
+    pub fn lapack_dgesv(&mut self, b: &mut MatrixFull<f64>, n: i32) -> MatrixFull<f64>{
+
+        /// for x : A * x = B
+
+        let flag = true; 
+        let mut info = 0;
+        let mut ipiv = vec![0 as i32; n as usize];
+        if flag {
+            unsafe {
+                dgesv(n,
+                      b.size[1] as i32,
+                      &mut self.data,
+                      n,
+                      &mut ipiv,
+                      &mut b.data,
+                      n,
+                      &mut info);
+            }
+        } else {
+            panic!("Error: Inconsistency happens to perform dgesv");
+        }
+        let result = b.data.clone();
+        MatrixFull::from_vec([n as usize, result.len()/n as usize], result).unwrap()
+    }
+
     pub fn ddot(&self, b: &mut MatrixFull<f64>) -> Option<MatrixFull<f64>> {
         if let Some(tmp_mat) = self.to_matrixfullslice().ddot(&b.to_matrixfullslice()) {
             Some(tmp_mat)
@@ -1405,6 +1431,77 @@ impl MatrixFull<f64> {
             None
         }
     }
+    pub fn formated_output_e(&self, n_len: usize, mat_form: &str) {
+        let mat_format = if mat_form.to_lowercase()==String::from("full") {MatFormat::Full
+        } else if mat_form.to_lowercase()==String::from("upper") {MatFormat::Upper
+        } else if mat_form.to_lowercase()==String::from("lower") {MatFormat::Lower
+        } else {
+            panic!("Error in determing the layout format of the matrix: {}", mat_form)
+        };
+        let n_row = self.size[0];
+        let n_column = self.size[1];
+        //let n_row = self.size[0];
+        //let n_column = self.size[1];
+        let n_block = if n_column%n_len==0 {n_column/n_len} else {n_column/n_len+1};
+        let mut index:usize = 0;
+        //println!("{}",n_block);
+        (0..n_block).into_iter().for_each(|i_block| {
+            let t_len = if (i_block+1)*n_len<=n_column {n_len} else {n_column%n_len};
+            //println!("{},{}",i_block,t_len);
+            let mut tmp_s:String = format!("{:5}","");
+            for i in 0..t_len {
+                if tmp_s.len()==5 {
+                    tmp_s = format!("{} {:12}",tmp_s,i+i_block*n_len);
+                } else {
+                    tmp_s = format!("{},{:12}",tmp_s,i+i_block*n_len);
+                }
+            }
+            println!("{}",tmp_s);
+            for i in 0..n_row as usize {
+                let mut tmp_s = format!("{:5}",i);
+                let j_start = i_block*n_len;
+                let mut turn_off_comma = true;
+                for j in (j_start..j_start+t_len) {
+                    match &mat_format {
+                        MatFormat::Full => {
+                            let tmp_f = self.get(&[i,j]).unwrap();
+                            if tmp_s.len()==5 {
+                                tmp_s = format!("{} {:+.6e}",tmp_s,tmp_f);
+                            } else {
+                                tmp_s = format!("{},{:+.6e}",tmp_s,tmp_f);
+                            }
+                        },
+                        MatFormat::Upper => {
+                            if i<=j {
+                                let tmp_f = self.get(&[i,j]).unwrap();
+                                if turn_off_comma {
+                                    tmp_s = format!("{} {:+.6e}",tmp_s,tmp_f);
+                                    turn_off_comma = false;
+                                } else {
+                                    tmp_s = format!("{},{:+.6e}",tmp_s,tmp_f);
+                                }
+                            } else {
+                                tmp_s = format!("{} {:12}",tmp_s,String::from(" "));
+                            }
+                        },
+                        MatFormat::Lower => {
+                            if i>=j {
+                                let tmp_f = self.get(&[i,j]).unwrap();
+                                if tmp_s.len()==5 {
+                                    tmp_s = format!("{} {:+.6e}",tmp_s,tmp_f);
+                                } else {
+                                    tmp_s = format!("{},{:+.6e}",tmp_s,tmp_f);
+                                }
+                            }
+                        }
+                    };
+                    //println!("{},{}",tmp_i,j);
+                };
+                if tmp_s.len()>5 {println!("{}",tmp_s)};
+            }
+        });
+    }
+
     pub fn formated_output(&self, n_len: usize, mat_form: &str) {
         let mat_format = if mat_form.to_lowercase()==String::from("full") {MatFormat::Full
         } else if mat_form.to_lowercase()==String::from("upper") {MatFormat::Upper
