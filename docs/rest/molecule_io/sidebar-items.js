@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":[["count_frozen_core_states",""],["get_basis_name",""]],"struct":[["Molecule","Molecule"]]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":[["atom",""],["becke_partitioning",""],["bragg",""],["bse",""],["comparison",""],["lebedev",""],["parameters",""],["prune",""],["python",""],["radial",""],["tables",""]]};

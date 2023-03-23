@@ -1,0 +1,364 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `rest/src/post_scf_analysis/cube_build.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>cube_build.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../SourceSerif4-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../FiraSans-Regular.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../FiraSans-Medium.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../SourceCodePro-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../SourceSerif4-Bold.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../SourceCodePro-Semibold.ttf.woff2"><link rel="stylesheet" href="../../../normalize.css"><link rel="stylesheet" href="../../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" href="../../../ayu.css" disabled><link rel="stylesheet" href="../../../dark.css" disabled><link rel="stylesheet" href="../../../light.css" id="themeStyle"><script id="default-settings" ></script><script src="../../../storage.js"></script><script defer src="../../../source-script.js"></script><script defer src="../../../source-files.js"></script><script defer src="../../../main.js"></script><noscript><link rel="stylesheet" href="../../../noscript.css"></noscript><link rel="alternate icon" type="image/png" href="../../../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../../../favicon-32x32.png"><link rel="icon" type="image/svg+xml" href="../../../favicon.svg"></head><body class="rustdoc source"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"></nav><main><div class="width-limiter"><nav class="sub"><a class="sub-logo-container" href="../../../rest/index.html"><img class="rust-logo" src="../../../rust-logo.svg" alt="logo"></a><form class="search-form"><span></span><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><a href="../../../help.html">?</a></div><div id="settings-menu" tabindex="-1"><a href="../../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../../wheel.svg"></a></div></form></nav><section id="main-content" class="content"><div class="example-wrap"><pre class="src-line-numbers"><span id="1">1</span>
+<span id="2">2</span>
+<span id="3">3</span>
+<span id="4">4</span>
+<span id="5">5</span>
+<span id="6">6</span>
+<span id="7">7</span>
+<span id="8">8</span>
+<span id="9">9</span>
+<span id="10">10</span>
+<span id="11">11</span>
+<span id="12">12</span>
+<span id="13">13</span>
+<span id="14">14</span>
+<span id="15">15</span>
+<span id="16">16</span>
+<span id="17">17</span>
+<span id="18">18</span>
+<span id="19">19</span>
+<span id="20">20</span>
+<span id="21">21</span>
+<span id="22">22</span>
+<span id="23">23</span>
+<span id="24">24</span>
+<span id="25">25</span>
+<span id="26">26</span>
+<span id="27">27</span>
+<span id="28">28</span>
+<span id="29">29</span>
+<span id="30">30</span>
+<span id="31">31</span>
+<span id="32">32</span>
+<span id="33">33</span>
+<span id="34">34</span>
+<span id="35">35</span>
+<span id="36">36</span>
+<span id="37">37</span>
+<span id="38">38</span>
+<span id="39">39</span>
+<span id="40">40</span>
+<span id="41">41</span>
+<span id="42">42</span>
+<span id="43">43</span>
+<span id="44">44</span>
+<span id="45">45</span>
+<span id="46">46</span>
+<span id="47">47</span>
+<span id="48">48</span>
+<span id="49">49</span>
+<span id="50">50</span>
+<span id="51">51</span>
+<span id="52">52</span>
+<span id="53">53</span>
+<span id="54">54</span>
+<span id="55">55</span>
+<span id="56">56</span>
+<span id="57">57</span>
+<span id="58">58</span>
+<span id="59">59</span>
+<span id="60">60</span>
+<span id="61">61</span>
+<span id="62">62</span>
+<span id="63">63</span>
+<span id="64">64</span>
+<span id="65">65</span>
+<span id="66">66</span>
+<span id="67">67</span>
+<span id="68">68</span>
+<span id="69">69</span>
+<span id="70">70</span>
+<span id="71">71</span>
+<span id="72">72</span>
+<span id="73">73</span>
+<span id="74">74</span>
+<span id="75">75</span>
+<span id="76">76</span>
+<span id="77">77</span>
+<span id="78">78</span>
+<span id="79">79</span>
+<span id="80">80</span>
+<span id="81">81</span>
+<span id="82">82</span>
+<span id="83">83</span>
+<span id="84">84</span>
+<span id="85">85</span>
+<span id="86">86</span>
+<span id="87">87</span>
+<span id="88">88</span>
+<span id="89">89</span>
+<span id="90">90</span>
+<span id="91">91</span>
+<span id="92">92</span>
+<span id="93">93</span>
+<span id="94">94</span>
+<span id="95">95</span>
+<span id="96">96</span>
+<span id="97">97</span>
+<span id="98">98</span>
+<span id="99">99</span>
+<span id="100">100</span>
+<span id="101">101</span>
+<span id="102">102</span>
+<span id="103">103</span>
+<span id="104">104</span>
+<span id="105">105</span>
+<span id="106">106</span>
+<span id="107">107</span>
+<span id="108">108</span>
+<span id="109">109</span>
+<span id="110">110</span>
+<span id="111">111</span>
+<span id="112">112</span>
+<span id="113">113</span>
+<span id="114">114</span>
+<span id="115">115</span>
+<span id="116">116</span>
+<span id="117">117</span>
+<span id="118">118</span>
+<span id="119">119</span>
+<span id="120">120</span>
+<span id="121">121</span>
+<span id="122">122</span>
+<span id="123">123</span>
+<span id="124">124</span>
+<span id="125">125</span>
+<span id="126">126</span>
+<span id="127">127</span>
+<span id="128">128</span>
+<span id="129">129</span>
+<span id="130">130</span>
+<span id="131">131</span>
+<span id="132">132</span>
+<span id="133">133</span>
+<span id="134">134</span>
+<span id="135">135</span>
+<span id="136">136</span>
+<span id="137">137</span>
+<span id="138">138</span>
+<span id="139">139</span>
+<span id="140">140</span>
+<span id="141">141</span>
+<span id="142">142</span>
+<span id="143">143</span>
+<span id="144">144</span>
+<span id="145">145</span>
+<span id="146">146</span>
+<span id="147">147</span>
+<span id="148">148</span>
+<span id="149">149</span>
+<span id="150">150</span>
+<span id="151">151</span>
+<span id="152">152</span>
+<span id="153">153</span>
+<span id="154">154</span>
+<span id="155">155</span>
+<span id="156">156</span>
+<span id="157">157</span>
+<span id="158">158</span>
+<span id="159">159</span>
+<span id="160">160</span>
+<span id="161">161</span>
+<span id="162">162</span>
+<span id="163">163</span>
+<span id="164">164</span>
+<span id="165">165</span>
+<span id="166">166</span>
+<span id="167">167</span>
+<span id="168">168</span>
+<span id="169">169</span>
+<span id="170">170</span>
+<span id="171">171</span>
+<span id="172">172</span>
+<span id="173">173</span>
+<span id="174">174</span>
+<span id="175">175</span>
+<span id="176">176</span>
+<span id="177">177</span>
+<span id="178">178</span>
+<span id="179">179</span>
+<span id="180">180</span>
+<span id="181">181</span>
+</pre><pre class="rust"><code><span class="kw">use </span>std::cmp::Ordering;
+<span class="kw">use </span><span class="kw">crate</span>::molecule_io::Molecule;
+<span class="kw">use </span><span class="kw">crate</span>::geom_io;
+<span class="kw">use </span><span class="kw">crate</span>::basis_io;
+<span class="kw">use </span><span class="kw">crate</span>::scf_io::SCF;
+<span class="kw">use </span>rest_tensors::MatrixFull;
+<span class="kw">use </span>std::path::Iter;
+<span class="kw">use </span>rayon::iter::{IntoParallelRefIterator, IndexedParallelIterator, ParallelIterator, IntoParallelRefMutIterator};
+<span class="kw">use </span>std::fs::{<span class="self">self</span>, File};
+<span class="kw">use </span>std::io::prelude::<span class="kw-2">*</span>;
+<span class="kw">use </span>std::io::LineWriter;
+
+<span class="kw">pub fn </span>gen_box (mol: <span class="kw-2">&amp;</span>Molecule) -&gt; (Vec&lt;f64&gt;, Vec&lt;f64&gt;){
+    <span class="kw">let </span>atom_coord = <span class="kw-2">&amp;</span>mol.geom.position; <span class="comment">//by column
+    </span><span class="kw">let </span>natm = mol.geom.elem.len();
+    <span class="kw">let </span><span class="kw-2">mut </span>max = <span class="macro">vec!</span>[<span class="number">0.0</span>;<span class="number">3</span>];
+    <span class="kw">let </span><span class="kw-2">mut </span>min = <span class="macro">vec!</span>[<span class="number">0.0</span>;<span class="number">3</span>];
+    <span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..<span class="number">3</span>{
+        <span class="comment">/* min[i] = *atom_coord.iter_slice_x(i).enumerate().min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(Ordering::Equal)).map(|(_, a)| a).unwrap();
+        max[i] = *atom_coord.iter_slice_x(i).enumerate().max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(Ordering::Equal)).map(|(_, a)| a).unwrap(); */
+        </span><span class="kw">let </span><span class="kw-2">mut </span>com = <span class="macro">vec!</span>[<span class="number">0.0</span>;natm];
+        <span class="kw">for </span>j <span class="kw">in </span>(<span class="number">0</span>..natm){
+            com[j] = atom_coord.data[i+ <span class="number">3 </span>* j] ;
+        }
+        min[i] = <span class="kw-2">*</span>com.iter().enumerate().min_by(|(<span class="kw">_</span>, a), (<span class="kw">_</span>, b)| a.partial_cmp(b).unwrap_or(Ordering::Equal)).map(|(<span class="kw">_</span>, a)| a).unwrap();
+        max[i] = <span class="kw-2">*</span>com.iter().enumerate().max_by(|(<span class="kw">_</span>, a), (<span class="kw">_</span>, b)| a.partial_cmp(b).unwrap_or(Ordering::Equal)).map(|(<span class="kw">_</span>, a)| a).unwrap(); 
+    };
+    <span class="comment">//println!(&quot;min:{:?} max:{:?}&quot;, &amp;min,&amp;max);
+    </span><span class="kw">let </span><span class="kw-2">mut </span>box_extent = <span class="macro">vec!</span>[<span class="number">0.0</span>; <span class="number">3</span>];
+    box_extent.iter_mut().zip(max.iter().zip(min.iter())).for_each(|(a,(max,min))|{
+        <span class="kw-2">*</span>a = max - min + <span class="number">6.0</span>;
+    });
+
+    <span class="kw">let </span><span class="kw-2">mut </span>boxorig = <span class="macro">vec!</span>[<span class="number">0.0</span>; <span class="number">3</span>];
+    boxorig.iter_mut().zip(min.iter()).for_each(|(a,min)|{
+        <span class="kw-2">*</span>a = min - <span class="number">3.0</span>;
+    });
+    <span class="comment">//println!(&quot;{:?}&quot;,(&amp;box_extent, &amp;boxorig));
+    </span>(box_extent, boxorig)
+} 
+
+<span class="kw">pub fn </span>gen_xs(n_p: usize) -&gt; Vec&lt;[f64;<span class="number">3</span>]&gt;{
+    <span class="kw">let </span>interval = <span class="number">1.0</span>/(n_p <span class="kw">as </span>f64 - <span class="number">1.0</span>);
+    <span class="comment">//let mut init_point: Vec&lt;[f64;3]&gt; = Vec::new();
+    </span><span class="kw">let </span><span class="kw-2">mut </span>init_points = <span class="macro">vec!</span>[[<span class="number">0.0</span>;<span class="number">3</span>];n_p<span class="kw-2">*</span>n_p<span class="kw-2">*</span>n_p];
+    <span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..n_p{
+        <span class="kw">for </span>j <span class="kw">in </span><span class="number">0</span>..n_p{
+            <span class="kw">for </span>k <span class="kw">in </span><span class="number">0</span>..n_p{
+                <span class="comment">//init_point.push([0.0 + i as f64 * interval, 0.0 + j as f64 * interval, 0.0 + k as f64 * interval]);
+                </span><span class="kw">let </span><span class="kw-2">mut </span>index = n_p<span class="kw-2">*</span>n_p<span class="kw-2">*</span>i + n_p * j + k;
+                init_points[index] = [<span class="number">0.0 </span>+ i <span class="kw">as </span>f64 * interval, <span class="number">0.0 </span>+ j <span class="kw">as </span>f64 * interval, <span class="number">0.0 </span>+ k <span class="kw">as </span>f64 * interval];
+            }
+        }
+    };
+    init_points
+}
+
+<span class="kw">pub fn </span>gen_coords (init_points:<span class="kw-2">&amp;</span>Vec&lt;[f64;<span class="number">3</span>]&gt;, box_extent: <span class="kw-2">&amp;</span>Vec&lt;f64&gt;, boxorig:<span class="kw-2">&amp;</span>Vec&lt;f64&gt;) -&gt; Vec&lt;[f64;<span class="number">3</span>]&gt;{
+    <span class="kw">let </span><span class="kw-2">mut </span>coords = <span class="macro">vec!</span>[[<span class="number">0.0</span>;<span class="number">3</span>]; init_points.len()];
+    coords.iter_mut().zip(init_points).for_each(|(new,old)|{
+        new.iter_mut().zip(old.iter().zip(box_extent.iter().zip(boxorig.iter()))).for_each(|(new_x,(old_x,(co,b)))|{
+            <span class="kw-2">*</span>new_x = old_x * co +  b;
+        });
+    });
+    coords
+}
+
+<span class="kw">pub fn </span>gen_delta(n_p:usize, box_extent: <span class="kw-2">&amp;</span>Vec&lt;f64&gt;) -&gt; Vec&lt;f64&gt;{
+    <span class="kw">let </span><span class="kw-2">mut </span>delta = <span class="macro">vec!</span>[<span class="number">0.0</span>;<span class="number">3</span>];
+    <span class="kw">let </span>interval = <span class="number">1.0</span>/(n_p <span class="kw">as </span>f64 - <span class="number">1.0</span>);
+    delta.iter_mut().zip(box_extent.iter()).for_each(|(x,y)|{
+        <span class="kw-2">*</span>x = y * interval;
+    });
+    delta
+}
+
+<span class="kw">pub fn </span>tabulated_ao_fig (mol: <span class="kw-2">&amp;</span>Molecule, points: <span class="kw-2">&amp;</span>Vec&lt;[f64; <span class="number">3</span>]&gt;) -&gt; MatrixFull&lt;f64&gt;{
+    <span class="kw">let </span>num_p = points.len();
+    <span class="kw">let </span><span class="kw-2">mut </span>tab_den = MatrixFull::new([num_p,mol.num_basis], <span class="number">0.0</span>);
+    <span class="kw">let </span><span class="kw-2">mut </span>start:usize = <span class="number">0</span>;
+    mol.basis4elem.iter().zip(mol.geom.position.iter_columns_full()).for_each(|(elem,geom)| {
+        <span class="kw">let </span><span class="kw-2">mut </span>tmp_geom = [<span class="number">0.0</span>;<span class="number">3</span>];
+        tmp_geom.iter_mut().zip(geom.iter()).for_each(|value| {<span class="kw-2">*</span>value.<span class="number">0 </span>= <span class="kw-2">*</span>value.<span class="number">1</span>});
+        <span class="kw">let </span>tmp_spheric = basis_io::spheric_gto_value_matrixfull(points, <span class="kw-2">&amp;</span>tmp_geom, elem);
+        <span class="kw">let </span>s_len = tmp_spheric.size[<span class="number">1</span>];
+        tab_den.iter_columns_mut(start..start+s_len).zip(tmp_spheric.iter_columns_full())
+        .for_each(|(to,from)| {
+            to.par_iter_mut().zip(from.par_iter()).for_each(|(to,from)| {<span class="kw-2">*</span>to = - <span class="kw-2">*</span>from});
+        });
+        start += s_len;
+    });
+    tab_den <span class="comment">// N_p * Nao
+</span>}
+
+<span class="kw">pub fn </span>get_cube(scf_data:<span class="kw-2">&amp;</span>SCF, n_p: usize) -&gt; MatrixFull&lt;f64&gt;{
+    <span class="kw">let </span>mol = <span class="kw-2">&amp;</span>scf_data.mol;
+    <span class="kw">let </span>atom_info = <span class="kw-2">&amp;</span>mol.geom;
+    <span class="kw">let </span>atom_mass_charge = geom_io::get_mass_charge(<span class="kw-2">&amp;</span>atom_info.elem).clone();
+    <span class="kw">let </span>natm = atom_mass_charge.len();
+    <span class="kw">let </span>result = gen_box(<span class="kw-2">&amp;</span>mol);
+    <span class="kw">let </span>box_extent = result.<span class="number">0</span>;
+    <span class="kw">let </span>boxorig = result.<span class="number">1</span>;
+    <span class="kw">let </span>init_points = gen_xs(n_p);
+    <span class="kw">let </span>coords = gen_coords(<span class="kw-2">&amp;</span>init_points, <span class="kw-2">&amp;</span>box_extent, <span class="kw-2">&amp;</span>boxorig);
+    <span class="kw">let </span>delta = gen_delta(n_p, <span class="kw-2">&amp;</span>box_extent);
+    <span class="kw">let </span>ao = tabulated_ao_fig(<span class="kw-2">&amp;</span>mol, <span class="kw-2">&amp;</span>coords);
+    <span class="kw">let </span>all_orb = scf_data.eigenvectors[<span class="number">0</span>].clone();
+    <span class="kw">let </span><span class="kw-2">mut </span>prod = MatrixFull::new([ao.size[<span class="number">0</span>], all_orb.size[<span class="number">1</span>]],<span class="number">0.0</span>);
+    prod.to_matrixfullslicemut().lapack_dgemm(<span class="kw-2">&amp;mut </span>ao.to_matrixfullslice(), <span class="kw-2">&amp;mut </span>all_orb.to_matrixfullslice(), <span class="string">&#39;N&#39;</span>, <span class="string">&#39;N&#39;</span>, <span class="number">1.0</span>, <span class="number">0.0</span>);
+    
+    <span class="comment">// generate cube file  
+    </span>prod.iter_columns_full().zip(<span class="number">0</span>..prod.size[<span class="number">1</span>]).for_each(|(x,index)|{
+        <span class="kw">let </span><span class="kw-2">mut </span>cube_string = <span class="string">&quot;Orbital value in real space (1/Bohr^3)\nREST Version: \n&quot;</span>.to_owned();
+        cube_string += <span class="kw-2">&amp;</span>natm.to_string();
+        boxorig.iter().for_each(|x|{
+            cube_string += <span class="string">&quot;    &quot;</span>;
+            cube_string +=  <span class="kw-2">&amp;</span>x.to_string();
+            });
+        cube_string += <span class="string">&quot;\n&quot;</span>;
+
+        <span class="kw">for </span>j <span class="kw">in </span>(<span class="number">0</span>..<span class="number">3</span>){
+            cube_string += <span class="kw-2">&amp;</span>n_p.to_string();
+            <span class="kw">if </span>j == <span class="number">0</span>{
+                cube_string += <span class="string">&quot;    &quot;</span>;
+                cube_string += <span class="kw-2">&amp;</span>delta[<span class="number">0</span>].to_string();
+                cube_string += <span class="string">&quot;     0.000000     0.000000\n&quot;</span>;
+            }<span class="kw">else if </span>j == <span class="number">1 </span>{
+                cube_string += <span class="string">&quot;    0.000000    &quot;</span>;
+                cube_string += <span class="kw-2">&amp;</span>delta[<span class="number">1</span>].to_string();
+                cube_string += <span class="string">&quot;     0.000000\n&quot;</span>;
+            }<span class="kw">else</span>{
+                cube_string += <span class="string">&quot;    0.000000    0.000000    &quot;</span>;
+                cube_string += <span class="kw-2">&amp;</span>delta[<span class="number">2</span>].to_string();
+                cube_string += <span class="string">&quot;\n&quot;</span>;
+            };
+        }
+
+        atom_mass_charge.iter().zip(mol.geom.position.iter_columns_full()).for_each(|((mass,charge),position)|{
+            <span class="kw">let </span>charge_u = <span class="kw-2">*</span>charge <span class="kw">as </span>usize;
+            cube_string += <span class="kw-2">&amp;</span>charge_u.to_string();
+            cube_string += <span class="string">&quot;    0.000000&quot;</span>;
+            position.iter().for_each(|x|{
+                cube_string += <span class="string">&quot;    &quot;</span>;
+                cube_string += <span class="kw-2">&amp;</span>x.to_string();
+            });
+            cube_string += <span class="string">&quot;\n&quot;</span>;
+        });
+        
+        <span class="kw">let </span><span class="kw-2">mut </span>count = <span class="number">0</span>;
+        x.iter().zip(<span class="number">0</span>..n_p<span class="kw-2">*</span>n_p<span class="kw-2">*</span>n_p).for_each(|(value,index1)|{
+            <span class="kw">if </span>index1 == <span class="number">0 </span>{
+                cube_string += <span class="kw-2">&amp;</span>value.to_string();
+                count += <span class="number">1</span>;
+            }
+            <span class="kw">if </span>index1 % n_p == <span class="number">0 </span>&amp;&amp; index1 != <span class="number">0</span>{
+                cube_string += <span class="string">&quot;\n&quot;</span>;
+                cube_string += <span class="kw-2">&amp;</span>value.to_string();
+                count += <span class="number">1</span>;
+            }
+            <span class="kw">if </span>(index1-(count-<span class="number">1</span>)<span class="kw-2">*</span>n_p) % <span class="number">6 </span>== <span class="number">0 </span>&amp;&amp; index1-(count-<span class="number">1</span>)<span class="kw-2">*</span><span class="macro">n_p!</span>= <span class="number">0 </span>{
+                cube_string += <span class="string">&quot;\n&quot;</span>;
+                cube_string += <span class="kw-2">&amp;</span>value.to_string();
+            }<span class="kw">else if </span>index1-(count-<span class="number">1</span>)<span class="kw-2">*</span><span class="macro">n_p!</span>= <span class="number">0</span>{
+                cube_string += <span class="string">&quot;    &quot;</span>;
+                cube_string += <span class="kw-2">&amp;</span>value.to_string();
+            }
+        });
+
+        <span class="comment">//write
+        </span><span class="kw">let </span><span class="kw-2">mut </span>path = <span class="string">&quot;src/post_scf_analysis/generated_file/&quot;</span>.to_owned();
+        path +=  <span class="kw-2">&amp;</span>mol.geom.name;
+        path += <span class="kw-2">&amp;</span>index.to_string();
+        path += <span class="string">&quot;.cube&quot;</span>;
+        <span class="kw">let </span>file = File::create(path);
+        <span class="kw">let </span><span class="kw-2">mut </span>file = LineWriter::new(file.unwrap());
+        file.write_all(<span class="kw-2">&amp;</span>cube_string.into_bytes());
+
+    });
+    
+    prod <span class="comment">// n_p*nmo matrix
+</span>}
+</code></pre></div>
+</section></div></main><div id="rustdoc-vars" data-root-path="../../../" data-current-crate="rest" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.66.0 (69f9c33d7 2022-12-12)" ></div></body></html>

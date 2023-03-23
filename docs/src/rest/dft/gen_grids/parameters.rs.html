@@ -1,0 +1,67 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `rest/src/dft/gen_grids/parameters.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>parameters.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../../SourceSerif4-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../../FiraSans-Regular.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../../FiraSans-Medium.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../../SourceCodePro-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../../SourceSerif4-Bold.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../../SourceCodePro-Semibold.ttf.woff2"><link rel="stylesheet" href="../../../../normalize.css"><link rel="stylesheet" href="../../../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" href="../../../../ayu.css" disabled><link rel="stylesheet" href="../../../../dark.css" disabled><link rel="stylesheet" href="../../../../light.css" id="themeStyle"><script id="default-settings" ></script><script src="../../../../storage.js"></script><script defer src="../../../../source-script.js"></script><script defer src="../../../../source-files.js"></script><script defer src="../../../../main.js"></script><noscript><link rel="stylesheet" href="../../../../noscript.css"></noscript><link rel="alternate icon" type="image/png" href="../../../../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../../../../favicon-32x32.png"><link rel="icon" type="image/svg+xml" href="../../../../favicon.svg"></head><body class="rustdoc source"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"></nav><main><div class="width-limiter"><nav class="sub"><a class="sub-logo-container" href="../../../../rest/index.html"><img class="rust-logo" src="../../../../rust-logo.svg" alt="logo"></a><form class="search-form"><span></span><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><a href="../../../../help.html">?</a></div><div id="settings-menu" tabindex="-1"><a href="../../../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../../../wheel.svg"></a></div></form></nav><section id="main-content" class="content"><div class="example-wrap"><pre class="src-line-numbers"><span id="1">1</span>
+<span id="2">2</span>
+<span id="3">3</span>
+<span id="4">4</span>
+<span id="5">5</span>
+<span id="6">6</span>
+<span id="7">7</span>
+<span id="8">8</span>
+<span id="9">9</span>
+<span id="10">10</span>
+<span id="11">11</span>
+<span id="12">12</span>
+<span id="13">13</span>
+<span id="14">14</span>
+<span id="15">15</span>
+<span id="16">16</span>
+<span id="17">17</span>
+<span id="18">18</span>
+<span id="19">19</span>
+<span id="20">20</span>
+<span id="21">21</span>
+<span id="22">22</span>
+<span id="23">23</span>
+<span id="24">24</span>
+<span id="25">25</span>
+<span id="26">26</span>
+<span id="27">27</span>
+<span id="28">28</span>
+<span id="29">29</span>
+<span id="30">30</span>
+<span id="31">31</span>
+<span id="32">32</span>
+<span id="33">33</span>
+</pre><pre class="rust"><code><span class="kw">pub const </span>SMALL: f64 = <span class="number">1.0e-14</span>;
+<span class="kw">pub static </span>SG1RADII: [f64; <span class="number">19</span>] = [<span class="number">0.0</span>, <span class="number">1.0000</span>, <span class="number">0.5882</span>,   <span class="comment">//H, He
+</span><span class="number">3.0769</span>, <span class="number">2.0513</span>, <span class="number">1.5385</span>, <span class="number">1.2308</span>, <span class="number">1.0256</span>, <span class="number">0.8791</span>, <span class="number">0.7692</span>, <span class="number">0.6838</span>,  <span class="comment">//2nd Period
+</span><span class="number">4.0909</span>, <span class="number">3.1579</span>, <span class="number">2.5714</span>, <span class="number">2.1687</span>, <span class="number">1.8750</span>, <span class="number">1.6514</span>, <span class="number">1.4754</span>, <span class="number">1.3333</span>];  <span class="comment">//3rd Period
+
+</span><span class="kw">pub const </span>BOHR: f64 = <span class="number">0.52917721092</span>;
+
+<span class="kw">pub static </span>BRAGG0: [f64; <span class="number">131</span>] = [<span class="number">0.0</span>,  <span class="comment">// Ghost atom
+</span><span class="number">0.35</span>,                                     <span class="number">1.40</span>,             <span class="comment">// 1s
+</span><span class="number">1.45</span>, <span class="number">1.05</span>, <span class="number">0.85</span>, <span class="number">0.70</span>, <span class="number">0.65</span>, <span class="number">0.60</span>, <span class="number">0.50</span>, <span class="number">1.50</span>,             <span class="comment">// 2s2p
+</span><span class="number">1.80</span>, <span class="number">1.50</span>, <span class="number">1.25</span>, <span class="number">1.10</span>, <span class="number">1.00</span>, <span class="number">1.00</span>, <span class="number">1.00</span>, <span class="number">1.80</span>,             <span class="comment">// 3s3p
+</span><span class="number">2.20</span>, <span class="number">1.80</span>,                                                 <span class="comment">// 4s
+</span><span class="number">1.60</span>, <span class="number">1.40</span>, <span class="number">1.35</span>, <span class="number">1.40</span>, <span class="number">1.40</span>, <span class="number">1.40</span>, <span class="number">1.35</span>, <span class="number">1.35</span>, <span class="number">1.35</span>, <span class="number">1.35</span>, <span class="comment">// 3d
+            </span><span class="number">1.30</span>, <span class="number">1.25</span>, <span class="number">1.15</span>, <span class="number">1.15</span>, <span class="number">1.15</span>, <span class="number">1.90</span>,             <span class="comment">// 4p
+</span><span class="number">2.35</span>, <span class="number">2.00</span>,                                                 <span class="comment">// 5s
+</span><span class="number">1.80</span>, <span class="number">1.55</span>, <span class="number">1.45</span>, <span class="number">1.45</span>, <span class="number">1.35</span>, <span class="number">1.30</span>, <span class="number">1.35</span>, <span class="number">1.40</span>, <span class="number">1.60</span>, <span class="number">1.55</span>, <span class="comment">// 4d
+            </span><span class="number">1.55</span>, <span class="number">1.45</span>, <span class="number">1.45</span>, <span class="number">1.40</span>, <span class="number">1.40</span>, <span class="number">2.10</span>,             <span class="comment">// 5p
+</span><span class="number">2.60</span>, <span class="number">2.15</span>,                                                 <span class="comment">// 6s
+</span><span class="number">1.95</span>, <span class="number">1.85</span>, <span class="number">1.85</span>, <span class="number">1.85</span>, <span class="number">1.85</span>, <span class="number">1.85</span>, <span class="number">1.85</span>,                   <span class="comment">// La, Ce-Eu
+</span><span class="number">1.80</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>,             <span class="comment">// Gd, Tb-Lu
+      </span><span class="number">1.55</span>, <span class="number">1.45</span>, <span class="number">1.35</span>, <span class="number">1.35</span>, <span class="number">1.30</span>, <span class="number">1.35</span>, <span class="number">1.35</span>, <span class="number">1.35</span>, <span class="number">1.50</span>, <span class="comment">// 5d
+            </span><span class="number">1.90</span>, <span class="number">1.80</span>, <span class="number">1.60</span>, <span class="number">1.90</span>, <span class="number">1.45</span>, <span class="number">2.10</span>,             <span class="comment">// 6p
+</span><span class="number">1.80</span>, <span class="number">2.15</span>,                                                 <span class="comment">// 7s
+</span><span class="number">1.95</span>, <span class="number">1.80</span>, <span class="number">1.80</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>,
+<span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>,
+<span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>,
+            <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>,
+<span class="number">1.75</span>, <span class="number">1.75</span>,
+<span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>, <span class="number">1.75</span>];
+
+<span class="kw">pub static </span>LEBEDEV_NGRID: [usize; <span class="number">33</span>] = [<span class="number">1</span>, <span class="number">6</span>, <span class="number">14</span>, <span class="number">26</span>, <span class="number">38</span>, <span class="number">50</span>, <span class="number">74</span>, <span class="number">86</span>, <span class="number">110</span>, <span class="number">146</span>, <span class="number">170</span>,
+<span class="number">194</span>,  <span class="number">230</span>,  <span class="number">266</span>,  <span class="number">302</span>,  <span class="number">350</span>,  <span class="number">434</span>,  <span class="number">590</span>,  <span class="number">770</span>,  <span class="number">974</span>, <span class="number">1202</span>, <span class="number">1454</span>,
+<span class="number">1730</span>, <span class="number">2030</span>, <span class="number">2354</span>, <span class="number">2702</span>, <span class="number">3074</span>, <span class="number">3470</span>, <span class="number">3890</span>, <span class="number">4334</span>, <span class="number">4802</span>, <span class="number">5294</span>, <span class="number">5810</span>];</code></pre></div>
+</section></div></main><div id="rustdoc-vars" data-root-path="../../../../" data-current-crate="rest" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.66.0 (69f9c33d7 2022-12-12)" ></div></body></html>

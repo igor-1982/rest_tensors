@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":[["ang_min_and_max",""]],"struct":[["Basis",""],["ElementInfo",""],["Shell",""]]};

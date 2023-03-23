@@ -1,0 +1,3 @@
+(function() {var implementors = {
+"rest":[["impl <a class=\"trait\" href=\"lazy_static/trait.LazyStatic.html\" title=\"trait lazy_static::LazyStatic\">LazyStatic</a> for <a class=\"struct\" href=\"rest/constants/struct.SPECIES_INFO.html\" title=\"struct rest::constants::SPECIES_INFO\">SPECIES_INFO</a>"]]
+};if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

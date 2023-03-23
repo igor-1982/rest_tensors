@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":[["BOHR",""],["SMALL",""]],"static":[["BRAGG0",""],["LEBEDEV_NGRID",""],["SG1RADII",""]]};

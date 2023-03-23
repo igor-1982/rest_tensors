@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":[["close_shell_pt2",""],["open_shell_pt2",""],["xdh_calculations",""]],"struct":[["PT2",""]]};

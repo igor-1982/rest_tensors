@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":[["SCFType",""]],"fn":[["diis_solver",""],["generate_diis_error_vector",""],["scf",""],["vj_full_with_ri_v",""],["vj_upper_with_ri_v",""],["vj_upper_with_ri_v_sync",""],["vk_full_fromdm_with_ri_v",""],["vk_upper_with_ri_v_sync",""]],"mod":[["addons",""]],"struct":[["SCF",""],["ScfTraceRecord",""]]};

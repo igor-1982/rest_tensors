@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":[["DEBUG_PRINT",""]],"enum":[["DebugTiming",""]],"fn":[["balancing",""],["debug_print_slices",""],["init_timing",""],["omp_get_num_threads",""],["omp_set_num_threads",""],["openblas_get_num_threads",""],["openblas_set_num_threads",""],["timing",""]],"struct":[["TimeRecords",""]]};

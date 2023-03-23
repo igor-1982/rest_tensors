@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":[["basis_modifier",""],["bse_auxbas_getter",""],["bse_basis_getter",""],["ctrl_element_checker",""],["elem_indexer",""],["local_element_checker",""]],"struct":[["Basis",""],["Info",""],["Refs",""],["Shell",""]]};

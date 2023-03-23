@@ -1,0 +1,1144 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `/home/igor/.cargo/registry/src/mirrors.tuna.tsinghua.edu.cn-df7c3c540f42cdbd/matrixmultiply-0.3.2/src/sgemm_kernel.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>sgemm_kernel.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Regular.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Medium.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Bold.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Semibold.ttf.woff2"><link rel="stylesheet" href="../../normalize.css"><link rel="stylesheet" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" href="../../ayu.css" disabled><link rel="stylesheet" href="../../dark.css" disabled><link rel="stylesheet" href="../../light.css" id="themeStyle"><script id="default-settings" ></script><script src="../../storage.js"></script><script defer src="../../source-script.js"></script><script defer src="../../source-files.js"></script><script defer src="../../main.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="alternate icon" type="image/png" href="../../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><link rel="icon" type="image/svg+xml" href="../../favicon.svg"></head><body class="rustdoc source"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"></nav><main><div class="width-limiter"><nav class="sub"><a class="sub-logo-container" href="../../matrixmultiply/index.html"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></a><form class="search-form"><span></span><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><a href="../../help.html">?</a></div><div id="settings-menu" tabindex="-1"><a href="../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../wheel.svg"></a></div></form></nav><section id="main-content" class="content"><div class="example-wrap"><pre class="src-line-numbers"><span id="1">1</span>
+<span id="2">2</span>
+<span id="3">3</span>
+<span id="4">4</span>
+<span id="5">5</span>
+<span id="6">6</span>
+<span id="7">7</span>
+<span id="8">8</span>
+<span id="9">9</span>
+<span id="10">10</span>
+<span id="11">11</span>
+<span id="12">12</span>
+<span id="13">13</span>
+<span id="14">14</span>
+<span id="15">15</span>
+<span id="16">16</span>
+<span id="17">17</span>
+<span id="18">18</span>
+<span id="19">19</span>
+<span id="20">20</span>
+<span id="21">21</span>
+<span id="22">22</span>
+<span id="23">23</span>
+<span id="24">24</span>
+<span id="25">25</span>
+<span id="26">26</span>
+<span id="27">27</span>
+<span id="28">28</span>
+<span id="29">29</span>
+<span id="30">30</span>
+<span id="31">31</span>
+<span id="32">32</span>
+<span id="33">33</span>
+<span id="34">34</span>
+<span id="35">35</span>
+<span id="36">36</span>
+<span id="37">37</span>
+<span id="38">38</span>
+<span id="39">39</span>
+<span id="40">40</span>
+<span id="41">41</span>
+<span id="42">42</span>
+<span id="43">43</span>
+<span id="44">44</span>
+<span id="45">45</span>
+<span id="46">46</span>
+<span id="47">47</span>
+<span id="48">48</span>
+<span id="49">49</span>
+<span id="50">50</span>
+<span id="51">51</span>
+<span id="52">52</span>
+<span id="53">53</span>
+<span id="54">54</span>
+<span id="55">55</span>
+<span id="56">56</span>
+<span id="57">57</span>
+<span id="58">58</span>
+<span id="59">59</span>
+<span id="60">60</span>
+<span id="61">61</span>
+<span id="62">62</span>
+<span id="63">63</span>
+<span id="64">64</span>
+<span id="65">65</span>
+<span id="66">66</span>
+<span id="67">67</span>
+<span id="68">68</span>
+<span id="69">69</span>
+<span id="70">70</span>
+<span id="71">71</span>
+<span id="72">72</span>
+<span id="73">73</span>
+<span id="74">74</span>
+<span id="75">75</span>
+<span id="76">76</span>
+<span id="77">77</span>
+<span id="78">78</span>
+<span id="79">79</span>
+<span id="80">80</span>
+<span id="81">81</span>
+<span id="82">82</span>
+<span id="83">83</span>
+<span id="84">84</span>
+<span id="85">85</span>
+<span id="86">86</span>
+<span id="87">87</span>
+<span id="88">88</span>
+<span id="89">89</span>
+<span id="90">90</span>
+<span id="91">91</span>
+<span id="92">92</span>
+<span id="93">93</span>
+<span id="94">94</span>
+<span id="95">95</span>
+<span id="96">96</span>
+<span id="97">97</span>
+<span id="98">98</span>
+<span id="99">99</span>
+<span id="100">100</span>
+<span id="101">101</span>
+<span id="102">102</span>
+<span id="103">103</span>
+<span id="104">104</span>
+<span id="105">105</span>
+<span id="106">106</span>
+<span id="107">107</span>
+<span id="108">108</span>
+<span id="109">109</span>
+<span id="110">110</span>
+<span id="111">111</span>
+<span id="112">112</span>
+<span id="113">113</span>
+<span id="114">114</span>
+<span id="115">115</span>
+<span id="116">116</span>
+<span id="117">117</span>
+<span id="118">118</span>
+<span id="119">119</span>
+<span id="120">120</span>
+<span id="121">121</span>
+<span id="122">122</span>
+<span id="123">123</span>
+<span id="124">124</span>
+<span id="125">125</span>
+<span id="126">126</span>
+<span id="127">127</span>
+<span id="128">128</span>
+<span id="129">129</span>
+<span id="130">130</span>
+<span id="131">131</span>
+<span id="132">132</span>
+<span id="133">133</span>
+<span id="134">134</span>
+<span id="135">135</span>
+<span id="136">136</span>
+<span id="137">137</span>
+<span id="138">138</span>
+<span id="139">139</span>
+<span id="140">140</span>
+<span id="141">141</span>
+<span id="142">142</span>
+<span id="143">143</span>
+<span id="144">144</span>
+<span id="145">145</span>
+<span id="146">146</span>
+<span id="147">147</span>
+<span id="148">148</span>
+<span id="149">149</span>
+<span id="150">150</span>
+<span id="151">151</span>
+<span id="152">152</span>
+<span id="153">153</span>
+<span id="154">154</span>
+<span id="155">155</span>
+<span id="156">156</span>
+<span id="157">157</span>
+<span id="158">158</span>
+<span id="159">159</span>
+<span id="160">160</span>
+<span id="161">161</span>
+<span id="162">162</span>
+<span id="163">163</span>
+<span id="164">164</span>
+<span id="165">165</span>
+<span id="166">166</span>
+<span id="167">167</span>
+<span id="168">168</span>
+<span id="169">169</span>
+<span id="170">170</span>
+<span id="171">171</span>
+<span id="172">172</span>
+<span id="173">173</span>
+<span id="174">174</span>
+<span id="175">175</span>
+<span id="176">176</span>
+<span id="177">177</span>
+<span id="178">178</span>
+<span id="179">179</span>
+<span id="180">180</span>
+<span id="181">181</span>
+<span id="182">182</span>
+<span id="183">183</span>
+<span id="184">184</span>
+<span id="185">185</span>
+<span id="186">186</span>
+<span id="187">187</span>
+<span id="188">188</span>
+<span id="189">189</span>
+<span id="190">190</span>
+<span id="191">191</span>
+<span id="192">192</span>
+<span id="193">193</span>
+<span id="194">194</span>
+<span id="195">195</span>
+<span id="196">196</span>
+<span id="197">197</span>
+<span id="198">198</span>
+<span id="199">199</span>
+<span id="200">200</span>
+<span id="201">201</span>
+<span id="202">202</span>
+<span id="203">203</span>
+<span id="204">204</span>
+<span id="205">205</span>
+<span id="206">206</span>
+<span id="207">207</span>
+<span id="208">208</span>
+<span id="209">209</span>
+<span id="210">210</span>
+<span id="211">211</span>
+<span id="212">212</span>
+<span id="213">213</span>
+<span id="214">214</span>
+<span id="215">215</span>
+<span id="216">216</span>
+<span id="217">217</span>
+<span id="218">218</span>
+<span id="219">219</span>
+<span id="220">220</span>
+<span id="221">221</span>
+<span id="222">222</span>
+<span id="223">223</span>
+<span id="224">224</span>
+<span id="225">225</span>
+<span id="226">226</span>
+<span id="227">227</span>
+<span id="228">228</span>
+<span id="229">229</span>
+<span id="230">230</span>
+<span id="231">231</span>
+<span id="232">232</span>
+<span id="233">233</span>
+<span id="234">234</span>
+<span id="235">235</span>
+<span id="236">236</span>
+<span id="237">237</span>
+<span id="238">238</span>
+<span id="239">239</span>
+<span id="240">240</span>
+<span id="241">241</span>
+<span id="242">242</span>
+<span id="243">243</span>
+<span id="244">244</span>
+<span id="245">245</span>
+<span id="246">246</span>
+<span id="247">247</span>
+<span id="248">248</span>
+<span id="249">249</span>
+<span id="250">250</span>
+<span id="251">251</span>
+<span id="252">252</span>
+<span id="253">253</span>
+<span id="254">254</span>
+<span id="255">255</span>
+<span id="256">256</span>
+<span id="257">257</span>
+<span id="258">258</span>
+<span id="259">259</span>
+<span id="260">260</span>
+<span id="261">261</span>
+<span id="262">262</span>
+<span id="263">263</span>
+<span id="264">264</span>
+<span id="265">265</span>
+<span id="266">266</span>
+<span id="267">267</span>
+<span id="268">268</span>
+<span id="269">269</span>
+<span id="270">270</span>
+<span id="271">271</span>
+<span id="272">272</span>
+<span id="273">273</span>
+<span id="274">274</span>
+<span id="275">275</span>
+<span id="276">276</span>
+<span id="277">277</span>
+<span id="278">278</span>
+<span id="279">279</span>
+<span id="280">280</span>
+<span id="281">281</span>
+<span id="282">282</span>
+<span id="283">283</span>
+<span id="284">284</span>
+<span id="285">285</span>
+<span id="286">286</span>
+<span id="287">287</span>
+<span id="288">288</span>
+<span id="289">289</span>
+<span id="290">290</span>
+<span id="291">291</span>
+<span id="292">292</span>
+<span id="293">293</span>
+<span id="294">294</span>
+<span id="295">295</span>
+<span id="296">296</span>
+<span id="297">297</span>
+<span id="298">298</span>
+<span id="299">299</span>
+<span id="300">300</span>
+<span id="301">301</span>
+<span id="302">302</span>
+<span id="303">303</span>
+<span id="304">304</span>
+<span id="305">305</span>
+<span id="306">306</span>
+<span id="307">307</span>
+<span id="308">308</span>
+<span id="309">309</span>
+<span id="310">310</span>
+<span id="311">311</span>
+<span id="312">312</span>
+<span id="313">313</span>
+<span id="314">314</span>
+<span id="315">315</span>
+<span id="316">316</span>
+<span id="317">317</span>
+<span id="318">318</span>
+<span id="319">319</span>
+<span id="320">320</span>
+<span id="321">321</span>
+<span id="322">322</span>
+<span id="323">323</span>
+<span id="324">324</span>
+<span id="325">325</span>
+<span id="326">326</span>
+<span id="327">327</span>
+<span id="328">328</span>
+<span id="329">329</span>
+<span id="330">330</span>
+<span id="331">331</span>
+<span id="332">332</span>
+<span id="333">333</span>
+<span id="334">334</span>
+<span id="335">335</span>
+<span id="336">336</span>
+<span id="337">337</span>
+<span id="338">338</span>
+<span id="339">339</span>
+<span id="340">340</span>
+<span id="341">341</span>
+<span id="342">342</span>
+<span id="343">343</span>
+<span id="344">344</span>
+<span id="345">345</span>
+<span id="346">346</span>
+<span id="347">347</span>
+<span id="348">348</span>
+<span id="349">349</span>
+<span id="350">350</span>
+<span id="351">351</span>
+<span id="352">352</span>
+<span id="353">353</span>
+<span id="354">354</span>
+<span id="355">355</span>
+<span id="356">356</span>
+<span id="357">357</span>
+<span id="358">358</span>
+<span id="359">359</span>
+<span id="360">360</span>
+<span id="361">361</span>
+<span id="362">362</span>
+<span id="363">363</span>
+<span id="364">364</span>
+<span id="365">365</span>
+<span id="366">366</span>
+<span id="367">367</span>
+<span id="368">368</span>
+<span id="369">369</span>
+<span id="370">370</span>
+<span id="371">371</span>
+<span id="372">372</span>
+<span id="373">373</span>
+<span id="374">374</span>
+<span id="375">375</span>
+<span id="376">376</span>
+<span id="377">377</span>
+<span id="378">378</span>
+<span id="379">379</span>
+<span id="380">380</span>
+<span id="381">381</span>
+<span id="382">382</span>
+<span id="383">383</span>
+<span id="384">384</span>
+<span id="385">385</span>
+<span id="386">386</span>
+<span id="387">387</span>
+<span id="388">388</span>
+<span id="389">389</span>
+<span id="390">390</span>
+<span id="391">391</span>
+<span id="392">392</span>
+<span id="393">393</span>
+<span id="394">394</span>
+<span id="395">395</span>
+<span id="396">396</span>
+<span id="397">397</span>
+<span id="398">398</span>
+<span id="399">399</span>
+<span id="400">400</span>
+<span id="401">401</span>
+<span id="402">402</span>
+<span id="403">403</span>
+<span id="404">404</span>
+<span id="405">405</span>
+<span id="406">406</span>
+<span id="407">407</span>
+<span id="408">408</span>
+<span id="409">409</span>
+<span id="410">410</span>
+<span id="411">411</span>
+<span id="412">412</span>
+<span id="413">413</span>
+<span id="414">414</span>
+<span id="415">415</span>
+<span id="416">416</span>
+<span id="417">417</span>
+<span id="418">418</span>
+<span id="419">419</span>
+<span id="420">420</span>
+<span id="421">421</span>
+<span id="422">422</span>
+<span id="423">423</span>
+<span id="424">424</span>
+<span id="425">425</span>
+<span id="426">426</span>
+<span id="427">427</span>
+<span id="428">428</span>
+<span id="429">429</span>
+<span id="430">430</span>
+<span id="431">431</span>
+<span id="432">432</span>
+<span id="433">433</span>
+<span id="434">434</span>
+<span id="435">435</span>
+<span id="436">436</span>
+<span id="437">437</span>
+<span id="438">438</span>
+<span id="439">439</span>
+<span id="440">440</span>
+<span id="441">441</span>
+<span id="442">442</span>
+<span id="443">443</span>
+<span id="444">444</span>
+<span id="445">445</span>
+<span id="446">446</span>
+<span id="447">447</span>
+<span id="448">448</span>
+<span id="449">449</span>
+<span id="450">450</span>
+<span id="451">451</span>
+<span id="452">452</span>
+<span id="453">453</span>
+<span id="454">454</span>
+<span id="455">455</span>
+<span id="456">456</span>
+<span id="457">457</span>
+<span id="458">458</span>
+<span id="459">459</span>
+<span id="460">460</span>
+<span id="461">461</span>
+<span id="462">462</span>
+<span id="463">463</span>
+<span id="464">464</span>
+<span id="465">465</span>
+<span id="466">466</span>
+<span id="467">467</span>
+<span id="468">468</span>
+<span id="469">469</span>
+<span id="470">470</span>
+<span id="471">471</span>
+<span id="472">472</span>
+<span id="473">473</span>
+<span id="474">474</span>
+<span id="475">475</span>
+<span id="476">476</span>
+<span id="477">477</span>
+<span id="478">478</span>
+<span id="479">479</span>
+<span id="480">480</span>
+<span id="481">481</span>
+<span id="482">482</span>
+<span id="483">483</span>
+<span id="484">484</span>
+<span id="485">485</span>
+<span id="486">486</span>
+<span id="487">487</span>
+<span id="488">488</span>
+<span id="489">489</span>
+<span id="490">490</span>
+<span id="491">491</span>
+<span id="492">492</span>
+<span id="493">493</span>
+<span id="494">494</span>
+<span id="495">495</span>
+<span id="496">496</span>
+<span id="497">497</span>
+<span id="498">498</span>
+<span id="499">499</span>
+<span id="500">500</span>
+<span id="501">501</span>
+<span id="502">502</span>
+<span id="503">503</span>
+<span id="504">504</span>
+<span id="505">505</span>
+<span id="506">506</span>
+<span id="507">507</span>
+<span id="508">508</span>
+<span id="509">509</span>
+<span id="510">510</span>
+<span id="511">511</span>
+<span id="512">512</span>
+<span id="513">513</span>
+<span id="514">514</span>
+<span id="515">515</span>
+<span id="516">516</span>
+<span id="517">517</span>
+<span id="518">518</span>
+<span id="519">519</span>
+<span id="520">520</span>
+<span id="521">521</span>
+<span id="522">522</span>
+<span id="523">523</span>
+<span id="524">524</span>
+<span id="525">525</span>
+<span id="526">526</span>
+<span id="527">527</span>
+<span id="528">528</span>
+<span id="529">529</span>
+<span id="530">530</span>
+<span id="531">531</span>
+<span id="532">532</span>
+<span id="533">533</span>
+<span id="534">534</span>
+<span id="535">535</span>
+<span id="536">536</span>
+<span id="537">537</span>
+<span id="538">538</span>
+<span id="539">539</span>
+<span id="540">540</span>
+<span id="541">541</span>
+<span id="542">542</span>
+<span id="543">543</span>
+<span id="544">544</span>
+<span id="545">545</span>
+<span id="546">546</span>
+<span id="547">547</span>
+<span id="548">548</span>
+<span id="549">549</span>
+<span id="550">550</span>
+<span id="551">551</span>
+<span id="552">552</span>
+<span id="553">553</span>
+<span id="554">554</span>
+<span id="555">555</span>
+<span id="556">556</span>
+<span id="557">557</span>
+<span id="558">558</span>
+<span id="559">559</span>
+<span id="560">560</span>
+<span id="561">561</span>
+<span id="562">562</span>
+<span id="563">563</span>
+<span id="564">564</span>
+<span id="565">565</span>
+<span id="566">566</span>
+<span id="567">567</span>
+<span id="568">568</span>
+<span id="569">569</span>
+<span id="570">570</span>
+<span id="571">571</span>
+</pre><pre class="rust"><code><span class="comment">// Copyright 2016 - 2018 Ulrik Sverdrup &quot;bluss&quot;
+//
+// Licensed under the Apache License, Version 2.0 &lt;LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0&gt; or the MIT license
+// &lt;LICENSE-MIT or http://opensource.org/licenses/MIT&gt;, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
+</span><span class="kw">use </span><span class="kw">crate</span>::kernel::GemmKernel;
+<span class="kw">use </span><span class="kw">crate</span>::kernel::GemmSelect;
+<span class="kw">use </span><span class="kw">crate</span>::kernel::{U4, U8};
+<span class="kw">use </span><span class="kw">crate</span>::archparam;
+
+
+<span class="attribute">#[cfg(target_arch=<span class="string">&quot;x86&quot;</span>)]
+</span><span class="kw">use </span>core::arch::x86::<span class="kw-2">*</span>;
+<span class="attribute">#[cfg(target_arch=<span class="string">&quot;x86_64&quot;</span>)]
+</span><span class="kw">use </span>core::arch::x86_64::<span class="kw-2">*</span>;
+<span class="attribute">#[cfg(any(target_arch=<span class="string">&quot;x86&quot;</span>, target_arch=<span class="string">&quot;x86_64&quot;</span>))]
+</span><span class="kw">use </span><span class="kw">crate</span>::x86::{FusedMulAdd, AvxMulAdd, SMultiplyAdd};
+
+<span class="attribute">#[cfg(any(target_arch=<span class="string">&quot;x86&quot;</span>, target_arch=<span class="string">&quot;x86_64&quot;</span>))]
+</span><span class="kw">struct </span>KernelAvx;
+<span class="attribute">#[cfg(any(target_arch=<span class="string">&quot;x86&quot;</span>, target_arch=<span class="string">&quot;x86_64&quot;</span>))]
+</span><span class="kw">struct </span>KernelFma;
+<span class="attribute">#[cfg(any(target_arch=<span class="string">&quot;x86&quot;</span>, target_arch=<span class="string">&quot;x86_64&quot;</span>))]
+</span><span class="kw">struct </span>KernelSse2;
+<span class="kw">struct </span>KernelFallback;
+
+<span class="kw">type </span>T = f32;
+
+<span class="doccomment">/// Detect which implementation to use and select it using the selector&#39;s
+/// .select(Kernel) method.
+///
+/// This function is called one or more times during a whole program&#39;s
+/// execution, it may be called for each gemm kernel invocation or fewer times.
+</span><span class="attribute">#[inline]
+</span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>detect&lt;G&gt;(selector: G) <span class="kw">where </span>G: GemmSelect&lt;T&gt; {
+    <span class="comment">// dispatch to specific compiled versions
+    </span><span class="attribute">#[cfg(any(target_arch=<span class="string">&quot;x86&quot;</span>, target_arch=<span class="string">&quot;x86_64&quot;</span>))]
+    </span>{
+        <span class="kw">if </span><span class="macro">is_x86_feature_detected_!</span>(<span class="string">&quot;fma&quot;</span>) {
+            <span class="kw">return </span>selector.select(KernelFma);
+        } <span class="kw">else if </span><span class="macro">is_x86_feature_detected_!</span>(<span class="string">&quot;avx&quot;</span>) {
+            <span class="kw">return </span>selector.select(KernelAvx);
+        } <span class="kw">else if </span><span class="macro">is_x86_feature_detected_!</span>(<span class="string">&quot;sse2&quot;</span>) {
+            <span class="kw">return </span>selector.select(KernelSse2);
+        }
+    }
+    <span class="kw">return </span>selector.select(KernelFallback);
+}
+
+<span class="attribute">#[cfg(any(target_arch=<span class="string">&quot;x86&quot;</span>, target_arch=<span class="string">&quot;x86_64&quot;</span>))]
+</span><span class="macro">macro_rules! </span>loop_m { (<span class="macro-nonterminal">$i</span>:ident, <span class="macro-nonterminal">$e</span>:expr) =&gt; { <span class="macro">loop8!</span>(<span class="macro-nonterminal">$i</span>, <span class="macro-nonterminal">$e</span>) }; }
+<span class="attribute">#[cfg(test)]
+</span><span class="macro">macro_rules! </span>loop_n { (<span class="macro-nonterminal">$j</span>:ident, <span class="macro-nonterminal">$e</span>:expr) =&gt; { <span class="macro">loop8!</span>(<span class="macro-nonterminal">$j</span>, <span class="macro-nonterminal">$e</span>) }; }
+
+<span class="attribute">#[cfg(any(target_arch=<span class="string">&quot;x86&quot;</span>, target_arch=<span class="string">&quot;x86_64&quot;</span>))]
+</span><span class="kw">impl </span>GemmKernel <span class="kw">for </span>KernelAvx {
+    <span class="kw">type </span>Elem = T;
+
+    <span class="kw">type </span>MRTy = U8;
+    <span class="kw">type </span>NRTy = U8;
+
+    <span class="attribute">#[inline(always)]
+    </span><span class="kw">fn </span>align_to() -&gt; usize { <span class="number">32 </span>}
+
+    <span class="attribute">#[inline(always)]
+    </span><span class="kw">fn </span>always_masked() -&gt; bool { <span class="bool-val">false </span>}
+
+    <span class="attribute">#[inline(always)]
+    </span><span class="kw">fn </span>nc() -&gt; usize { archparam::S_NC }
+    <span class="attribute">#[inline(always)]
+    </span><span class="kw">fn </span>kc() -&gt; usize { archparam::S_KC }
+    <span class="attribute">#[inline(always)]
+    </span><span class="kw">fn </span>mc() -&gt; usize { archparam::S_MC }
+
+    <span class="attribute">#[inline(always)]
+    </span><span class="kw">unsafe fn </span>kernel(
+        k: usize,
+        alpha: T,
+        a: <span class="kw-2">*const </span>T,
+        b: <span class="kw-2">*const </span>T,
+        beta: T,
+        c: <span class="kw-2">*mut </span>T, rsc: isize, csc: isize) {
+        kernel_target_avx(k, alpha, a, b, beta, c, rsc, csc)
+    }
+}
+
+<span class="attribute">#[cfg(any(target_arch=<span class="string">&quot;x86&quot;</span>, target_arch=<span class="string">&quot;x86_64&quot;</span>))]
+</span><span class="kw">impl </span>GemmKernel <span class="kw">for </span>KernelFma {
+    <span class="kw">type </span>Elem = T;
+
+    <span class="kw">type </span>MRTy = &lt;KernelAvx <span class="kw">as </span>GemmKernel&gt;::MRTy;
+    <span class="kw">type </span>NRTy = &lt;KernelAvx <span class="kw">as </span>GemmKernel&gt;::NRTy;
+
+    <span class="attribute">#[inline(always)]
+    </span><span class="kw">fn </span>align_to() -&gt; usize { KernelAvx::align_to() }
+
+    <span class="attribute">#[inline(always)]
+    </span><span class="kw">fn </span>always_masked() -&gt; bool { KernelAvx::always_masked() }
+
+    <span class="attribute">#[inline(always)]
+    </span><span class="kw">fn </span>nc() -&gt; usize { archparam::S_NC }
+    <span class="attribute">#[inline(always)]
+    </span><span class="kw">fn </span>kc() -&gt; usize { archparam::S_KC }
+    <span class="attribute">#[inline(always)]
+    </span><span class="kw">fn </span>mc() -&gt; usize { archparam::S_MC }
+
+    <span class="attribute">#[inline(always)]
+    </span><span class="kw">unsafe fn </span>kernel(
+        k: usize,
+        alpha: T,
+        a: <span class="kw-2">*const </span>T,
+        b: <span class="kw-2">*const </span>T,
+        beta: T,
+        c: <span class="kw-2">*mut </span>T, rsc: isize, csc: isize) {
+        kernel_target_fma(k, alpha, a, b, beta, c, rsc, csc)
+    }
+}
+
+<span class="attribute">#[cfg(any(target_arch=<span class="string">&quot;x86&quot;</span>, target_arch=<span class="string">&quot;x86_64&quot;</span>))]
+</span><span class="kw">impl </span>GemmKernel <span class="kw">for </span>KernelSse2 {
+    <span class="kw">type </span>Elem = T;
+
+    <span class="kw">type </span>MRTy = &lt;KernelFallback <span class="kw">as </span>GemmKernel&gt;::MRTy;
+    <span class="kw">type </span>NRTy = &lt;KernelFallback <span class="kw">as </span>GemmKernel&gt;::NRTy;
+
+    <span class="attribute">#[inline(always)]
+    </span><span class="kw">fn </span>align_to() -&gt; usize { <span class="number">16 </span>}
+
+    <span class="attribute">#[inline(always)]
+    </span><span class="kw">fn </span>always_masked() -&gt; bool { KernelFallback::always_masked() }
+
+    <span class="attribute">#[inline(always)]
+    </span><span class="kw">fn </span>nc() -&gt; usize { archparam::S_NC }
+    <span class="attribute">#[inline(always)]
+    </span><span class="kw">fn </span>kc() -&gt; usize { archparam::S_KC }
+    <span class="attribute">#[inline(always)]
+    </span><span class="kw">fn </span>mc() -&gt; usize { archparam::S_MC }
+
+    <span class="attribute">#[inline(always)]
+    </span><span class="kw">unsafe fn </span>kernel(
+        k: usize,
+        alpha: T,
+        a: <span class="kw-2">*const </span>T,
+        b: <span class="kw-2">*const </span>T,
+        beta: T,
+        c: <span class="kw-2">*mut </span>T, rsc: isize, csc: isize) {
+        kernel_target_sse2(k, alpha, a, b, beta, c, rsc, csc)
+    }
+}
+
+<span class="kw">impl </span>GemmKernel <span class="kw">for </span>KernelFallback {
+    <span class="kw">type </span>Elem = T;
+
+    <span class="kw">type </span>MRTy = U8;
+    <span class="kw">type </span>NRTy = U4;
+
+    <span class="attribute">#[inline(always)]
+    </span><span class="kw">fn </span>align_to() -&gt; usize { <span class="number">0 </span>}
+
+    <span class="attribute">#[inline(always)]
+    </span><span class="kw">fn </span>always_masked() -&gt; bool { <span class="bool-val">true </span>}
+
+    <span class="attribute">#[inline(always)]
+    </span><span class="kw">fn </span>nc() -&gt; usize { archparam::S_NC }
+    <span class="attribute">#[inline(always)]
+    </span><span class="kw">fn </span>kc() -&gt; usize { archparam::S_KC }
+    <span class="attribute">#[inline(always)]
+    </span><span class="kw">fn </span>mc() -&gt; usize { archparam::S_MC }
+
+    <span class="attribute">#[inline(always)]
+    </span><span class="kw">unsafe fn </span>kernel(
+        k: usize,
+        alpha: T,
+        a: <span class="kw-2">*const </span>T,
+        b: <span class="kw-2">*const </span>T,
+        beta: T,
+        c: <span class="kw-2">*mut </span>T, rsc: isize, csc: isize) {
+        kernel_fallback_impl(k, alpha, a, b, beta, c, rsc, csc)
+    }
+}
+
+<span class="comment">// no inline for unmasked kernels
+</span><span class="attribute">#[cfg(any(target_arch=<span class="string">&quot;x86&quot;</span>, target_arch=<span class="string">&quot;x86_64&quot;</span>))]
+#[target_feature(enable=<span class="string">&quot;fma&quot;</span>)]
+</span><span class="kw">unsafe fn </span>kernel_target_fma(k: usize, alpha: T, a: <span class="kw-2">*const </span>T, b: <span class="kw-2">*const </span>T,
+                            beta: T, c: <span class="kw-2">*mut </span>T, rsc: isize, csc: isize)
+{
+    kernel_x86_avx::&lt;FusedMulAdd&gt;(k, alpha, a, b, beta, c, rsc, csc)
+}
+
+<span class="comment">// no inline for unmasked kernels
+</span><span class="attribute">#[cfg(any(target_arch=<span class="string">&quot;x86&quot;</span>, target_arch=<span class="string">&quot;x86_64&quot;</span>))]
+#[target_feature(enable=<span class="string">&quot;avx&quot;</span>)]
+</span><span class="kw">unsafe fn </span>kernel_target_avx(k: usize, alpha: T, a: <span class="kw-2">*const </span>T, b: <span class="kw-2">*const </span>T,
+                            beta: T, c: <span class="kw-2">*mut </span>T, rsc: isize, csc: isize)
+{
+    kernel_x86_avx::&lt;AvxMulAdd&gt;(k, alpha, a, b, beta, c, rsc, csc)
+}
+
+<span class="attribute">#[inline]
+#[cfg(any(target_arch=<span class="string">&quot;x86&quot;</span>, target_arch=<span class="string">&quot;x86_64&quot;</span>))]
+#[target_feature(enable=<span class="string">&quot;sse2&quot;</span>)]
+</span><span class="kw">unsafe fn </span>kernel_target_sse2(k: usize, alpha: T, a: <span class="kw-2">*const </span>T, b: <span class="kw-2">*const </span>T,
+                             beta: T, c: <span class="kw-2">*mut </span>T, rsc: isize, csc: isize)
+{
+    kernel_fallback_impl(k, alpha, a, b, beta, c, rsc, csc)
+}
+
+<span class="attribute">#[inline(always)]
+#[cfg(any(target_arch=<span class="string">&quot;x86&quot;</span>, target_arch=<span class="string">&quot;x86_64&quot;</span>))]
+</span><span class="kw">unsafe fn </span>kernel_x86_avx&lt;MA&gt;(k: usize, alpha: T, a: <span class="kw-2">*const </span>T, b: <span class="kw-2">*const </span>T,
+                             beta: T, c: <span class="kw-2">*mut </span>T, rsc: isize, csc: isize)
+    <span class="kw">where </span>MA: SMultiplyAdd,
+{
+    <span class="kw">const </span>MR: usize = KernelAvx::MR;
+    <span class="kw">const </span>NR: usize = KernelAvx::NR;
+
+    <span class="macro">debug_assert_ne!</span>(k, <span class="number">0</span>);
+
+    <span class="kw">let </span><span class="kw-2">mut </span>ab = [_mm256_setzero_ps(); MR];
+
+    <span class="comment">// this kernel can operate in either transposition (C = A B or C^T = B^T A^T)
+    </span><span class="kw">let </span>prefer_row_major_c = rsc != <span class="number">1</span>;
+
+    <span class="kw">let </span>(<span class="kw-2">mut </span>a, <span class="kw-2">mut </span>b) = <span class="kw">if </span>prefer_row_major_c { (a, b) } <span class="kw">else </span>{ (b, a) };
+    <span class="kw">let </span>(rsc, csc) = <span class="kw">if </span>prefer_row_major_c { (rsc, csc) } <span class="kw">else </span>{ (csc, rsc) };
+
+    <span class="macro">macro_rules! </span>shuffle_mask {
+        (<span class="macro-nonterminal">$z</span>:expr, <span class="macro-nonterminal">$y</span>:expr, <span class="macro-nonterminal">$x</span>:expr, <span class="macro-nonterminal">$w</span>:expr) =&gt; {
+            (<span class="macro-nonterminal">$z </span>&lt;&lt; <span class="number">6</span>) | (<span class="macro-nonterminal">$y </span>&lt;&lt; <span class="number">4</span>) | (<span class="macro-nonterminal">$x </span>&lt;&lt; <span class="number">2</span>) | <span class="macro-nonterminal">$w
+        </span>}
+    }
+    <span class="macro">macro_rules! </span>permute_mask {
+        (<span class="macro-nonterminal">$z</span>:expr, <span class="macro-nonterminal">$y</span>:expr, <span class="macro-nonterminal">$x</span>:expr, <span class="macro-nonterminal">$w</span>:expr) =&gt; {
+            (<span class="macro-nonterminal">$z </span>&lt;&lt; <span class="number">6</span>) | (<span class="macro-nonterminal">$y </span>&lt;&lt; <span class="number">4</span>) | (<span class="macro-nonterminal">$x </span>&lt;&lt; <span class="number">2</span>) | <span class="macro-nonterminal">$w
+        </span>}
+    }
+
+    <span class="macro">macro_rules! </span>permute2f128_mask {
+        (<span class="macro-nonterminal">$y</span>:expr, <span class="macro-nonterminal">$x</span>:expr) =&gt; {
+            ((<span class="macro-nonterminal">$y </span>&lt;&lt; <span class="number">4</span>) | <span class="macro-nonterminal">$x</span>)
+        }
+    }
+
+    <span class="comment">// Start data load before each iteration
+    </span><span class="kw">let </span><span class="kw-2">mut </span>av = _mm256_load_ps(a);
+    <span class="kw">let </span><span class="kw-2">mut </span>bv = _mm256_load_ps(b);
+
+    <span class="comment">// Compute A B
+    </span><span class="macro">unroll_by_with_last!</span>(<span class="number">4 </span>=&gt; k, is_last, {
+        <span class="comment">// We compute abij = ai bj
+        //
+        // Load b as one contiguous vector
+        // Load a as striped vectors
+        //
+        // Shuffle the abij elements in order after the loop.
+        //
+        // Note this scheme copied and transposed from the BLIS 8x8 sgemm
+        // microkernel.
+        //
+        // Our a indices are striped and our b indices are linear. In
+        // the variable names below, we always have doubled indices so
+        // for example a0246 corresponds to a vector of a0 a0 a2 a2 a4 a4 a6 a6.
+        //
+        // ab0246: ab2064: ab4602: ab6420:
+        // ( ab00  ( ab20  ( ab40  ( ab60
+        //   ab01    ab21    ab41    ab61
+        //   ab22    ab02    ab62    ab42
+        //   ab23    ab03    ab63    ab43
+        //   ab44    ab64    ab04    ab24
+        //   ab45    ab65    ab05    ab25
+        //   ab66    ab46    ab26    ab06
+        //   ab67 )  ab47 )  ab27 )  ab07 )
+        //
+        // ab1357: ab3175: ab5713: ab7531:
+        // ( ab10  ( ab30  ( ab50  ( ab70
+        //   ab11    ab31    ab51    ab71
+        //   ab32    ab12    ab72    ab52
+        //   ab33    ab13    ab73    ab53
+        //   ab54    ab74    ab14    ab34
+        //   ab55    ab75    ab15    ab35
+        //   ab76    ab56    ab36    ab16
+        //   ab77 )  ab57 )  ab37 )  ab17 )
+
+        </span><span class="kw">const </span>PERM32_2301: i32 = <span class="macro">permute_mask!</span>(<span class="number">1</span>, <span class="number">0</span>, <span class="number">3</span>, <span class="number">2</span>);
+        <span class="kw">const </span>PERM128_30: i32 = <span class="macro">permute2f128_mask!</span>(<span class="number">0</span>, <span class="number">3</span>);
+
+        <span class="comment">// _mm256_moveldup_ps(av):
+        // vmovsldup ymm2, ymmword ptr [rax]
+        //
+        // Load and duplicate each even word:
+        // ymm2 ← [a0 a0 a2 a2 a4 a4 a6 a6]
+        //
+        // _mm256_movehdup_ps(av):
+        // vmovshdup ymm2, ymmword ptr [rax]
+        //
+        // Load and duplicate each odd word:
+        // ymm2 ← [a1 a1 a3 a3 a5 a5 a7 a7]
+        //
+
+        </span><span class="kw">let </span>a0246 = _mm256_moveldup_ps(av); <span class="comment">// Load: a0 a0 a2 a2 a4 a4 a6 a6
+        </span><span class="kw">let </span>a2064 = _mm256_permute_ps(a0246, PERM32_2301);
+
+        <span class="kw">let </span>a1357 = _mm256_movehdup_ps(av); <span class="comment">// Load: a1 a1 a3 a3 a5 a5 a7 a7
+        </span><span class="kw">let </span>a3175 = _mm256_permute_ps(a1357, PERM32_2301);
+
+        <span class="kw">let </span>a4602 = _mm256_permute2f128_ps(a0246, a0246, PERM128_30);
+        <span class="kw">let </span>a6420 = _mm256_permute2f128_ps(a2064, a2064, PERM128_30);
+
+        <span class="kw">let </span>a5713 = _mm256_permute2f128_ps(a1357, a1357, PERM128_30);
+        <span class="kw">let </span>a7531 = _mm256_permute2f128_ps(a3175, a3175, PERM128_30);
+
+        ab[<span class="number">0</span>] = MA::multiply_add(a0246, bv, ab[<span class="number">0</span>]);
+        ab[<span class="number">1</span>] = MA::multiply_add(a2064, bv, ab[<span class="number">1</span>]);
+        ab[<span class="number">2</span>] = MA::multiply_add(a4602, bv, ab[<span class="number">2</span>]);
+        ab[<span class="number">3</span>] = MA::multiply_add(a6420, bv, ab[<span class="number">3</span>]);
+
+        ab[<span class="number">4</span>] = MA::multiply_add(a1357, bv, ab[<span class="number">4</span>]);
+        ab[<span class="number">5</span>] = MA::multiply_add(a3175, bv, ab[<span class="number">5</span>]);
+        ab[<span class="number">6</span>] = MA::multiply_add(a5713, bv, ab[<span class="number">6</span>]);
+        ab[<span class="number">7</span>] = MA::multiply_add(a7531, bv, ab[<span class="number">7</span>]);
+
+        <span class="kw">if </span>!is_last {
+            a = a.add(MR);
+            b = b.add(NR);
+
+            bv = _mm256_load_ps(b);
+            av = _mm256_load_ps(a);
+        }
+    });
+
+    <span class="kw">let </span>alphav = _mm256_set1_ps(alpha);
+
+    <span class="comment">// Permute to put the abij elements in order
+    //
+    // shufps 0xe4: 22006644 00224466 -&gt; 22226666
+    //
+    // vperm2 0x30: 00004444 44440000 -&gt; 00000000
+    // vperm2 0x12: 00004444 44440000 -&gt; 44444444
+    //
+    
+    </span><span class="kw">let </span>ab0246 = ab[<span class="number">0</span>];
+    <span class="kw">let </span>ab2064 = ab[<span class="number">1</span>];
+    <span class="kw">let </span>ab4602 = ab[<span class="number">2</span>];
+    <span class="kw">let </span>ab6420 = ab[<span class="number">3</span>];
+
+    <span class="kw">let </span>ab1357 = ab[<span class="number">4</span>];
+    <span class="kw">let </span>ab3175 = ab[<span class="number">5</span>];
+    <span class="kw">let </span>ab5713 = ab[<span class="number">6</span>];
+    <span class="kw">let </span>ab7531 = ab[<span class="number">7</span>];
+
+    <span class="kw">const </span>SHUF_0123: i32 = <span class="macro">shuffle_mask!</span>(<span class="number">3</span>, <span class="number">2</span>, <span class="number">1</span>, <span class="number">0</span>);
+    <span class="macro">debug_assert_eq!</span>(SHUF_0123, <span class="number">0xE4</span>);
+
+    <span class="kw">const </span>PERM128_03: i32 = <span class="macro">permute2f128_mask!</span>(<span class="number">3</span>, <span class="number">0</span>);
+    <span class="kw">const </span>PERM128_21: i32 = <span class="macro">permute2f128_mask!</span>(<span class="number">1</span>, <span class="number">2</span>);
+
+    <span class="comment">// No elements are &quot;shuffled&quot; in truth, they all stay at their index
+    // but we combine vectors to de-stripe them.
+    //
+    // For example, the first shuffle below uses 0 1 2 3 which
+    // corresponds to the X0 X1 Y2 Y3 sequence etc:
+    //
+    //                                             variable
+    // X ab00 ab01 ab22 ab23 ab44 ab45 ab66 ab67   ab0246
+    // Y ab20 ab21 ab02 ab03 ab64 ab65 ab46 ab47   ab2064
+    // 
+    //   X0   X1   Y2   Y3   X4   X5   Y6   Y7
+    // = ab00 ab01 ab02 ab03 ab44 ab45 ab46 ab47   ab0044
+
+    </span><span class="kw">let </span>ab0044 = _mm256_shuffle_ps(ab0246, ab2064, SHUF_0123);
+    <span class="kw">let </span>ab2266 = _mm256_shuffle_ps(ab2064, ab0246, SHUF_0123);
+
+    <span class="kw">let </span>ab4400 = _mm256_shuffle_ps(ab4602, ab6420, SHUF_0123);
+    <span class="kw">let </span>ab6622 = _mm256_shuffle_ps(ab6420, ab4602, SHUF_0123);
+
+    <span class="kw">let </span>ab1155 = _mm256_shuffle_ps(ab1357, ab3175, SHUF_0123);
+    <span class="kw">let </span>ab3377 = _mm256_shuffle_ps(ab3175, ab1357, SHUF_0123);
+
+    <span class="kw">let </span>ab5511 = _mm256_shuffle_ps(ab5713, ab7531, SHUF_0123);
+    <span class="kw">let </span>ab7733 = _mm256_shuffle_ps(ab7531, ab5713, SHUF_0123);
+
+    <span class="kw">let </span>ab0000 = _mm256_permute2f128_ps(ab0044, ab4400, PERM128_03);
+    <span class="kw">let </span>ab4444 = _mm256_permute2f128_ps(ab0044, ab4400, PERM128_21);
+
+    <span class="kw">let </span>ab2222 = _mm256_permute2f128_ps(ab2266, ab6622, PERM128_03);
+    <span class="kw">let </span>ab6666 = _mm256_permute2f128_ps(ab2266, ab6622, PERM128_21);
+
+    <span class="kw">let </span>ab1111 = _mm256_permute2f128_ps(ab1155, ab5511, PERM128_03);
+    <span class="kw">let </span>ab5555 = _mm256_permute2f128_ps(ab1155, ab5511, PERM128_21);
+
+    <span class="kw">let </span>ab3333 = _mm256_permute2f128_ps(ab3377, ab7733, PERM128_03);
+    <span class="kw">let </span>ab7777 = _mm256_permute2f128_ps(ab3377, ab7733, PERM128_21);
+
+    ab[<span class="number">0</span>] = ab0000;
+    ab[<span class="number">1</span>] = ab1111;
+    ab[<span class="number">2</span>] = ab2222;
+    ab[<span class="number">3</span>] = ab3333;
+    ab[<span class="number">4</span>] = ab4444;
+    ab[<span class="number">5</span>] = ab5555;
+    ab[<span class="number">6</span>] = ab6666;
+    ab[<span class="number">7</span>] = ab7777;
+
+    <span class="comment">// Compute α (A B)
+    // Compute here if we don&#39;t have fma, else pick up α further down
+    </span><span class="kw">if </span>!MA::IS_FUSED {
+        <span class="macro">loop_m!</span>(i, ab[i] = _mm256_mul_ps(alphav, ab[i]));
+    }
+
+    <span class="macro">macro_rules! </span>c {
+        (<span class="macro-nonterminal">$i</span>:expr, <span class="macro-nonterminal">$j</span>:expr) =&gt; (c.offset(rsc * <span class="macro-nonterminal">$i </span><span class="kw">as </span>isize + csc * <span class="macro-nonterminal">$j </span><span class="kw">as </span>isize));
+    }
+
+    <span class="comment">// C ← α A B + β C
+    </span><span class="kw">let </span><span class="kw-2">mut </span>cv = [_mm256_setzero_ps(); MR];
+    <span class="kw">if </span>beta != <span class="number">0. </span>{
+        <span class="kw">let </span>betav = _mm256_set1_ps(beta);
+        <span class="comment">// Read C
+        </span><span class="kw">if </span>csc == <span class="number">1 </span>{
+            <span class="macro">loop_m!</span>(i, cv[i] = _mm256_loadu_ps(<span class="macro">c!</span>[i, <span class="number">0</span>]));
+        } <span class="kw">else </span>{
+            <span class="macro">loop_m!</span>(i, cv[i] = _mm256_setr_ps(<span class="kw-2">*</span><span class="macro">c!</span>[i, <span class="number">0</span>], <span class="kw-2">*</span><span class="macro">c!</span>[i, <span class="number">1</span>], <span class="kw-2">*</span><span class="macro">c!</span>[i, <span class="number">2</span>], <span class="kw-2">*</span><span class="macro">c!</span>[i, <span class="number">3</span>],
+                                              <span class="kw-2">*</span><span class="macro">c!</span>[i, <span class="number">4</span>], <span class="kw-2">*</span><span class="macro">c!</span>[i, <span class="number">5</span>], <span class="kw-2">*</span><span class="macro">c!</span>[i, <span class="number">6</span>], <span class="kw-2">*</span><span class="macro">c!</span>[i, <span class="number">7</span>]));
+        }
+        <span class="comment">// Compute β C
+        </span><span class="macro">loop_m!</span>(i, cv[i] = _mm256_mul_ps(cv[i], betav));
+    }
+
+    <span class="comment">// Compute (α A B) + (β C)
+    </span><span class="kw">if </span>!MA::IS_FUSED {
+        <span class="macro">loop_m!</span>(i, cv[i] = _mm256_add_ps(cv[i], ab[i]));
+    } <span class="kw">else </span>{
+        <span class="macro">loop_m!</span>(i, cv[i] = MA::multiply_add(alphav, ab[i], cv[i]));
+    }
+
+    <span class="comment">// Store C back to memory
+    </span><span class="kw">if </span>csc == <span class="number">1 </span>{
+        <span class="macro">loop_m!</span>(i, _mm256_storeu_ps(<span class="macro">c!</span>[i, <span class="number">0</span>], cv[i]));
+    } <span class="kw">else </span>{
+        <span class="comment">// Permute to bring each element in the vector to the front and store
+        </span><span class="macro">loop_m!</span>(i, {
+            <span class="kw">let </span>cvlo = _mm256_extractf128_ps(cv[i], <span class="number">0</span>);
+            <span class="kw">let </span>cvhi = _mm256_extractf128_ps(cv[i], <span class="number">1</span>);
+
+            _mm_store_ss(<span class="macro">c!</span>[i, <span class="number">0</span>], cvlo);
+            <span class="kw">let </span>cperm = _mm_permute_ps(cvlo, <span class="macro">permute_mask!</span>(<span class="number">0</span>, <span class="number">3</span>, <span class="number">2</span>, <span class="number">1</span>));
+            _mm_store_ss(<span class="macro">c!</span>[i, <span class="number">1</span>], cperm);
+            <span class="kw">let </span>cperm = _mm_permute_ps(cperm, <span class="macro">permute_mask!</span>(<span class="number">0</span>, <span class="number">3</span>, <span class="number">2</span>, <span class="number">1</span>));
+            _mm_store_ss(<span class="macro">c!</span>[i, <span class="number">2</span>], cperm);
+            <span class="kw">let </span>cperm = _mm_permute_ps(cperm, <span class="macro">permute_mask!</span>(<span class="number">0</span>, <span class="number">3</span>, <span class="number">2</span>, <span class="number">1</span>));
+            _mm_store_ss(<span class="macro">c!</span>[i, <span class="number">3</span>], cperm);
+
+            _mm_store_ss(<span class="macro">c!</span>[i, <span class="number">4</span>], cvhi);
+            <span class="kw">let </span>cperm = _mm_permute_ps(cvhi, <span class="macro">permute_mask!</span>(<span class="number">0</span>, <span class="number">3</span>, <span class="number">2</span>, <span class="number">1</span>));
+            _mm_store_ss(<span class="macro">c!</span>[i, <span class="number">5</span>], cperm);
+            <span class="kw">let </span>cperm = _mm_permute_ps(cperm, <span class="macro">permute_mask!</span>(<span class="number">0</span>, <span class="number">3</span>, <span class="number">2</span>, <span class="number">1</span>));
+            _mm_store_ss(<span class="macro">c!</span>[i, <span class="number">6</span>], cperm);
+            <span class="kw">let </span>cperm = _mm_permute_ps(cperm, <span class="macro">permute_mask!</span>(<span class="number">0</span>, <span class="number">3</span>, <span class="number">2</span>, <span class="number">1</span>));
+            _mm_store_ss(<span class="macro">c!</span>[i, <span class="number">7</span>], cperm);
+        });
+    }
+}
+
+<span class="attribute">#[inline]
+</span><span class="kw">unsafe fn </span>kernel_fallback_impl(k: usize, alpha: T, a: <span class="kw-2">*const </span>T, b: <span class="kw-2">*const </span>T,
+                               beta: T, c: <span class="kw-2">*mut </span>T, rsc: isize, csc: isize)
+{
+    <span class="kw">const </span>MR: usize = KernelFallback::MR;
+    <span class="kw">const </span>NR: usize = KernelFallback::NR;
+    <span class="kw">let </span><span class="kw-2">mut </span>ab: [[T; NR]; MR] = [[<span class="number">0.</span>; NR]; MR];
+    <span class="kw">let </span><span class="kw-2">mut </span>a = a;
+    <span class="kw">let </span><span class="kw-2">mut </span>b = b;
+    <span class="macro">debug_assert_eq!</span>(beta, <span class="number">0.</span>, <span class="string">&quot;Beta must be 0 or is not masked&quot;</span>);
+
+    <span class="comment">// Compute A B into ab[i][j]
+    </span><span class="macro">unroll_by!</span>(<span class="number">4 </span>=&gt; k, {
+        <span class="macro">loop8!</span>(i, <span class="macro">loop4!</span>(j, ab[i][j] += at(a, i) * at(b, j)));
+
+        a = a.offset(MR <span class="kw">as </span>isize);
+        b = b.offset(NR <span class="kw">as </span>isize);
+    });
+
+    <span class="macro">macro_rules! </span>c {
+        (<span class="macro-nonterminal">$i</span>:expr, <span class="macro-nonterminal">$j</span>:expr) =&gt; (c.offset(rsc * <span class="macro-nonterminal">$i </span><span class="kw">as </span>isize + csc * <span class="macro-nonterminal">$j </span><span class="kw">as </span>isize));
+    }
+
+    <span class="comment">// set C = α A B
+    </span><span class="macro">loop4!</span>(j, <span class="macro">loop8!</span>(i, <span class="kw-2">*</span><span class="macro">c!</span>[i, j] = alpha * ab[i][j]));
+}
+
+<span class="attribute">#[inline(always)]
+</span><span class="kw">unsafe fn </span>at(ptr: <span class="kw-2">*const </span>T, i: usize) -&gt; T {
+    <span class="kw-2">*</span>ptr.offset(i <span class="kw">as </span>isize)
+}
+
+<span class="attribute">#[cfg(test)]
+</span><span class="kw">mod </span>tests {
+    <span class="kw">use super</span>::<span class="kw-2">*</span>;
+    <span class="kw">use </span><span class="kw">crate</span>::kernel::test::test_a_kernel;
+
+    <span class="attribute">#[test]
+    </span><span class="kw">fn </span>test_kernel_fallback_impl() {
+        test_a_kernel::&lt;KernelFallback, <span class="kw">_</span>&gt;(<span class="string">&quot;kernel&quot;</span>);
+    }
+
+    <span class="attribute">#[cfg(any(target_arch=<span class="string">&quot;x86&quot;</span>, target_arch=<span class="string">&quot;x86_64&quot;</span>))]
+    #[test]
+    </span><span class="kw">fn </span>test_loop_m_n() {
+        <span class="kw">let </span><span class="kw-2">mut </span>m = [[<span class="number">0</span>; KernelAvx::NR]; KernelAvx::MR];
+        <span class="macro">loop_m!</span>(i, <span class="macro">loop_n!</span>(j, m[i][j] += <span class="number">1</span>));
+        <span class="kw">for </span>arr <span class="kw">in </span><span class="kw-2">&amp;</span>m[..] {
+            <span class="kw">for </span>elt <span class="kw">in </span><span class="kw-2">&amp;</span>arr[..] {
+                <span class="macro">assert_eq!</span>(<span class="kw-2">*</span>elt, <span class="number">1</span>);
+            }
+        }
+    }
+
+    <span class="attribute">#[cfg(any(target_arch=<span class="string">&quot;x86&quot;</span>, target_arch=<span class="string">&quot;x86_64&quot;</span>))]
+    </span><span class="kw">mod </span>test_arch_kernels {
+        <span class="kw">use </span><span class="kw">super</span>::test_a_kernel;
+        <span class="kw">use </span><span class="kw">super</span>::<span class="kw">super</span>::<span class="kw-2">*</span>;
+        <span class="attribute">#[cfg(feature = <span class="string">&quot;std&quot;</span>)]
+        </span><span class="kw">use </span>std::println;
+        <span class="macro">macro_rules! </span>test_arch_kernels_x86 {
+            ($(<span class="macro-nonterminal">$feature_name</span>:tt, <span class="macro-nonterminal">$name</span>:ident, <span class="macro-nonterminal">$kernel_ty</span>:ty),<span class="kw-2">*</span>) =&gt; {
+                $(
+                <span class="attribute">#[test]
+                </span><span class="kw">fn </span><span class="macro-nonterminal">$name</span>() {
+                    <span class="kw">if </span><span class="macro">is_x86_feature_detected_!</span>(<span class="macro-nonterminal">$feature_name</span>) {
+                        test_a_kernel::&lt;<span class="macro-nonterminal">$kernel_ty</span>, <span class="kw">_</span>&gt;(<span class="macro">stringify!</span>(<span class="macro-nonterminal">$name</span>));
+                    } <span class="kw">else </span>{
+                        <span class="attribute">#[cfg(feature = <span class="string">&quot;std&quot;</span>)]
+                        </span><span class="macro">println!</span>(<span class="string">&quot;Skipping, host does not have feature: {:?}&quot;</span>, <span class="macro-nonterminal">$feature_name</span>);
+                    }
+                }
+                )*
+            }
+        }
+
+        <span class="macro">test_arch_kernels_x86! </span>{
+            <span class="string">&quot;fma&quot;</span>, fma, KernelFma,
+            <span class="string">&quot;avx&quot;</span>, avx, KernelAvx,
+            <span class="string">&quot;sse2&quot;</span>, sse2, KernelSse2
+        }
+
+        <span class="attribute">#[test]
+        </span><span class="kw">fn </span>ensure_target_features_tested() {
+            <span class="comment">// If enabled, this test ensures that the requested feature actually
+            // was enabled on this configuration, so that it was tested.
+            </span><span class="kw">let </span>should_ensure_feature = !<span class="macro">option_env!</span>(<span class="string">&quot;MMTEST_ENSUREFEATURE&quot;</span>)
+                                                    .unwrap_or(<span class="string">&quot;&quot;</span>).is_empty();
+            <span class="kw">if </span>!should_ensure_feature {
+                <span class="comment">// skip
+                </span><span class="kw">return</span>;
+            }
+            <span class="kw">let </span>feature_name = <span class="macro">option_env!</span>(<span class="string">&quot;MMTEST_FEATURE&quot;</span>)
+                                          .expect(<span class="string">&quot;No MMTEST_FEATURE configured!&quot;</span>);
+            <span class="kw">let </span>detected = <span class="kw">match </span>feature_name {
+                <span class="string">&quot;avx&quot; </span>=&gt; <span class="macro">is_x86_feature_detected_!</span>(<span class="string">&quot;avx&quot;</span>),
+                <span class="string">&quot;fma&quot; </span>=&gt; <span class="macro">is_x86_feature_detected_!</span>(<span class="string">&quot;fma&quot;</span>),
+                <span class="string">&quot;sse2&quot; </span>=&gt; <span class="macro">is_x86_feature_detected_!</span>(<span class="string">&quot;sse2&quot;</span>),
+                <span class="kw">_ </span>=&gt; <span class="bool-val">false</span>,
+            };
+            <span class="macro">assert!</span>(detected, <span class="string">&quot;Feature {:?} was not detected, so it could not be tested&quot;</span>,
+                    feature_name);
+        }
+    }
+}
+</code></pre></div>
+</section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="matrixmultiply" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.66.0 (69f9c33d7 2022-12-12)" ></div></body></html>

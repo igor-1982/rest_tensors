@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":[["fciqmc_dump",""],["get_vsap",""],["main",""],["mid_zeff",""],["parse_input",""]],"mod":[["basis_io",""],["constants",""],["ctrl_io",""],["dft",""],["geom_io",""],["initial_guess",""],["molecule_io",""],["post_scf_analysis",""],["ri_pt2",""],["ri_rpa",""],["scf_io",""],["utilities",""]],"static":[["GLOBAL",""]],"struct":[["SimpleAtomInfo",""]]};

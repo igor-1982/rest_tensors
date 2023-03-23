@@ -1,1 +1,1 @@
-window.ALL_CRATES = ["rest_tensors"];
+window.ALL_CRATES = ["bytemuck","bytes","cfg_if","crossbeam_utils","fnv","futures_core","futures_io","futures_task","hashbrown","itoa","lazy_static","libc","libm","log","matrixmultiply","memchr","memoffset","once_cell","paste","percent_encoding","pin_project_lite","proc_macro2","rawpointer","rest","rest_tensors","scopeguard","slab","tinyvec_macros","tracing_core","unicode_ident"];

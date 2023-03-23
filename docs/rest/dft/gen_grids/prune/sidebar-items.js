@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":[["nwchem_prune",""],["sg1_prune",""]]};

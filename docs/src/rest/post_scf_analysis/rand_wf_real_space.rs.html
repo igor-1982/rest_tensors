@@ -1,0 +1,381 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `rest/src/post_scf_analysis/rand_wf_real_space.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>rand_wf_real_space.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../SourceSerif4-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../FiraSans-Regular.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../FiraSans-Medium.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../SourceCodePro-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../SourceSerif4-Bold.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../../SourceCodePro-Semibold.ttf.woff2"><link rel="stylesheet" href="../../../normalize.css"><link rel="stylesheet" href="../../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" href="../../../ayu.css" disabled><link rel="stylesheet" href="../../../dark.css" disabled><link rel="stylesheet" href="../../../light.css" id="themeStyle"><script id="default-settings" ></script><script src="../../../storage.js"></script><script defer src="../../../source-script.js"></script><script defer src="../../../source-files.js"></script><script defer src="../../../main.js"></script><noscript><link rel="stylesheet" href="../../../noscript.css"></noscript><link rel="alternate icon" type="image/png" href="../../../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../../../favicon-32x32.png"><link rel="icon" type="image/svg+xml" href="../../../favicon.svg"></head><body class="rustdoc source"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"></nav><main><div class="width-limiter"><nav class="sub"><a class="sub-logo-container" href="../../../rest/index.html"><img class="rust-logo" src="../../../rust-logo.svg" alt="logo"></a><form class="search-form"><span></span><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><a href="../../../help.html">?</a></div><div id="settings-menu" tabindex="-1"><a href="../../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../../wheel.svg"></a></div></form></nav><section id="main-content" class="content"><div class="example-wrap"><pre class="src-line-numbers"><span id="1">1</span>
+<span id="2">2</span>
+<span id="3">3</span>
+<span id="4">4</span>
+<span id="5">5</span>
+<span id="6">6</span>
+<span id="7">7</span>
+<span id="8">8</span>
+<span id="9">9</span>
+<span id="10">10</span>
+<span id="11">11</span>
+<span id="12">12</span>
+<span id="13">13</span>
+<span id="14">14</span>
+<span id="15">15</span>
+<span id="16">16</span>
+<span id="17">17</span>
+<span id="18">18</span>
+<span id="19">19</span>
+<span id="20">20</span>
+<span id="21">21</span>
+<span id="22">22</span>
+<span id="23">23</span>
+<span id="24">24</span>
+<span id="25">25</span>
+<span id="26">26</span>
+<span id="27">27</span>
+<span id="28">28</span>
+<span id="29">29</span>
+<span id="30">30</span>
+<span id="31">31</span>
+<span id="32">32</span>
+<span id="33">33</span>
+<span id="34">34</span>
+<span id="35">35</span>
+<span id="36">36</span>
+<span id="37">37</span>
+<span id="38">38</span>
+<span id="39">39</span>
+<span id="40">40</span>
+<span id="41">41</span>
+<span id="42">42</span>
+<span id="43">43</span>
+<span id="44">44</span>
+<span id="45">45</span>
+<span id="46">46</span>
+<span id="47">47</span>
+<span id="48">48</span>
+<span id="49">49</span>
+<span id="50">50</span>
+<span id="51">51</span>
+<span id="52">52</span>
+<span id="53">53</span>
+<span id="54">54</span>
+<span id="55">55</span>
+<span id="56">56</span>
+<span id="57">57</span>
+<span id="58">58</span>
+<span id="59">59</span>
+<span id="60">60</span>
+<span id="61">61</span>
+<span id="62">62</span>
+<span id="63">63</span>
+<span id="64">64</span>
+<span id="65">65</span>
+<span id="66">66</span>
+<span id="67">67</span>
+<span id="68">68</span>
+<span id="69">69</span>
+<span id="70">70</span>
+<span id="71">71</span>
+<span id="72">72</span>
+<span id="73">73</span>
+<span id="74">74</span>
+<span id="75">75</span>
+<span id="76">76</span>
+<span id="77">77</span>
+<span id="78">78</span>
+<span id="79">79</span>
+<span id="80">80</span>
+<span id="81">81</span>
+<span id="82">82</span>
+<span id="83">83</span>
+<span id="84">84</span>
+<span id="85">85</span>
+<span id="86">86</span>
+<span id="87">87</span>
+<span id="88">88</span>
+<span id="89">89</span>
+<span id="90">90</span>
+<span id="91">91</span>
+<span id="92">92</span>
+<span id="93">93</span>
+<span id="94">94</span>
+<span id="95">95</span>
+<span id="96">96</span>
+<span id="97">97</span>
+<span id="98">98</span>
+<span id="99">99</span>
+<span id="100">100</span>
+<span id="101">101</span>
+<span id="102">102</span>
+<span id="103">103</span>
+<span id="104">104</span>
+<span id="105">105</span>
+<span id="106">106</span>
+<span id="107">107</span>
+<span id="108">108</span>
+<span id="109">109</span>
+<span id="110">110</span>
+<span id="111">111</span>
+<span id="112">112</span>
+<span id="113">113</span>
+<span id="114">114</span>
+<span id="115">115</span>
+<span id="116">116</span>
+<span id="117">117</span>
+<span id="118">118</span>
+<span id="119">119</span>
+<span id="120">120</span>
+<span id="121">121</span>
+<span id="122">122</span>
+<span id="123">123</span>
+<span id="124">124</span>
+<span id="125">125</span>
+<span id="126">126</span>
+<span id="127">127</span>
+<span id="128">128</span>
+<span id="129">129</span>
+<span id="130">130</span>
+<span id="131">131</span>
+<span id="132">132</span>
+<span id="133">133</span>
+<span id="134">134</span>
+<span id="135">135</span>
+<span id="136">136</span>
+<span id="137">137</span>
+<span id="138">138</span>
+<span id="139">139</span>
+<span id="140">140</span>
+<span id="141">141</span>
+<span id="142">142</span>
+<span id="143">143</span>
+<span id="144">144</span>
+<span id="145">145</span>
+<span id="146">146</span>
+<span id="147">147</span>
+<span id="148">148</span>
+<span id="149">149</span>
+<span id="150">150</span>
+<span id="151">151</span>
+<span id="152">152</span>
+<span id="153">153</span>
+<span id="154">154</span>
+<span id="155">155</span>
+<span id="156">156</span>
+<span id="157">157</span>
+<span id="158">158</span>
+<span id="159">159</span>
+<span id="160">160</span>
+<span id="161">161</span>
+<span id="162">162</span>
+<span id="163">163</span>
+<span id="164">164</span>
+<span id="165">165</span>
+<span id="166">166</span>
+<span id="167">167</span>
+<span id="168">168</span>
+<span id="169">169</span>
+<span id="170">170</span>
+<span id="171">171</span>
+<span id="172">172</span>
+<span id="173">173</span>
+<span id="174">174</span>
+<span id="175">175</span>
+<span id="176">176</span>
+<span id="177">177</span>
+<span id="178">178</span>
+<span id="179">179</span>
+<span id="180">180</span>
+<span id="181">181</span>
+<span id="182">182</span>
+<span id="183">183</span>
+<span id="184">184</span>
+<span id="185">185</span>
+<span id="186">186</span>
+<span id="187">187</span>
+<span id="188">188</span>
+<span id="189">189</span>
+<span id="190">190</span>
+</pre><pre class="rust"><code><span class="kw">use </span>std::num;
+<span class="kw">use </span><span class="kw">crate</span>::molecule_io::Molecule;
+<span class="kw">use </span><span class="kw">crate</span>::geom_io;
+<span class="kw">use </span><span class="kw">crate</span>::basis_io;
+<span class="kw">use </span><span class="kw">crate</span>::basis_io::basic_math::factorial;
+<span class="kw">use </span><span class="kw">crate</span>::scf_io::SCF;
+<span class="kw">use </span>rest_tensors::{TensorOpt,MatrixFull};
+<span class="kw">use </span>rand::Rng;
+<span class="kw">use </span>itertools::Itertools;
+<span class="kw">use </span>rayon::iter::{IntoParallelRefIterator, IndexedParallelIterator, ParallelIterator, IntoParallelRefMutIterator};
+<span class="comment">//mod lib;
+
+//checked
+</span><span class="kw">pub fn </span>generate_random_points (n_p: usize) -&gt; Vec&lt;[f64; <span class="number">3</span>]&gt; {
+    <span class="kw">let </span><span class="kw-2">mut </span>rng = rand::thread_rng();
+    <span class="kw">let </span><span class="kw-2">mut </span>random_points: Vec&lt;[f64;<span class="number">3</span>]&gt; = <span class="macro">vec!</span>[[<span class="number">0.0</span>,<span class="number">0.0</span>,<span class="number">0.0</span>];n_p];
+    random_points.iter_mut().for_each(|x|{
+        x.iter_mut().for_each(|y|{
+            <span class="kw-2">*</span>y = rng.gen_range(-<span class="number">1.0</span>..<span class="number">1.0</span>);
+        })
+    });
+    <span class="comment">//println!(&quot;{:?}&quot;,random_points);
+    </span>random_points
+}
+<span class="comment">//unchecked
+</span><span class="kw">pub fn </span>rand_for_mol (mol: <span class="kw-2">&amp;</span>Molecule, n_p: usize) -&gt; (Vec&lt;Vec&lt;[f64; <span class="number">3</span>]&gt;&gt;, usize, f64){
+    <span class="kw">let </span>atom_info = <span class="kw-2">&amp;</span>mol.geom;
+    <span class="kw">let </span>atom_mass_charge = geom_io::get_mass_charge(<span class="kw-2">&amp;</span>atom_info.elem).clone();
+    <span class="kw">let </span><span class="kw-2">mut </span>num_ele = <span class="number">0.0</span>;
+    atom_mass_charge.iter().for_each(|(x,y)|{
+        num_ele += <span class="kw-2">*</span>y;
+    });
+
+    <span class="kw">let </span>n_ele = <span class="kw">unsafe </span>{
+        num_ele.to_int_unchecked::&lt;usize&gt;()
+    };
+
+    <span class="kw">let </span>nu_ele = <span class="kw">unsafe </span>{
+        num_ele.to_int_unchecked::&lt;i32&gt;()
+    };
+
+    <span class="kw">let </span>mid = f64::from(factorial(nu_ele));
+    <span class="kw">let </span>coeff =  mid.powf(-<span class="number">0.5</span>);
+    <span class="kw">let </span><span class="kw-2">mut </span>rand_points_for_mol:Vec&lt;Vec&lt;[f64; <span class="number">3</span>]&gt;&gt; = <span class="macro">vec!</span>[<span class="macro">vec!</span>[[<span class="number">0.0</span>;<span class="number">3</span>]; n_p]; n_ele];
+    <span class="comment">//let mut rand_points_for_mol:Vec&lt;Vec&lt;[f64; 3]&gt;&gt; = Vec::with_capacity(n_ele);
+    </span>rand_points_for_mol.iter_mut().for_each(|x|{
+        <span class="kw-2">*</span>x = generate_random_points(n_p);
+    });
+    (rand_points_for_mol, n_ele, coeff)
+}
+
+<span class="comment">// change from tabulated_ao
+</span><span class="kw">pub fn </span>random_tabulated_ao (mol: <span class="kw-2">&amp;</span>Molecule, rand_p: <span class="kw-2">&amp;</span>Vec&lt;[f64; <span class="number">3</span>]&gt;) -&gt; MatrixFull&lt;f64&gt;{
+    <span class="kw">let </span>num_p = rand_p.len();
+    <span class="kw">let </span><span class="kw-2">mut </span>tab_den = MatrixFull::new([num_p,mol.num_basis], <span class="number">0.0</span>);
+    <span class="kw">let </span><span class="kw-2">mut </span>start:usize = <span class="number">0</span>;
+    mol.basis4elem.iter().zip(mol.geom.position.iter_columns_full()).for_each(|(elem,geom)| {
+        <span class="kw">let </span><span class="kw-2">mut </span>tmp_geom = [<span class="number">0.0</span>;<span class="number">3</span>];
+        tmp_geom.iter_mut().zip(geom.iter()).for_each(|value| {<span class="kw-2">*</span>value.<span class="number">0 </span>= <span class="kw-2">*</span>value.<span class="number">1</span>});
+        <span class="kw">let </span>tmp_spheric = basis_io::spheric_gto_value_matrixfull(rand_p, <span class="kw-2">&amp;</span>tmp_geom, elem);
+        <span class="kw">let </span>s_len = tmp_spheric.size[<span class="number">1</span>];
+        tab_den.iter_columns_mut(start..start+s_len).zip(tmp_spheric.iter_columns_full())
+        .for_each(|(to,from)| {
+            to.par_iter_mut().zip(from.par_iter()).for_each(|(to,from)| {<span class="kw-2">*</span>to = <span class="kw-2">*</span>from});
+        });
+        start += s_len;
+    });
+    <span class="comment">//let ao = tab_den.transpose_and_drop();
+    </span>tab_den <span class="comment">// N_p * Nao
+</span>}
+
+<span class="kw">pub fn </span>gen_c (scf_data: <span class="kw-2">&amp;</span>SCF, n_ele: usize) -&gt; MatrixFull&lt;f64&gt;{
+    <span class="kw">let </span>eigv = scf_data.eigenvectors[<span class="number">0</span>].clone(); <span class="comment">//unpolarized
+    </span><span class="kw">let </span>nmo = n_ele/<span class="number">2</span>;
+    <span class="kw">let </span>nao = scf_data.mol.num_basis;
+    <span class="kw">let </span><span class="kw-2">mut </span>new_c: Vec&lt;f64&gt; = <span class="macro">vec!</span>[<span class="number">0.0</span>; nao * n_ele]; 
+    <span class="kw">let </span><span class="kw-2">mut </span>mo_vec = <span class="macro">vec!</span>[<span class="macro">vec!</span>[<span class="number">0.0</span>; nao];nmo];
+    mo_vec.iter_mut().zip(<span class="number">0</span>..nmo).for_each(|(x,y)|{
+        x.iter_mut().zip(eigv.slice_column(y)).for_each(|(a,b)|{
+            <span class="kw-2">*</span>a = <span class="kw-2">*</span>b;
+        });
+    });
+    
+    <span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..n_ele{
+        <span class="kw">let </span><span class="kw-2">mut </span>j = i / <span class="number">2</span>;
+        <span class="kw">let </span>mo = <span class="kw-2">&amp;</span>mo_vec[j];
+        new_c[i * nao .. (i+<span class="number">1</span>) * nao].iter_mut().zip(mo.iter()).for_each(|(x,y)|{
+            <span class="kw-2">*</span>x = <span class="kw-2">*</span>y;
+        })
+    }
+    <span class="kw">let </span>c_need = MatrixFull::from_vec([nao, n_ele], new_c).unwrap();
+    c_need 
+}
+
+<span class="kw">pub fn </span>slater_determinant(scf_data: <span class="kw-2">&amp;</span>SCF, n_p: usize) -&gt; Vec&lt;(Vec&lt;[f64;<span class="number">3</span>]&gt;,f64)&gt; {
+    <span class="comment">/* let a = vec![[0.9048619635252333, 0.4573523031534341, -0.5013015911077909], [-0.44926362825630894, -0.5735387124535505, 0.2568942876881821]];
+    let b = random_tabulated_ao(&amp;scf_data.mol, &amp;a);
+    b.formated_output(5, &quot;full&quot;); */
+    </span><span class="kw">let </span>(points, n_ele, coeff) = rand_for_mol(<span class="kw-2">&amp;</span>scf_data.mol, n_p);
+    <span class="comment">//println!(&quot;n_ele: {:?}; n_ele_points:{:?}; n_p: {:?}&quot;,n_ele,points.len(),points[0].len());
+    </span><span class="kw">let </span><span class="kw-2">mut </span>c_mat = gen_c(<span class="kw-2">&amp;</span>scf_data, n_ele);
+    <span class="kw">let </span><span class="kw-2">mut </span>tabulated_ao:Vec&lt;MatrixFull&lt;f64&gt;&gt; = <span class="macro">vec!</span>[MatrixFull::new([n_ele,scf_data.mol.num_basis], <span class="number">0.0</span>) ;n_ele];
+    <span class="comment">//let mut tabulated_ao:Vec&lt;MatrixFull&lt;f64&gt;&gt; = Vec::with_capacity(n_ele);
+    </span>tabulated_ao.iter_mut().zip(points.iter()).for_each(|(ele,rand_points)|{
+        <span class="kw-2">*</span>ele = random_tabulated_ao(<span class="kw-2">&amp;</span>scf_data.mol, rand_points);
+        <span class="comment">//ele.formated_output(5, &quot;full&quot;);
+    </span>});
+    <span class="kw">let </span>nao = scf_data.mol.num_basis;
+    <span class="comment">//println!(&quot;num_bas:{}&quot;,nao);
+    </span><span class="kw">let </span><span class="kw-2">mut </span>n_r = <span class="number">0</span>;
+    <span class="kw">let </span><span class="kw-2">mut </span>perms = (<span class="number">0</span>..n_p).permutations(n_ele);
+    <span class="kw-2">&amp;mut </span>perms.by_ref().for_each(|x|{n_r += <span class="number">1</span>;});
+    <span class="comment">//let mut result:Vec&lt;(Vec&lt;[f64;3]&gt;,f64)&gt; =Vec::with_capacity(n_r);
+    </span><span class="kw">let </span><span class="kw-2">mut </span>result:Vec&lt;(Vec&lt;[f64;<span class="number">3</span>]&gt;,f64)&gt; =<span class="macro">vec!</span>[(<span class="macro">vec!</span>[[<span class="number">0.0</span>,<span class="number">0.0</span>,<span class="number">0.0</span>];n_ele],<span class="number">0.0</span>);n_r];
+    result.iter_mut().zip(perms).for_each(|((r,slater),ind)|{
+        <span class="comment">//let mut ao:Vec&lt;Vec&lt;f64&gt;&gt; =Vec::with_capacity(n_ele);
+        //let mut point_info: Vec&lt;[f64;3]&gt; = Vec::with_capacity(n_ele);
+        </span><span class="kw">let </span><span class="kw-2">mut </span>ao:Vec&lt;Vec&lt;f64&gt;&gt; =<span class="macro">vec!</span>[<span class="macro">vec!</span>[<span class="number">0.0</span>; nao]; n_ele];
+        <span class="kw">let </span><span class="kw-2">mut </span>point_info: Vec&lt;[f64;<span class="number">3</span>]&gt; = <span class="macro">vec!</span>[[<span class="number">0.0</span>;<span class="number">3</span>];n_ele];
+        <span class="kw">let </span><span class="kw-2">mut </span>ao_use:Vec&lt;f64&gt; =<span class="macro">vec!</span>[<span class="number">0.0</span>; n_ele * nao];
+
+        point_info.iter_mut().zip(points.iter().zip(ao.iter_mut().zip(ind.iter()).zip(tabulated_ao.iter()))).for_each(|(p_i,(p,((ao_n,i),ao_points)))|{
+            <span class="kw-2">*</span>ao_n = tmp_iter_j(<span class="kw-2">&amp;</span>ao_points, <span class="kw-2">*</span>i);
+            <span class="comment">//println!(&quot;ao_n:{:?}&quot;,ao_n);
+            </span><span class="kw-2">*</span>p_i = p[<span class="kw-2">*</span>i];
+        });
+        <span class="comment">//println!(&quot;ao:{:?}&quot;,ao);
+        </span><span class="kw-2">*</span>r = point_info;
+        <span class="comment">//let mut ao_use:Vec&lt;f64&gt; =vec![0.0; n_ele * nao];
+        </span><span class="kw">let </span><span class="kw-2">mut </span>index = <span class="number">0</span>;
+        ao.iter().for_each(|a|{
+            a.iter().zip(ao_use[index<span class="kw-2">*</span>nao..(index+<span class="number">1</span>)<span class="kw-2">*</span>nao].iter_mut()).for_each(|(x,y)|{
+                <span class="kw-2">*</span>y = <span class="kw-2">*</span>x;
+            });
+            index += <span class="number">1</span>;
+        });
+
+        <span class="kw">let </span><span class="kw-2">mut </span>ao_m = MatrixFull::from_vec([nao, n_ele], ao_use).unwrap();
+        <span class="comment">//ao_m.formated_output(5, &quot;full&quot;);
+        //c_mat.formated_output(5, &quot;full&quot;);
+        //println!(&quot;size of ao: {:?}, size of c_mat: {:?}&quot;, ao_m.size,c_mat.size);
+        </span><span class="kw-2">*</span>slater = single_slater(<span class="kw-2">&amp;mut </span>ao_m,<span class="kw-2">&amp;mut </span>c_mat, coeff);
+
+        
+    });
+    result
+    
+}
+
+<span class="kw">pub fn </span>single_slater (ao_points: <span class="kw-2">&amp;mut </span>MatrixFull&lt;f64&gt;, c_mat: <span class="kw-2">&amp;mut </span>MatrixFull&lt;f64&gt;, coeff: f64) -&gt; f64{
+    <span class="kw">let </span><span class="kw-2">mut </span>prod = MatrixFull::new([ao_points.size[<span class="number">1</span>];<span class="number">2</span>],<span class="number">0.0</span>);
+    <span class="comment">/* prod.to_matrixfullslicemut().lapack_dgemm(&amp;mut c_mat.to_matrixfullslice(), &amp;mut ao_points.to_matrixfullslice(), &#39;T&#39;, &#39;N&#39;, 1.0, 0.0);
+    prod.transpose(); */
+    </span>prod.to_matrixfullslicemut().lapack_dgemm(<span class="kw-2">&amp;</span>ao_points.to_matrixfullslice(), <span class="kw-2">&amp;</span>c_mat.to_matrixfullslice(), <span class="string">&#39;T&#39;</span>, <span class="string">&#39;N&#39;</span>, <span class="number">1.0</span>, <span class="number">0.0</span>);
+    <span class="comment">//coeff * prod.det()
+
+    //prod.formated_output(4, &quot;full&quot;);
+    /* let v_times_polar = prod.to_matrixfullslicemut().lapack_dgetrf().unwrap();
+
+    let mut res = coeff * v_times_polar.get_diagonal_terms().unwrap().iter()
+        .fold(1.0,|acc,value| acc*(*value)); */
+    </span><span class="kw">let </span><span class="kw-2">mut </span>res = <span class="number">1.0</span>;
+    <span class="kw">let </span><span class="kw-2">mut </span>i = <span class="number">0</span>;
+    prod.data.iter().for_each(|x|{
+        <span class="kw">if </span>i % prod.size[<span class="number">0</span>] == i / prod.size[<span class="number">0</span>]{
+            res <span class="kw-2">*</span>= <span class="kw-2">*</span>x;
+        }
+        i += <span class="number">1</span>;
+    });
+    res * coeff
+}
+
+<span class="kw">pub fn </span>tmp_iter_j(matrix: <span class="kw-2">&amp;</span>MatrixFull&lt;f64&gt;, j: usize) -&gt; Vec&lt;f64&gt; {
+    <span class="kw">let </span><span class="kw-2">mut </span>slice: Vec&lt;f64&gt; = <span class="macro">vec!</span>[<span class="number">0.0</span>;matrix.size[<span class="number">1</span>]];
+    <span class="kw">for </span>i <span class="kw">in </span><span class="number">0</span>..matrix.size[<span class="number">1</span>]{
+        slice[i] = matrix.data[matrix.size[<span class="number">0</span>]<span class="kw-2">*</span>i + j];
+    }
+    <span class="comment">/* let start = matrix.size[0]*j;
+    let end = start + matrix.size[0];
+    //let mut column: Vec&lt;f64&gt; = Vec::with_capacity(matrix.size[0]);
+    let mut column: Vec&lt;f64&gt; = vec![0.0; matrix.size[0]];
+    column.iter_mut().zip(matrix.data[start..end].iter()).for_each(|(x,y)|{
+        *x = *y;
+    }); */
+    </span>slice
+}
+
+<span class="comment">// eigenvector[0] ?= c unpolarized
+// how to iter and save the results
+// deteminant calculation</span></code></pre></div>
+</section></div></main><div id="rustdoc-vars" data-root-path="../../../" data-current-crate="rest" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.66.0 (69f9c33d7 2022-12-12)" ></div></body></html>

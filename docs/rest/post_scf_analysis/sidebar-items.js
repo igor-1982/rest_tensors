@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":[["cube_build",""],["molden_build",""],["rand_wf_real_space",""]]};

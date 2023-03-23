@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":[["evaluate_response",""],["evaluate_rpa_integrand",""],["gauss_legendre_grids",""],["logarithmic_grid",""],["rpa_calculations",""],["trans_gauss_legendre_grids",""]]};

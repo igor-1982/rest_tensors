@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":[["etb_gen",""],["etb_gen_for_atom_list",""],["etbs_gen",""],["get_basis_from_mol",""],["get_etb_elem",""]],"struct":[["InfoV2",""]]};
