@@ -51,7 +51,7 @@ use crate::matrix::matrix_blas_lapack::*;
 /// 3) compute the Cholesky factorization of a real symmetric positive definite matrix A:<span style="float:right;"> [`_dpotrf`]</span>  
 /// 4) perform the matrix inversion:<span style="float:right;"> [`_dinverse`]</span>  
 /// 5) many others ...  
-/// **NOTE**:: all functions in lapack and blas libraries can be imported in the similar way.
+/// **NOTE**:: all functions in lapack and blas libraries can be imported in the similar way for any matrix struct with the [`BasicMatrix`] trait .
 /// 
 /// 
 /// # Construction 
