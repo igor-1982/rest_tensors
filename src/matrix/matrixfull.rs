@@ -1266,7 +1266,9 @@ impl <'a, T> IntoIterator for &'a MatrixFull<T> {
 }
 
 /// Add by Tianyi Gao
-impl<T> MatrixFull<T> {
+impl<T> MatrixFull<T> 
+where T: std::fmt::Debug,
+{
     pub fn get_antidiag_terms(&self) -> Option<Vec<&T>> {
         //let tmp_len = self.size;
         let new_size = self.size.get(0).unwrap();
@@ -1295,13 +1297,17 @@ impl<T> MatrixFull<T> {
             if (ijsum == 0) {
                 Some(vec![self.data[0]])
             } else if (ijsum > 0 && ijsum <= order-1 ) {
-                let submat = MatrixFull::from_vec([ijsum,ijsum],self.iter_submatrix(0..(ijsum+1), 0..(ijsum+1)).map(|x| *x).collect::<Vec<T>>()).unwrap();
+                let submat = MatrixFull::from_vec([ijsum+1,ijsum+1],self.iter_submatrix(0..(ijsum+1), 0..(ijsum+1)).map(|x| *x).collect::<Vec<T>>()).unwrap();
+                //println!("submat = {:?}", submat);
                 let return_vec = submat.get_antidiag_terms().unwrap().iter().map(|x| **x).collect::<Vec<T>>();
                 //return_vec = new_vec.into_iter().map(|v| *v).collect();
                 Some(return_vec)
             } else if (ijsum < (order*2 - 2) && ijsum > order-1) {
                 let diff = ijsum - order + 1;
-                let submat = MatrixFull::from_vec([ijsum,ijsum],self.iter_submatrix(diff..*order,diff..*order).map(|x| *x).collect::<Vec<T>>()).unwrap();
+                //println!("order={}, diff = {}, new_order = {}",order,diff, 2*order-diff-1);
+                let new_vec = self.iter_submatrix(diff..*order,diff..*order).map(|x| *x).collect::<Vec<T>>();
+                //println!("new_vec = {:?}", new_vec);
+                let submat = MatrixFull::from_vec([2*order-ijsum-1,2*order-ijsum-1],new_vec).unwrap();
                 //println!("submatrix = {:?}", submat);
                 let return_vec = submat.get_antidiag_terms().unwrap().iter().map(|x| **x).collect::<Vec<T>>();
                 //let new_vec = submat.get_antidiag_terms().unwrap();
