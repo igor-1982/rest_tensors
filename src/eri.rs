@@ -218,7 +218,7 @@ impl <T: Clone + Display> ERIFold4<T> {
         let p_start = self.index2d([0,i_reduced]).unwrap();
         let p_length = self.indicing[1];
         MatrixUpperSliceMut {
-            size: &self.size[0],
+            size: self.size[0],
             //indicing: &self.indicing[0],
             data : &mut self.data[p_start..p_start+p_length]}
     }
@@ -228,7 +228,7 @@ impl <T: Clone + Display> ERIFold4<T> {
         let p_start = self.index2d([0,i_reduced]).unwrap();
         let p_length = self.indicing[1];
         MatrixUpperSlice {
-            size: &self.size[0],
+            size: self.size[0],
             //indicing: &self.indicing[0],
             data : &self.data[p_start..p_start+p_length]}
     }

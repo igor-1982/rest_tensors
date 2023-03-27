@@ -50,7 +50,7 @@ impl <T> MatrixUpper<T> {
     #[inline]
     pub fn to_matrixupperslicemut(&mut self) -> MatrixUpperSliceMut<T> {
         MatrixUpperSliceMut {
-            size: &self.size,
+            size: self.size,
             data: &mut self.data[..],
         }
     }
@@ -235,7 +235,7 @@ impl MatrixUpper<f64> {
 
 #[derive(Debug,PartialEq)]
 pub struct MatrixUpperSliceMut<'a,T> {
-    pub size : &'a usize,
+    pub size : usize,
     //pub indicing: &'a usize,
     pub data : &'a mut[T]
 }
@@ -243,19 +243,61 @@ pub struct MatrixUpperSliceMut<'a,T> {
 
 #[derive(Clone,Debug,PartialEq)]
 pub struct MatrixUpperSlice<'a,T> {
-    pub size : &'a usize,
+    pub size : usize,
     //pub indicing: &'a usize,
     pub data : &'a [T]
 }
 
-//impl<'a, T:Clone+Display> MatrixUpperSliceMut<'a,T> {
-//    pub fn iter_submatrix_mut(&mut self, x:Range<usize>, y:Range<usize>) -> Flatten<IntoIter<&mut [T]>> {
-//        let mut tmp_slices: Vec<&mut [T]> = vec![];
-//        let dd = self.data.split_at_mut(0).1;
-//        y.fold((dd,0_usize),|(ee,offset),y| {
-//        });
-//    }
-//}
+impl<'a, T> MatrixUpperSlice<'a, T> {
+    pub fn from_vec(new_vec: &'a [T]) -> MatrixUpperSlice<'a,T> {
+        MatrixUpperSlice {
+            size: new_vec.len(),
+            data: new_vec
+        }
+    }
+    #[inline]
+    pub fn to_matrixfull(&self) -> Option<MatrixFull<T>> 
+    where T: Clone + Copy {
+        let tmp_len = self.size as f64;
+        let new_size = ((1.0+8.0*tmp_len).sqrt()*0.5-0.5) as usize;
+        //println!("{},{}",self.size,new_size);
+        if new_size*(new_size+1)/2 == self.size {
+            let mut conv_mat = MatrixFull::new([new_size,new_size],self.data[0].clone());
+            // now fill the upper part of the matrix
+            let mut tmp_len = 1usize;
+            let mut tmp_index = 0usize;
+            (0..new_size).into_iter().for_each(|j| {
+                if let Some(to_slice) = conv_mat.get2d_slice_mut([0,j], tmp_len) {
+                    if let Some(from_slice) = self.get1d_slice(tmp_index, tmp_len) {
+                        to_slice.iter_mut().zip(from_slice.iter()).for_each(|(a,b)| {
+                            *a = b.clone();
+                        });
+                    } else {
+                        panic!("Error in getting a slice from a matrix in MatrixUpper format");
+                    }
+                } else {
+                    panic!("Error in getting a slice from a matrix in MatrixFull format");
+                };
+                tmp_index += tmp_len;
+                tmp_len += 1;
+            });
+            // now fill the lower part of the matrix
+            (0..new_size).into_iter().for_each(|j| {
+                (j+1..new_size).into_iter().for_each(|i| {
+                    let value = conv_mat.get(&[j,i]).unwrap().clone();
+                    if let Some(new_v) = conv_mat.get_mut(&[i,j]) {
+                        *new_v = value;
+                    } else {
+                        panic!("Error in getting a slice from a matrix in MatrixFull format");
+                    };
+                });
+            });
+            return Some(conv_mat)
+        } else {
+            None
+        }
+    }
+}
 
 
 #[derive(Debug,PartialEq)]
