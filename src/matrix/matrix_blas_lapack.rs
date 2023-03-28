@@ -859,7 +859,7 @@ pub fn _dgemm_tn_v02(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>,
 
 #[inline]
 // einsum: ij, j -> ij
-pub fn _einsum_01(mat_a: &MatrixFullSlice<f64>, vec_b: &[f64]) -> MatrixFull<f64>{
+pub fn _einsum_01_rayon(mat_a: &MatrixFullSlice<f64>, vec_b: &[f64]) -> MatrixFull<f64>{
     let i_len = mat_a.size[0];
     let j_len = vec_b.len();
     if (i_len == 0 || j_len ==0) {return MatrixFull::new([i_len,j_len],0.0)};
@@ -877,7 +877,7 @@ pub fn _einsum_01(mat_a: &MatrixFullSlice<f64>, vec_b: &[f64]) -> MatrixFull<f64
 }
 #[inline]
 // einsum ip, ip -> p
-pub fn _einsum_02(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>) -> Vec<f64> {
+pub fn _einsum_02_rayon(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>) -> Vec<f64> {
     let a_y = mat_a.size.get(1).unwrap();
     let b_y = mat_b.size.get(1).unwrap();
     let a_x = mat_a.size.get(0).unwrap();
@@ -888,6 +888,45 @@ pub fn _einsum_02(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>) ->
     mat_a.par_iter_columns_full().zip(mat_b.par_iter_columns_full())
     .map(|(mat_a_p, mat_b_p)| (mat_a_p,mat_b_p))
     .zip(out_vec.par_iter_mut())
+    .for_each(|((mat_a_p,mat_b_p),out_vec_p)| {
+        *out_vec_p = mat_a_p.iter().zip(mat_b_p.iter())
+            .fold(0.0, |acc, (mat_a_ip, mat_b_ip)| 
+            {acc + mat_a_ip*mat_b_ip});
+    });
+    out_vec
+}
+
+#[inline]
+// einsum: ij, j -> ij
+pub fn _einsum_01_serial(mat_a: &MatrixFullSlice<f64>, vec_b: &[f64]) -> MatrixFull<f64>{
+    let i_len = mat_a.size[0];
+    let j_len = vec_b.len();
+    if (i_len == 0 || j_len ==0) {return MatrixFull::new([i_len,j_len],0.0)};
+    let mut om = MatrixFull::new([i_len,j_len],0.0);
+
+    om.iter_columns_full_mut().zip(mat_a.iter_columns(0..j_len).unwrap())
+    .map(|(om_j,mat_a_j)| {(om_j,mat_a_j)})
+    .zip(vec_b.iter())
+    .for_each(|((om_j,mat_a_j),vec_b_j)| {
+        om_j.iter_mut().zip(mat_a_j.iter()).for_each(|(om_ij,mat_a_ij)| {
+            *om_ij = *mat_a_ij*vec_b_j
+        });
+    });
+    om 
+}
+#[inline]
+// einsum ip, ip -> p
+pub fn _einsum_02_serial(mat_a: &MatrixFullSlice<f64>, mat_b: &MatrixFullSlice<f64>) -> Vec<f64> {
+    let a_y = mat_a.size.get(1).unwrap();
+    let b_y = mat_b.size.get(1).unwrap();
+    let a_x = mat_a.size.get(0).unwrap();
+    let b_x = mat_b.size.get(0).unwrap();
+    if (*a_x == 0 || *b_x ==0) {return vec![0.0;*a_y.min(b_y)]};
+    let mut out_vec = vec![0.0;*a_y.min(b_y)];
+
+    mat_a.iter_columns_full().zip(mat_b.iter_columns_full())
+    .map(|(mat_a_p, mat_b_p)| (mat_a_p,mat_b_p))
+    .zip(out_vec.iter_mut())
     .for_each(|((mat_a_p,mat_b_p),out_vec_p)| {
         *out_vec_p = mat_a_p.iter().zip(mat_b_p.iter())
             .fold(0.0, |acc, (mat_a_ip, mat_b_ip)| 
@@ -938,7 +977,7 @@ pub fn _einsum_03_forvec(vec_a: &Vec<f64>, vec_b: &Vec<f64>) -> MatrixFull<f64> 
 fn test_einsum_02() {
     let mut mat_a = MatrixFull::from_vec([2,2],vec![3.0,4.0,2.0,6.0]).unwrap();
     let mut mat_b = mat_a.clone();
-    let mut mat_c = _einsum_02(&mat_a.to_matrixfullslice(), &mat_b.to_matrixfullslice());
+    let mut mat_c = _einsum_02_rayon(&mat_a.to_matrixfullslice(), &mat_b.to_matrixfullslice());
     println!("{:?}", mat_c);
 
 }

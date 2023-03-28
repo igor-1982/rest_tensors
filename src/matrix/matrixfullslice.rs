@@ -135,6 +135,14 @@ impl <'a, T: Copy + Clone + Display + Send + Sync> MatrixFullSlice<'a, T> {
         self.data[start..end].iter()
     }
     #[inline]
+    pub fn iter_columns(&self, range_column: Range<usize>) -> Option<ChunksExact<T>>{
+        if let Some(n_chunk) = self.size.get(0) {
+            Some(self.data[n_chunk*range_column.start..n_chunk*range_column.end].chunks_exact(*n_chunk))
+        }  else {
+            None
+        }
+    }
+    #[inline]
     pub fn iter_columns_full(&self) -> ChunksExact<T>{
         self.data.chunks_exact(self.size[0])
     }
