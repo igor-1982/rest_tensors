@@ -5,7 +5,11 @@ use libc::{CLOSE_RANGE_CLOEXEC, SYS_userfaultfd};
 use typenum::{U2, Pow};
 use rayon::{prelude::*, collections::btree_map::IterMut, iter::Enumerate};
 use std::vec::IntoIter;
-use lapack::dgesv;
+use lapack::{dgesv,dgesvd,dgelss,dgesvj};
+use rayon::prelude::*;
+/* use lapack::{Layout::RowMajor,dgesvd};
+use blas::Layout;
+use lapack::svd::{SVDCC,SVDError}; */
 
 use crate::{matrix::{MatrixFull, BasicMatrix, MatFormat}, external_libs::matr_copy};
 use crate::index::*; 
@@ -1424,6 +1428,109 @@ impl MatrixFull<f64> {
             None
         }
     }
+
+    pub fn pseudo_inverse(&mut self) -> MatrixFull<f64> {
+        let m = self.size[0];
+        let n = self.size[1];
+        let sdim = (m < n) as usize * m as usize + (n <= m)as usize *n as usize;
+        let mut s = vec![0.0; sdim];
+        let mut superb = vec![0.0; sdim - 1];
+        let mut u = vec![0.0; m * m];
+        let mut vt = vec![0.0; n * n];
+        let flag = true; 
+        let mut info = 0;
+        //let lapack_layout = Layout::RowMajor;
+
+        unsafe{
+            dgesvd(
+                'A' as u8,
+                'A' as u8,
+                m as i32,
+                n as i32,
+                &mut self.data,
+                m as i32,
+                &mut s,
+                &mut u,
+                m as i32,
+                &mut vt,
+                n as i32,
+                &mut superb,
+                5 * sdim as i32,
+                &mut info);
+        }
+
+            // Invert singular values
+        let s = s.into_par_iter().map(|val| if val != 0.0 {
+            1.0/val} else{0.0}).collect::<Vec<_>>();
+            //Reconstruct pseudo-inverse
+        let a_inv =(0..(n * m)).into_par_iter().map(|idx|{
+            let i = idx / m;
+            let j = idx % m;
+            let mut sum = 0.0;
+            for k in 0..sdim{
+                sum += vt[i * n + k] * s[k] * u[k * m + j];
+            }
+            sum
+        }).collect::<Vec<_>>();
+        
+        MatrixFull::from_vec([self.size[0], self.size[1]], a_inv).unwrap().transpose()
+    }
+
+    pub fn pinv(&mut self, rcond: f64) -> MatrixFull<f64> {
+        let m = self.size[0];
+        let n = self.size[1];
+        let sdim = (m < n) as usize * m as usize + (n <= m)as usize *n as usize;
+        let mut s = vec![0.0; sdim];
+        let mut superb = vec![0.0; 5*sdim];
+        let mut u = vec![0.0; m * m];
+        let mut vt = vec![0.0; n * n];
+        let flag = true; 
+        let mut info = 0;
+        //let lapack_layout = Layout::RowMajor;
+
+        unsafe{
+            dgesvd(
+                'A' as u8,
+                'A' as u8,
+                m as i32,
+                n as i32,
+                &mut self.data,
+                m as i32,
+                &mut s,
+                &mut u,
+                m as i32,
+                &mut vt,
+                n as i32,
+                &mut superb,
+                5 * sdim as i32,
+                &mut info);
+        }
+
+        //println!("{:?}",&s);
+        let rcond_threshold = rcond * s[0];
+        let s_inv = s.iter().map(|&x|{
+            if x > rcond_threshold {1.0/x} else {0.0}
+        }).collect::<Vec<_>>();
+        /* let mut s_inv_diag = MatrixFull::new([s_inv.len();2], 0.0);
+        for i in 0..s_inv.len(){
+            s_inv_diag.data[i * s_inv.len() +i] = s_inv[i];
+        }; */
+        let a_inv =(0..(n * m)).into_par_iter().map(|idx|{
+            let i = idx / m;
+            let j = idx % m;
+            let mut sum = 0.0;
+            for k in 0..sdim{
+                sum += vt[i * n + k] * s_inv[k] * u[k * m + j];
+            }
+            sum
+        }).collect::<Vec<_>>();
+        
+        MatrixFull::from_vec([self.size[0], self.size[1]], a_inv).unwrap().transpose()
+
+
+    }
+
+
     pub fn lapack_power(&mut self,p:f64, threshold: f64) -> Option<MatrixFull<f64>> {
         if let Some(tmp_mat) = self.to_matrixfullslicemut().lapack_power(p,threshold) {
             Some(tmp_mat)
