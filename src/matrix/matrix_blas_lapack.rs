@@ -301,7 +301,8 @@ where T: BasicMatrix<'a, f64>
             dgetri(n,&mut a,n, &mut ipiv, &mut work, lwork, &mut info2);
         }
         if info1!=0 || info2!=0 {
-            panic!("Error happens when inversing the matrix. dgetrf info: {}; dgetri info: {}", info1, info2);
+            println!("Error happens when inversing the matrix. dgetrf info: {}; dgetri info: {}", info1, info2);
+            return(None)
         }
         let inv_mat = MatrixFull::from_vec([ndim,ndim], a).unwrap();
         Some(inv_mat)
