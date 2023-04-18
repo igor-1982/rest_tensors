@@ -105,7 +105,7 @@ pub fn davidson_solve(mut a_x: Box<dyn FnMut(&Vec<f64>) -> Vec<f64> + '_>,
             println!("ov {:?} xt.len {:?}", x0len, xtlen);
             //println!("{:?}", xt);
             if xtlen == 0 {
-                panic!("No linear independent basis found");
+                panic!("No more linear independent basis found");
             }
             max_dx_last = 1e9;
             //heff = MatrixFull::new([space, space], 0.0f64);
@@ -159,11 +159,12 @@ pub fn davidson_solve(mut a_x: Box<dyn FnMut(&Vec<f64>) -> Vec<f64> + '_>,
         }
         (elast, convlast) = _sort_elast(elast, convlast, &mut vlast, &mut v, fresh_start);
         xt = vec![];
-        let mut dx_norm:Vec<f64> = vec![];
-        let mut de:Vec<f64> = vec![];
+        let mut dx_norm = vec![0.0f64;nroots];
+        let mut de = vec![0.0f64;nroots];
         for k in 0..nroots {
-            let de_k = e[k] - elast[k];
-            de.push(de_k);
+            //let de_k = e[k] - elast[k];
+            //de.push(de_k);
+            de[k] = e[k] - elast[k];
             let mut xt_k = ax0[k].clone();
             xt_k.iter_mut().zip(x0[k].iter()).for_each(|(xt,x0)| *xt -= e[k]* *x0);
             xt.push(xt_k.clone());
@@ -172,12 +173,12 @@ pub fn davidson_solve(mut a_x: Box<dyn FnMut(&Vec<f64>) -> Vec<f64> + '_>,
             //println!("{:?} {:?} {:?} ", ax0[k], e[k], x0);
             //println!("{:?}", dx_k_norm);
             dx_norm.push(dx_k_norm);
-            let conv_k = de_k.abs() < tol && dx_k_norm < tol.sqrt();
+            let conv_k = de[k].abs() < tol && dx_k_norm < tol.sqrt();
             conv[k] = conv_k;
             //println!("{:?} {:?} {:?} {:?} {:?}", conv, de_k, dx_k_norm, de_k.abs() < tol, dx_k_norm < tol.sqrt());
             if conv[k] && !convlast[k] {
                 println!(">   root {:?} converged  |r|= {:?}  e= {:?}  de= {:?}",
-                              k, dx_k_norm, e[k], de_k);
+                              k, dx_k_norm, e[k], de[k]);
             }
         }
         //println!("    xt {:?} ", xt);
@@ -190,8 +191,8 @@ pub fn davidson_solve(mut a_x: Box<dyn FnMut(&Vec<f64>) -> Vec<f64> + '_>,
             break;
         } else {
             if max_dx_norm > 1.0 && max_dx_norm/max_dx_last > 3.0 && space > nroots+2 {
-                println!(">>> davidson step {:?}  |r|= {:?}  e= {:?}  de= {:?}  lindep= {:?}",
-                      icyc,  max_dx_norm, e, de, norm_min);
+                println!(">>> davidson step {:?}  |r|= {:?}  e= {:?}  de= {:?} ",
+                      icyc,  max_dx_norm, e, de);
                 println!("Large |r| detected, restore previous x0");
                 x0 = _gen_x0(&mut vlast, &mut xs);
                 fresh_start = true;
@@ -222,21 +223,8 @@ pub fn davidson_solve(mut a_x: Box<dyn FnMut(&Vec<f64>) -> Vec<f64> + '_>,
                 xt[k] = xtk_na.data.into();
             }
         }
-        norm_min = 1.0;
-        //println!("xt {:?} ", xt);
-        let mut xt_new:Vec<Vec<f64>> = vec![];
-        for k in 0..xt.len() {
-            let xt_k_na = DVector::from(xt[k].clone());
-            let norm = xt_k_na.norm();
-            if norm.powf(2.0) > lindep {
-                xt[k].iter_mut().for_each(|x| *x /= norm);
-                xt_new.push(xt[k].clone());
-                norm_min = norm_min.min(norm);
-            } else {
-                println!("drop eigvec {:?} with norm {:?}", k, dx_norm[k]);
-            }
-        }
-        xt = xt_new.clone();
+        
+        (xt, norm_min) = _normalize_xt_(xt, lindep);
         //println!("    xt {:?} ", xt);
         //println!("    xs {:?} ", xs);
         println!(">>> davidson step {:?}  |r|= {:?}  e= {:?}  de= {:?}  lindep= {:?}",
@@ -258,6 +246,25 @@ pub fn davidson_solve(mut a_x: Box<dyn FnMut(&Vec<f64>) -> Vec<f64> + '_>,
         println!("Not enough eigvec");
     }
     (conv, e, x0)
+}
+
+pub fn _normalize_xt_(xt: Vec<Vec<f64>>, lindep:f64) -> (Vec<Vec<f64>>, f64) {
+    let mut norm_min:f64 = 1.0;
+    //println!("xt {:?} ", xt);
+    let mut xt_new:Vec<Vec<f64>> = vec![];
+    for k in 0..xt.len() {
+        let xt_k_na = DVector::from(xt[k].clone());
+        let norm = xt_k_na.norm();
+        if norm.powf(2.0) > lindep {
+            let mut xt_k = xt[k].clone();
+            xt_k.iter_mut().for_each(|x| *x /= norm);
+            xt_new.push(xt_k);
+            norm_min = norm_min.min(norm);
+        } else {
+            println!("drop eigvec {:?} with norm {:?}", k, norm);
+        }
+    }
+    (xt_new, norm_min)
 }
 
 pub fn _qr(x:&mut Vec<Vec<f64>>, lindep:f64) -> (Vec<Vec<f64>>, MatrixFull<f64>)
@@ -395,7 +402,7 @@ fn _sort_elast(elast:Vec<f64>, convlast:Vec<bool>,
         ovlp.iter_columns_full().for_each(|x| { 
                                           let x_na = DVector::from(x.to_vec());
                                           idx.push(x_na.imax() ); } );
-
+        // todo: log for eigenstate flip
         //println!("{:?}", idx);
         let mut new_elast:Vec<f64> = vec![];
         let mut new_convlast:Vec<bool> = vec![];
