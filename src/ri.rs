@@ -261,8 +261,8 @@ impl RIFull<f64> {
         Ok(rimo)
     }
     #[inline]
+    /// AO(num_basis, num_basis, num_auxbas) -> MO(num_auxbas, num_state, num_state)
     pub fn ao2mo_v02(&self, eigenvector: &MatrixFull<f64>) -> anyhow::Result<RIFull<f64>> {
-        /// AO(num_basis, num_basis, num_auxbas) -> MO(num_auxbas, num_state, num_state)
         let num_basis = eigenvector.size.get(0).unwrap().clone();
         let num_states = eigenvector.size.get(1).unwrap().clone();
         let num_auxbas = self.size.get(2).unwrap().clone();

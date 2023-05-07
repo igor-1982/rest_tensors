@@ -1,6 +1,6 @@
 use std::{iter::Flatten, vec::IntoIter, ops::Range};
 
-use blas::{dgemm,dtrmm};
+use blas::{dgemm,dtrmm, dsymm};
 use lapack::{dsyev, dspgvx, dspevx,dgetrf,dgetri,dlamch, dsyevx, dpotrf, dtrtri, dpotri};
 use nalgebra::matrix;
 use rayon::prelude::*;
@@ -100,7 +100,7 @@ where T: BasicMatrix<'a, f64>,
         ('N','T') => {
             sub_a_dim.1.len() == sub_b_dim.1.len() && sub_a_dim.0.len() == sub_c_dim.0.len() && sub_b_dim.0.len() == sub_c_dim.1.len()
         },
-        ('T','T') => {
+        ('T','T') =>{
             sub_a_dim.0.len() == sub_b_dim.1.len() && sub_a_dim.1.len() == sub_c_dim.0.len() && sub_b_dim.0.len() == sub_c_dim.1.len()
         },
         _ => {false}
@@ -114,7 +114,7 @@ where T: BasicMatrix<'a, f64>,
     }
     let check_within = sub_a_dim.0.end <= matr_a.size()[0] && sub_a_dim.1.end <= matr_a.size()[1]
                           && sub_b_dim.0.end <= matr_b.size()[0] && sub_b_dim.1.end <= matr_b.size()[1]
-                          && sub_c_dim.0.end <= matr_c.size()[0] && sub_c_dim.1.end <= matr_b.size()[1];
+                          && sub_c_dim.0.end <= matr_c.size()[0] && sub_c_dim.1.end <= matr_c.size()[1];
     // check if the sub matrix block is within the matrix
     if ! check_within {
         panic!("ERROR:: Matr_A.size: {:?}, SubMatr_A: ({:?},{:?}). Matr_B.size: {:?}, SubMatr_B: ({:?},{:?}); Matr_C.size: {:?}, SubMatr_C: ({:?},{:?});  ",
@@ -206,6 +206,36 @@ where T: BasicMatrix<'a, f64>
     } else {
         panic!("Error in _dsyev: the algorithm is only vaild for real symmetric matrices")
     }
+}
+/// # DSYMM performs one of the matrix-matrix operations  
+///    C := alpha*A*B + beta*C,  
+/// or  
+///    C := alpha*B*A + beta*C,  
+/// where alpha and beta are scalars, A is a symmetric matrix and B and C are m by n matrices
+pub fn _dsymm<'a, T, Q, P>  (
+    matr_a: &T, matr_b: &Q, matr_c: &mut P,
+    side: char, uplo: char,
+    alpha: f64, beta: f64
+)
+where T: BasicMatrix<'a, f64>,
+      Q: BasicMatrix<'a, f64>, 
+      P: BasicMatrix<'a, f64>
+{
+    //let side0 = side.to_lowercase();
+    //let uplo0 = uplo.to_lowercase();
+    let m = matr_c.size()[0] as i32;
+    let n = matr_c.size()[1] as i32;
+
+    let lda = if side.to_string().to_lowercase().eq("l") {m} else {n};
+    let ldb = m;
+    let ldc = m;
+    unsafe {
+        dsymm(side as u8, uplo as u8, m, n, alpha, 
+            matr_a.data_ref().unwrap(), lda, 
+            matr_b.data_ref().unwrap(), ldb, beta, 
+            matr_c.data_ref_mut().unwrap(), ldc)
+    }
+
 }
 
 /// # computes the Cholesky factorization of a real symmetric positive definite matrix A  
@@ -1038,4 +1068,24 @@ fn test_sqrt_inverse() {
     inverse_02.formated_output(3,"full");
 
 
+}
+
+#[test]
+fn test_symm_dgemm() {
+    let mut mat_a = MatrixFull::from_vec([3,3], vec![
+         4.0,  12.0, -16.0,
+        12.0,  37.0, -43.0,
+       -16.0, -43.0,  98.0
+    ]).unwrap();
+    let mut mat_b = MatrixFull::from_vec([3,3], vec![
+         4.0,  10.0, -10.0,
+        10.0,  37.0, -23.0,
+       -10.0, -23.0,  98.0
+    ]).unwrap();
+    let mut mat_c = MatrixFull::new([3,3],0.0);
+    _dgemm(&mat_a, (0..3,0..3), 'N', 
+        &mat_b, (0..3,0..3), 'N', 
+        &mut mat_c, (0..3,0..3), 1.0, 0.0);
+    mat_c.formated_output(3, "full");
+    println!("{},{},{}",(0..20).start, (0..20).end, (0..20).len());
 }
