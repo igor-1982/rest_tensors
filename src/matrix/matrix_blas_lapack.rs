@@ -608,16 +608,22 @@ impl <'a> MatrixFullSliceMut<'a, f64> {
             let (mut eigenvector, mut eigenvalues, mut n) = om.to_matrixfullslicemut().lapack_dsyev().unwrap();
             // now we get the eigenvectors with the eigenvalues from large to small
             let (mut n_nonsigular, mut tmpv) = (0usize,0.0);
-            eigenvalues.iter_mut().enumerate().for_each(|(i,value)| {
+            eigenvalues.iter_mut().for_each(|value| {
                 *value = *value*(-1.0);
                 //if *value >= threshold && *value <= tmpv {
-                if *value >= threshold {n_nonsigular +=1};
+                if *value >= threshold {
+                    n_nonsigular +=1;
+                };
             });
 
-            if ! n as usize == self.size[0] {
-                panic!("Found unphysical eigenvalues");
-            }
+            //println!("{:?}", &eigenvalues);
             //println!("n_nonsigular: {}", n_nonsigular);
+
+            if n as usize != self.size[0] {
+                panic!("Found unphysical eigenvalues");
+            } else if n_nonsigular != self.size[0] {
+                println!("n_nonsigular: {}", n_nonsigular);
+            }
 
             //(0..n_nonsigular).into_iter().for_each(|i| {
             //    let ev_sqrt = eigenvalues[i].sqrt();
@@ -627,12 +633,16 @@ impl <'a> MatrixFullSliceMut<'a, f64> {
             //});
 
             &eigenvector.data.par_chunks_exact_mut(self.size[0]).enumerate()
-                .filter(|(i,value)| i<&n_nonsigular)
+                //.filter(|(i,value)| i<&n_nonsigular)
                 .for_each(|(i,value)| {
-                if let Some(ev) = eigenvalues.get(i) {
-                    let ev_sqrt = ev.sqrt();
-                    value.iter_mut().for_each(|v| {*v = *v*ev_sqrt.powf(p)});
-                }
+                    if i<n_nonsigular {
+                        if let Some(ev) = eigenvalues.get(i) {
+                            let ev_sqrt = ev.sqrt();
+                            value.iter_mut().for_each(|v| {*v = *v*ev_sqrt.powf(p)});
+                        }
+                    } else {
+                        value.iter_mut().for_each(|v| {*v = 0.0f64});
+                    }
             });
 
             //let eigenvector_b = eigenvector.clone();
