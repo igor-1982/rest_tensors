@@ -12,6 +12,21 @@ use crate::tensor_basic_operation::*;
 use crate::matrix::matrixfull::*;
 use crate::matrix::matrixfullslice::*;
 
+trait MatrixUpperIterator: Iterator {
+    type Item;
+    fn step_by_increase(self, step:usize, increase: usize) -> IncreaseStepBy<Self>
+    where Self:Sized {
+        IncreaseStepBy::new(self, step, increase)
+    }
+}
+
+impl<'a,T> MatrixUpperIterator for std::slice::Iter<'a,T> {
+    type Item = T;
+}
+impl<'a,T> MatrixUpperIterator for std::slice::IterMut<'a,T> {
+    type Item = T;
+}
+
 
 #[derive(Clone,Debug,PartialEq)]
 pub struct MatrixUpper<T> {
@@ -42,6 +57,9 @@ impl <T> MatrixUpper<T> {
             }
 
         }
+    }
+    pub fn iter_diagonal(&self) -> IncreaseStepBy<std::slice::Iter<T>> {
+        self.data.iter().step_by_increase(1,1)
     }
     #[inline]
     pub fn to_slice_mut(&mut self) -> &mut [T] {
@@ -296,6 +314,29 @@ impl<'a, T> MatrixUpperSlice<'a, T> {
         } else {
             None
         }
+    }
+    pub fn get_diagonal_terms(&self) -> Option<Vec<&T>> {
+        let tmp_len = self.size as f64;
+        let new_size = ((1.0+8.0*tmp_len).sqrt()*0.5-0.5) as usize;
+        if new_size ==0 {
+            return None
+        } else if new_size*(new_size+1)/2 == self.size {
+            let mut tmp_v = vec![&self.data[0]; new_size];
+            (0..new_size).for_each(|i| {
+                if let Some(to_v) =tmp_v.get_mut(i) {
+                    if let Some(fm_v) = self.data.get(i*(i+1)/2+i) {
+                        *to_v = fm_v
+                    }
+                }
+            });
+            return Some(tmp_v)
+        } else {
+            return None
+        }
+
+    }
+    pub fn iter_diagonal(&self) -> IncreaseStepBy<std::slice::Iter<T>> {
+        self.data.iter().step_by_increase(1,1)
     }
 }
 
