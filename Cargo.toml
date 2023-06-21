@@ -37,4 +37,4 @@ rayon = "1.5.1"
 itertools = "0.10.3"
 anyhow = "1"
 nalgebra = "0.31.1"
-
+regex = "0.1.41"

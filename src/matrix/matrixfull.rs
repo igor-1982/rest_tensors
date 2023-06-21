@@ -5,6 +5,7 @@ use libc::{CLOSE_RANGE_CLOEXEC, SYS_userfaultfd};
 use typenum::{U2, Pow};
 use rayon::{prelude::*, collections::btree_map::IterMut, iter::Enumerate};
 use std::vec::IntoIter;
+use regex::Regex;
 use lapack::{dgesv,dgesvd,dgelss,dgesvj};
 use rayon::prelude::*;
 /* use lapack::{Layout::RowMajor,dgesvd};
@@ -650,7 +651,7 @@ impl <T: Copy + Clone> MatrixFull<T> {
         });
         trans_mat
     }
-    /// # Collect the reference of diagonal terms as a vector
+    /// Collect the reference of diagonal terms as a vector
     #[inline]
     pub fn get_diagonal_terms<'a>(&'a self) -> Option<Vec<&T>> {
         //let tmp_len = self.size;
@@ -1530,9 +1531,9 @@ impl MatrixFull<f64> {
             let mut tmp_s:String = format!("{:5}","");
             for i in 0..t_len {
                 if tmp_s.len()==5 {
-                    tmp_s = format!("{} {:12}",tmp_s,i+i_block*n_len);
+                    tmp_s = format!("{} {:16}",tmp_s,i+i_block*n_len);
                 } else {
-                    tmp_s = format!("{},{:12}",tmp_s,i+i_block*n_len);
+                    tmp_s = format!("{},{:16}",tmp_s,i+i_block*n_len);
                 }
             }
             println!("{}",tmp_s);
@@ -1545,31 +1546,37 @@ impl MatrixFull<f64> {
                         MatFormat::Full => {
                             let tmp_f = self.get(&[i,j]).unwrap();
                             if tmp_s.len()==5 {
-                                tmp_s = format!("{} {:+.6e}",tmp_s,tmp_f);
+                                let tmp_fform = format!("{:+16.8e}", tmp_f);
+                                tmp_s = format!("{} {}",tmp_s,c2f(&tmp_fform));
                             } else {
-                                tmp_s = format!("{},{:+.6e}",tmp_s,tmp_f);
+                                let tmp_fform = format!("{:+16.8e}", tmp_f);
+                                tmp_s = format!("{},{}",tmp_s,c2f(&tmp_fform));
                             }
                         },
                         MatFormat::Upper => {
                             if i<=j {
                                 let tmp_f = self.get(&[i,j]).unwrap();
                                 if turn_off_comma {
-                                    tmp_s = format!("{} {:+.6e}",tmp_s,tmp_f);
+                                    let tmp_fform = format!("{:+16.8e}", tmp_f);
+                                    tmp_s = format!("{},{}",tmp_s,c2f(&tmp_fform));
                                     turn_off_comma = false;
                                 } else {
-                                    tmp_s = format!("{},{:+.6e}",tmp_s,tmp_f);
+                                    let tmp_fform = format!("{:+16.8e}", tmp_f);
+                                    tmp_s = format!("{},{}",tmp_s,c2f(&tmp_fform));
                                 }
                             } else {
-                                tmp_s = format!("{} {:12}",tmp_s,String::from(" "));
+                                tmp_s = format!("{} {:16}",tmp_s,String::from(" "));
                             }
                         },
                         MatFormat::Lower => {
                             if i>=j {
                                 let tmp_f = self.get(&[i,j]).unwrap();
                                 if tmp_s.len()==5 {
-                                    tmp_s = format!("{} {:+.6e}",tmp_s,tmp_f);
+                                    let tmp_fform = format!("{:+16.8e}", tmp_f);
+                                    tmp_s = format!("{},{}",tmp_s,c2f(&tmp_fform));
                                 } else {
-                                    tmp_s = format!("{},{:+.6e}",tmp_s,tmp_f);
+                                    let tmp_fform = format!("{:+16.8e}", tmp_f);
+                                    tmp_s = format!("{},{}",tmp_s,c2f(&tmp_fform));
                                 }
                             }
                         }
@@ -1581,6 +1588,94 @@ impl MatrixFull<f64> {
         });
     }
 
+    pub fn formated_output_e_with_threshold(&self, n_len: usize, mat_form: &str, threshold: f64) {
+        let mat_format = if mat_form.to_lowercase()==String::from("full") {MatFormat::Full
+        } else if mat_form.to_lowercase()==String::from("upper") {MatFormat::Upper
+        } else if mat_form.to_lowercase()==String::from("lower") {MatFormat::Lower
+        } else {
+            panic!("Error in determing the layout format of the matrix: {}", mat_form)
+        };
+        let n_row = self.size[0];
+        let n_column = self.size[1];
+        //let n_row = self.size[0];
+        //let n_column = self.size[1];
+        let n_block = if n_column%n_len==0 {n_column/n_len} else {n_column/n_len+1};
+        let mut index:usize = 0;
+        //println!("{}",n_block);
+        (0..n_block).into_iter().for_each(|i_block| {
+            let t_len = if (i_block+1)*n_len<=n_column {n_len} else {n_column%n_len};
+            //println!("{},{}",i_block,t_len);
+            let mut tmp_s:String = format!("{:5}","");
+            for i in 0..t_len {
+                if tmp_s.len()==5 {
+                    tmp_s = format!("{} {:16}",tmp_s,i+i_block*n_len);
+                } else {
+                    tmp_s = format!("{},{:16}",tmp_s,i+i_block*n_len);
+                }
+            }
+            println!("{}",tmp_s);
+            for i in 0..n_row as usize {
+                let mut tmp_s = format!("{:5}",i);
+                let j_start = i_block*n_len;
+                let mut turn_off_comma = true;
+                for j in (j_start..j_start+t_len) {
+                    match &mat_format {
+                        MatFormat::Full => {
+                            let tmp_f = if self.get(&[i,j]).unwrap().abs() > threshold {
+                                self.get(&[i,j]).unwrap()
+                            } else{
+                                &0.0_f64
+                            };
+                            if tmp_s.len()==5 {
+                                let tmp_fform = format!("{:+16.8e}", tmp_f);
+                                tmp_s = format!("{} {}",tmp_s,c2f(&tmp_fform));
+                            } else {
+                                let tmp_fform = format!("{:+16.8e}", tmp_f);
+                                tmp_s = format!("{},{}",tmp_s,c2f(&tmp_fform));
+                            }
+                        },
+                        MatFormat::Upper => {
+                            if i<=j {
+                                let tmp_f = if self.get(&[i,j]).unwrap().abs() > threshold {
+                                    self.get(&[i,j]).unwrap()
+                                } else{
+                                    &0.0_f64
+                                };
+                                if turn_off_comma {
+                                    let tmp_fform = format!("{:+16.8e}", tmp_f);
+                                    tmp_s = format!("{},{}",tmp_s,c2f(&tmp_fform));
+                                    turn_off_comma = false;
+                                } else {
+                                    let tmp_fform = format!("{:+16.8e}", tmp_f);
+                                    tmp_s = format!("{},{}",tmp_s,c2f(&tmp_fform));
+                                }
+                            } else {
+                                tmp_s = format!("{} {:16}",tmp_s,String::from(" "));
+                            }
+                        },
+                        MatFormat::Lower => {
+                            if i>=j {
+                                let tmp_f = if self.get(&[i,j]).unwrap().abs() > threshold {
+                                    self.get(&[i,j]).unwrap()
+                                } else{
+                                    &0.0_f64
+                                };
+                                if tmp_s.len()==5 {
+                                    let tmp_fform = format!("{:+16.8e}", tmp_f);
+                                    tmp_s = format!("{},{}",tmp_s,c2f(&tmp_fform));
+                                } else {
+                                    let tmp_fform = format!("{:+16.8e}", tmp_f);
+                                    tmp_s = format!("{},{}",tmp_s,c2f(&tmp_fform));
+                                }
+                            }
+                        }
+                    };
+                    //println!("{},{}",tmp_i,j);
+                };
+                if tmp_s.len()>5 {println!("{}",tmp_s)};
+            }
+        });
+    }
     pub fn formated_output(&self, n_len: usize, mat_form: &str) {
         let mat_format = if mat_form.to_lowercase()==String::from("full") {MatFormat::Full
         } else if mat_form.to_lowercase()==String::from("upper") {MatFormat::Upper
@@ -1652,4 +1747,32 @@ impl MatrixFull<f64> {
         });
     }
     
+}
+
+
+
+fn convert_scientific_notation_to_fortran_format(n: &String) -> String {
+    let re = Regex::new(r"(?P<num> *[-+]?\d.\d*)[E|e](?P<exp>-?\d{1,2})").unwrap();
+    let o_len = n.len();
+
+    if let Some(cap) = re.captures(n) {
+        let main_part = cap["num"].to_string();
+        let exp_part = cap["exp"].to_string();
+        let exp: i32 = exp_part.parse().unwrap();
+        let out_str = if exp>=0 {
+            format!("{}E+{:0>2}",main_part,exp)
+        } else {
+
+            format!("{}E-{:0>2}",main_part,exp.abs())
+        };
+        let n_len = out_str.len();
+        return out_str[n_len-o_len..n_len].to_string()
+    } else {
+        panic!("Error: the input string is not a standard scientific notation")
+    }
+
+}
+
+fn c2f(n: &String) -> String {
+    convert_scientific_notation_to_fortran_format(n)
 }
