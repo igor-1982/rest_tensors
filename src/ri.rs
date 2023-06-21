@@ -1,4 +1,5 @@
 use std::ffi::{c_double, c_int};
+use std::fmt::Debug;
 use std::iter::Flatten;
 use std::slice::{ChunksExactMut,ChunksExact};
 use std::vec::IntoIter;
@@ -6,7 +7,7 @@ use std::{fmt::Display, collections::binary_heap::Iter, iter::Filter, convert};
 use std::ops::{Add, Sub, Mul, AddAssign, SubAssign, Index, Range, MulAssign, DivAssign};
 use typenum::{U2, Pow};
 use rayon::{prelude::*,slice};
-use itertools::iproduct;
+use itertools::{iproduct, Itertools};
 
 
 use crate::external_libs::{ri_ao2mo_f, ri_copy_from_ri, ri_copy_from_matr};
@@ -221,6 +222,130 @@ impl <T: Clone + Display + Send + Sync> RIFull<T> {
             check && size.0==size.1
         })
     }
+    #[inline]
+    /// [i,j,k] -> [j,i,k]
+    pub fn transpose_jik(&self) -> RIFull<T> 
+    where T:Clone+Copy
+    {              
+        let i = self.size[0];
+        let j = self.size[1];
+        let k = self.size[2];
+        let data_new: Vec<T> = self.data.chunks_exact(i*j)
+                    .map(|v| {let mat = MatrixFull::from_vec([i,j], v.to_vec()).unwrap().transpose();
+                                     mat.data}).flatten().collect();
+        let ri = RIFull::from_vec([j,i,k], data_new).unwrap();
+        ri
+    }
+    #[inline]
+    /// [i,j,k] -> [j,k,i]
+    pub fn transpose_jki(&self) -> RIFull<T> 
+    where T:Clone+Copy
+    {              
+        let i = self.size[0];
+        let j = self.size[1];
+        let k = self.size[2];
+        let mut data = vec![];
+        for ii in 0..i {
+            let mut tmp: Vec<T> = self.data.iter().enumerate()
+                .filter(|(idx,v)| ((*idx as isize - ii as isize).abs() as usize )%i == 0 )
+                .map(|(idx, v)| *v).collect();
+            data.append(&mut tmp);
+        }
+        let ri = RIFull::from_vec([j,k,i], data).unwrap();
+        ri
+    }
+    #[inline]
+    /// [i,j,k] -> [k,j,i]
+    pub fn transpose_kji(&self) -> RIFull<T> 
+    where T:Clone+Copy
+    {              
+        let i = self.size[0];
+        let j = self.size[1];
+        let k = self.size[2];
+        let mut data = vec![];
+        let ri_new = self.transpose_jik();
+        for ij in 0..i*j {
+            let mut tmp: Vec<T> = ri_new.data.iter().enumerate()
+                .filter(|(idx,v)| ((*idx as isize - ij as isize).abs() as usize )%(i*j) == 0 ).map(|(idx, v)| *v).collect();
+            data.append(&mut tmp);
+        }
+
+        let ri = RIFull::from_vec([k,j,i], data).unwrap();
+        ri
+    }
+    #[inline]
+    /// [i,j,k] -> [i,k,j]
+    pub fn transpose_ikj(&self) -> RIFull<T> 
+    where T:Clone+Copy+Debug
+    {              
+        let i = self.size[0];
+        let j = self.size[1];
+        let k = self.size[2];
+        let mut data = vec![];
+        for jj in 0..j {
+            let data_new: Vec<T> = self.data.chunks_exact(i*j)
+            .map(|v| {let mat = MatrixFull::from_vec([i,j], v.to_vec()).unwrap();
+                            mat.iter_column(jj).map(|v| *v).collect_vec()}).flatten().collect();
+            data.push(data_new)
+        }
+        let data_new = data.into_iter().flatten().collect();
+        let ri = RIFull::from_vec([i,k,j], data_new).unwrap();
+        ri
+    }
+
+    /// Reduce [nao,nao,naux] RIFull to [nao*(nao+1)/2, naux] MatrixFull According to symmetry
+    pub fn rifull_to_matfull_symm(&self) -> MatrixFull<T> 
+    where T:Clone+Copy {
+        let nao = self.size[0];
+        let naux = self.size[2];
+        //let mut result = MatrixFull::new([nao*(nao+1)/2, naux], 0.0_f64);
+        let mut chunk_by_aux = self.data.chunks_exact(nao*nao);
+        let mut data: Vec<T> = chunk_by_aux.into_iter().map(|chunk| richunk_reduce_by_symm(chunk, nao)).flatten().collect();
+        let result = MatrixFull::from_vec([nao*(nao+1)/2, naux], data).unwrap();
+        result
+    }   
+
+    /// Reduce [i,j,k] RIFull to [i*j, k] MatrixFull
+    pub fn rifull_to_matfull_ij_k(&self) -> MatrixFull<T> 
+    where T:Clone+Copy {
+        let i = self.size[0];
+        let j = self.size[1];
+        let k = self.size[2];
+        let result = MatrixFull::from_vec([i*j, k], self.data.clone()).unwrap();
+        result
+    }   
+
+    /// [i,j,k] -> [i,j*k]
+    pub fn rifull_to_matfull_i_jk(&self) -> MatrixFull<T> 
+    where T:Clone+Copy {
+        let rifull_t = self.transpose_jki(); //[j,k,i]
+        let matfull = rifull_t.rifull_to_matfull_ij_k().transpose(); //[i,j*k]
+        matfull
+    }
+    
+     /// [i,j,k] -> [i,j*k]
+    pub fn rifull_to_matfull_i_jk_v2(&self) -> MatrixFull<T> 
+    where T:Clone+Copy {
+        let i = self.size[0];
+        let j = self.size[1];
+        let k = self.size[2];
+        let result = MatrixFull::from_vec([i, j*k], self.data.clone()).unwrap();
+        result
+    }
+
+}
+
+fn richunk_reduce_by_symm<T>(chunk: &[T], nao: usize) -> Vec<T> 
+where T: Clone + Copy {
+    //let mut result = vec![0.0_f64; nao*(nao+1)/2];
+    let mut result = vec![];
+    let mut chunk_by_nao = chunk.chunks_exact(nao);
+    for i in 0..nao {
+        let chunk = chunk_by_nao.next().unwrap();
+        let slice = &chunk[0..(i+1)];
+        result.append(&mut slice.to_vec());
+    }
+    result
 }
 
 impl RIFull<f64> {
@@ -316,3 +441,44 @@ impl RIFull<f64> {
     }
 }
 
+#[test]
+fn test_transpose_ijk(){
+    let data = (0..12).collect_vec();
+    let ri = RIFull::from_vec([3,2,2], data).unwrap();
+    println!("ri = {:?}", ri);
+    let ri_t = ri.transpose_jki();
+    let ri_t2 = ri.transpose_jik();
+    let ri_t3 = ri.transpose_kji();
+    let ri_t4 = ri.transpose_ikj();
+    println!("ri_t = {:?}", ri_t);
+    println!("ri_t2 = {:?}", ri_t2);
+    println!("ri_t3 = {:?}", ri_t3);
+    println!("ri_t4 = {:?}", ri_t4);
+}
+
+#[test]
+fn test_transpose(){
+    let data_a = (0..54).map(|v| v as f64).collect_vec();
+    let data_b = (0..18).map(|v| v as f64).collect_vec();
+    let a = RIFull::from_vec([9,3,2], data_a).unwrap();
+    println!("a = {:?}", a);
+    let b = RIFull::from_vec([3,2,3], data_b).unwrap();
+    println!("b = {:?}", b);
+    let data_c = (0..54).map(|v| v as f64).collect_vec();
+    let data_d = (0..18).map(|v| v as f64).collect_vec();
+    let c = MatrixFull::from_vec([9,6], data_c).unwrap().transpose();
+    println!("c = {:?}", c);
+    let d = MatrixFull::from_vec([6,3], data_d).unwrap().transpose();
+    println!("d = {:?}", d);
+
+    let a_mat = a.rifull_to_matfull_i_jk().transpose();
+    let b_mat = b.rifull_to_matfull_ij_k().transpose();
+    let x = _dgemm_nn( &b_mat.to_matrixfullslice(),&a_mat.to_matrixfullslice());
+    let y = _dgemm_nn(&d.to_matrixfullslice(),&c.to_matrixfullslice());
+    println!("x = {:?}", x);
+    println!("y = {:?}", y);
+
+
+
+
+}

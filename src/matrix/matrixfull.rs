@@ -651,7 +651,7 @@ impl <T: Copy + Clone> MatrixFull<T> {
         });
         trans_mat
     }
-    /// # Collect the reference of diagonal terms as a vector
+    /// Collect the reference of diagonal terms as a vector
     #[inline]
     pub fn get_diagonal_terms<'a>(&'a self) -> Option<Vec<&T>> {
         //let tmp_len = self.size;
