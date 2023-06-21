@@ -1,7 +1,7 @@
 use std::{iter::Flatten, vec::IntoIter, ops::Range};
 
 use blas::{dgemm,dtrmm, dsymm};
-use lapack::{dsyev, dspgvx, dspevx,dgetrf,dgetri,dlamch, dsyevx, dpotrf, dtrtri, dpotri};
+use lapack::{dsyev, dspgvx, dspevx,dgetrf,dgetri,dlamch, dsyevx, dpotrf, dtrtri, dpotri, dgeev};
 use nalgebra::matrix;
 use rayon::prelude::*;
 
@@ -137,6 +137,81 @@ where T: BasicMatrix<'a, f64>,
     }
 
 }
+
+pub fn _dgemm_full<'a, T,Q,P>(
+    matr_a: &T, opa: char, 
+    matr_b: &Q, opb: char, 
+    matr_c: &mut P, alpha: f64, beta: f64,
+) 
+where T: BasicMatrix<'a, f64>,
+      Q: BasicMatrix<'a, f64>, 
+      P: BasicMatrix<'a, f64>
+{
+    let size_a = matr_a.size().to_vec();
+    let sub_a_dim = (0..size_a[0], 0..size_a[1]);
+    let size_b = matr_b.size().to_vec();
+    let sub_b_dim = (0..size_b[0], 0..size_b[1]);
+    let size_c = matr_c.size().to_vec();
+    let sub_c_dim = (0..size_c[0], 0..size_c[1]);
+    let check_shape = match (&opa, &opb) {
+        ('N','N') => {
+            sub_a_dim.1.len() == sub_b_dim.0.len() && sub_a_dim.0.len() == sub_c_dim.0.len() && sub_b_dim.1.len() == sub_c_dim.1.len()
+        },
+        ('T','N') => {
+            sub_a_dim.0.len() == sub_b_dim.0.len() && sub_a_dim.1.len() == sub_c_dim.0.len() && sub_b_dim.1.len() == sub_c_dim.1.len()
+        },
+        ('N','T') => {
+            sub_a_dim.1.len() == sub_b_dim.1.len() && sub_a_dim.0.len() == sub_c_dim.0.len() && sub_b_dim.0.len() == sub_c_dim.1.len()
+        },
+        ('T','T') =>{
+            sub_a_dim.0.len() == sub_b_dim.1.len() && sub_a_dim.1.len() == sub_c_dim.0.len() && sub_b_dim.0.len() == sub_c_dim.1.len()
+        },
+        _ => {false}
+    };
+    let m = if opa=='N' {size_a[0]} else {size_a[1]};
+    let k = if opa=='N' {size_a[1]} else {size_a[0]};
+    let n = if opb=='N' {size_b[1]} else {size_b[0]};
+    let l = if opa=='N' {size_b[0]} else {size_a[1]};
+    let lda = if opa=='N' {m.max(1)} else {k.max(1)};
+    let ldb = if opb=='N' {k.max(1)} else {n.max(1)};
+    let ldc = m.max(1);
+    // check the shapes of the input matrices for the dgemm operation
+    if ! check_shape {panic!("ERROR:: Matr_A[{:},{:},{:}] * Matr_B[{:},{:},{:}] -> Matr_C[{:},{:}]",
+         sub_a_dim.0.len(), sub_a_dim.1.len(), &opa,
+         sub_b_dim.0.len(), sub_b_dim.1.len(), &opb,
+         sub_c_dim.0.len(), sub_c_dim.1.len()
+        )
+    }
+
+    let is_contiguous = matr_a.is_contiguous() && matr_b.is_contiguous() && matr_c.is_contiguous();
+    if is_contiguous {
+        //let matr_c_size = [matr_c.size()[0],matr_c.size()[1]];
+        unsafe{
+        dgemm(opa as u8,
+              opb as u8,
+              m as i32,
+              n as i32,
+              k as i32,
+              alpha,
+              matr_a.data_ref().unwrap(),
+              lda as i32,
+              matr_b.data_ref().unwrap(),
+              ldb as i32,
+              beta,
+              matr_c.data_ref_mut().unwrap(),
+              ldc as i32);
+        }
+        //crate::external_libs::general_dgemm_f(
+        //    matr_a.data_ref().unwrap(), matr_a.size(), sub_a_dim.0, sub_a_dim.1, opa, 
+        //    matr_b.data_ref().unwrap(), matr_b.size(), sub_b_dim.0, sub_b_dim.1, opb, 
+        //    matr_c.data_ref_mut().unwrap(), &matr_c_size, sub_c_dim.0, sub_c_dim.1, 
+        //    alpha, beta)
+    } else {
+        panic!("the matrixs into the dgemm function should be all stored in a contiguous memory block");
+    }
+
+}
+
 
 /// # computes all eigenvalues and , optionally, eigenvectors of a real symmetric matrix A  
 ///    jobz: char, 'N' or 'V'  
