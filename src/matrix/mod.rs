@@ -15,6 +15,7 @@ pub mod matrixupper;
 pub mod submatrixfull;
 pub mod matrixconst;
 pub mod matrix_blas_lapack;
+pub mod einsum;
 
 
 use crate::matrix::matrixfull::*;

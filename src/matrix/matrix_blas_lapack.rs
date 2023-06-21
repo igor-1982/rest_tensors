@@ -417,6 +417,9 @@ where T: BasicMatrix<'a, f64>
     }
 }
 
+//i, j -> ij
+//vec_a: column vec of i rows, vec_b: row vec of j columns
+
 impl <'a> MatrixFullSlice<'a, f64> {
     #[inline]
     pub fn ddot(&self, b: &MatrixFullSlice<f64>) -> Option<MatrixFull<f64>> {
@@ -434,6 +437,7 @@ impl <'a> MatrixFullSlice<'a, f64> {
         }
     }
 }
+
 
 impl <'a> MatrixFullSliceMut<'a, f64> {
     //#[inline]
