@@ -12,7 +12,7 @@ use rayon::prelude::*;
 use blas::Layout;
 use lapack::svd::{SVDCC,SVDError}; */
 
-use crate::matrix::{MatrixFull, BasicMatrix, MatFormat, MathMatrix, ParMathMatrix, BasicMatrixOpt};
+use crate::{matrix::{MatrixFull, BasicMatrix, MatFormat, MathMatrix, ParMathMatrix, BasicMatrixOpt}, RIFull};
 use crate::{external_libs::matr_copy, check_shape};
 use crate::index::*; 
 use crate::tensor_basic_operation::*;
@@ -349,6 +349,18 @@ impl <T> MatrixFull<T> {
             });
         }
     }
+    /// Append all columns of the `other` MatrixFull to `self`, leaving `other` no change.
+    pub fn append_column(&mut self, other: &MatrixFull<T>) 
+    where T: Copy + Clone {
+        if self.size[0] != other.size[0] {
+            panic!("Incompatible size of rows for two MatrixFull: {},{}", self.size[0],other.size[0]);
+        }
+        let new_size = [self.size[0],self.size[1]+other.size[1]];
+        let new_data = &mut self.data;
+        new_data.append(&mut other.data.clone());
+        self.size = new_size;
+        self.indicing = [1,new_size[0]];
+    }    
     pub fn iter(&self) -> core::slice::Iter<'_, T> {
         self.data.iter()
     }
@@ -707,6 +719,20 @@ impl <T: Copy + Clone> MatrixFull<T> {
             size: [self.size[0],range_columns.len()],
             indicing: [0,self.size[0]],
             data: & self.data[start..end],
+        }
+    }
+    #[inline]
+    pub fn to_rifull(&self, i: usize, j: usize, k: usize) -> RIFull<T> 
+    where T: Copy+Clone {
+        let ri_size = i*j*k;
+        let mat_size = self.size[0]*self.size[1];
+        if ri_size != mat_size {
+            panic!("Error in tranforming MatrixFull to RIFull: incompitable size of MatrixFull {} and RIFull {}",ri_size, mat_size);
+        }
+        RIFull {
+            size: [i,j,k], 
+            indicing: [1,i,j], 
+            data: self.data.clone()
         }
     }
 }
@@ -1775,4 +1801,21 @@ fn convert_scientific_notation_to_fortran_format(n: &String) -> String {
 
 fn c2f(n: &String) -> String {
     convert_scientific_notation_to_fortran_format(n)
+}
+
+#[test]
+fn test_append() {
+    let mut a = MatrixFull::from_vec([3,4], vec![1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0,10.0,11.0,12.0]).unwrap();
+    let b = MatrixFull::from_vec([2,4], vec![1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0]).unwrap();
+    let c = MatrixFull::from_vec([3,2], vec![1.0,2.0,3.0,4.0,5.0,6.0]).unwrap();
+    a.formated_output(10, "full");
+    b.formated_output(10, "full");
+    c.formated_output(10, "full");
+    print!("{:?}{:?}{:?}",a,b,c);
+    //a.append_column(&b);
+    //a.formated_output(10, "full");
+    a.append_column(&c);
+    a.formated_output(10, "full");
+    print!("{:?}",a);
+
 }
