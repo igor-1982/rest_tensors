@@ -1450,6 +1450,7 @@ impl MatrixFull<f64> {
     }
 
     pub fn pinv(&mut self, rcond: f64) -> MatrixFull<f64> {
+        // fast version for m = n only
         let m = self.size[0];
         let n = self.size[1];
         let sdim = (m < n) as usize * m as usize + (n <= m)as usize *n as usize;
@@ -1484,11 +1485,7 @@ impl MatrixFull<f64> {
         let s_inv = s.iter().map(|&x|{
             if x > rcond_threshold {1.0/x} else {0.0}
         }).collect::<Vec<_>>();
-        /* let mut s_inv_diag = MatrixFull::new([s_inv.len();2], 0.0);
-        for i in 0..s_inv.len(){
-            s_inv_diag.data[i * s_inv.len() +i] = s_inv[i];
-        }; */
-        let a_inv =(0..(n * m)).into_par_iter().map(|idx|{
+        /* let a_inv =(0..(n * m)).into_par_iter().map(|idx|{
             let i = idx / m;
             let j = idx % m;
             let mut sum = 0.0;
@@ -1498,8 +1495,24 @@ impl MatrixFull<f64> {
             sum
         }).collect::<Vec<_>>();
         
-        MatrixFull::from_vec([self.size[0], self.size[1]], a_inv).unwrap().transpose()
+        MatrixFull::from_vec([self.size[0], self.size[1]], a_inv).unwrap().transpose() */
 
+        let mut vt_mat = MatrixFull::from_vec([n,n], vt).unwrap();
+
+        let mut u_mat = MatrixFull::from_vec([m,m], u).unwrap();
+        for i in 0..sdim{
+            u_mat.iter_column_mut(i).for_each(|x|{
+                *x *= s_inv[i]
+            })
+        }
+
+        let mut a_inv = MatrixFull::new([m,n],0.0);
+        crate::matrix_blas_lapack::_dgemm(&u_mat,(0..m, 0..m),'N',
+                &vt_mat,(0..n,0..n),'N',
+                &mut a_inv, (0..m, 0..n),
+                1.0,0.0);
+        
+        a_inv.transpose()
 
     }
 
