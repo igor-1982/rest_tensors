@@ -293,7 +293,8 @@ impl <T> MatrixFull<T> {
     }
     /// generate a new MatrixFull entity, where all elemental values as "new_default"
     pub fn new(size: [usize;2], new_default: T) -> MatrixFull<T> 
-    where T: Copy + Clone
+    //where T: Copy + Clone
+    where T: Clone
     {
         let mut indicing = [0usize;2];
         let mut len = size.iter()
