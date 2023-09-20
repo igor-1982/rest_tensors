@@ -212,6 +212,30 @@ where T: BasicMatrix<'a, f64>,
 
 }
 
+#[inline]
+pub fn _dgemm_full_new<'a, T,Q> (
+    matr_a: &T, opa: char, 
+    matr_b: &Q, opb: char, 
+    alpha: f64, beta: f64,
+) -> MatrixFull<f64>
+where T: BasicMatrix<'a, f64>,
+      Q: BasicMatrix<'a, f64> {
+    let axy = matr_a.size();
+    let bxy = matr_b.size();
+    if (axy[0]==0||bxy[1]==0) {return MatrixFull::new([axy[0],bxy[1]],0.0_f64)};
+    let mut c = match (&opa, &opb) {
+        ('N','N') => MatrixFull::new([axy[0],bxy[1]], 0.0_f64),
+        ('T','N') => MatrixFull::new([axy[1],bxy[1]], 0.0_f64),
+        ('N','T') => MatrixFull::new([axy[0],bxy[0]], 0.0_f64),
+        ('T','T') => MatrixFull::new([axy[1],bxy[0]], 0.0_f64),
+        _ => MatrixFull::new([0,0], 0.0_f64),
+    };
+    
+    
+    MatrixFull::new([axy[0],bxy[1]], 0.0_f64);
+    _dgemm_full(matr_a, opa, matr_b, opb, &mut c, alpha, beta);
+    c
+}
 
 /// # computes all eigenvalues and , optionally, eigenvectors of a real symmetric matrix A  
 ///    jobz: char, 'N' or 'V'  

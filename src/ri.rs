@@ -314,17 +314,9 @@ impl <T: Clone + Display + Send + Sync> RIFull<T> {
         let result = MatrixFull::from_vec([i*j, k], self.data.clone()).unwrap();
         result
     }   
-
-    /// [i,j,k] -> [i,j*k]
-    pub fn rifull_to_matfull_i_jk(&self) -> MatrixFull<T> 
-    where T:Clone+Copy {
-        let rifull_t = self.transpose_jki(); //[j,k,i]
-        let matfull = rifull_t.rifull_to_matfull_ij_k().transpose(); //[i,j*k]
-        matfull
-    }
     
      /// [i,j,k] -> [i,j*k]
-    pub fn rifull_to_matfull_i_jk_v2(&self) -> MatrixFull<T> 
+    pub fn rifull_to_matfull_i_jk(&self) -> MatrixFull<T> 
     where T:Clone+Copy {
         let i = self.size[0];
         let j = self.size[1];
