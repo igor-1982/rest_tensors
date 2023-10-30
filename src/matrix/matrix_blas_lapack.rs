@@ -1,6 +1,6 @@
 use std::{iter::Flatten, vec::IntoIter, ops::Range};
 
-use blas::{dgemm,dtrmm, dsymm};
+use blas::{dgemm,dtrmm, dsymm, dsyrk};
 use lapack::{dsyev, dspgvx, dspevx,dgetrf,dgetri,dlamch, dsyevx, dpotrf, dtrtri, dpotri, dgeev};
 use nalgebra::matrix;
 use rayon::prelude::*;
@@ -333,6 +333,34 @@ where T: BasicMatrix<'a, f64>,
             matr_a.data_ref().unwrap(), lda, 
             matr_b.data_ref().unwrap(), ldb, beta, 
             matr_c.data_ref_mut().unwrap(), ldc)
+    }
+
+}
+
+/// # DSYMM performs one of the matrix-matrix operations  
+///    C := alpha*A*A**T + beta*C,  
+/// or  
+///    C := alpha*A**T*A + beta*C,  
+/// where alpha and beta are scalars, A is a symmetric matrix and B and C are m by n matrices
+pub fn _dsyrk<'a, T, P> (
+    matr_a: &T, matr_c: &mut P,
+    uplo: char, trans: char, 
+    alpha: f64, beta: f64
+)
+where T: BasicMatrix<'a, f64>,
+      P: BasicMatrix<'a, f64>
+{
+    let m = matr_c.size()[0] as i32;
+    let n = matr_c.size()[1] as i32;
+    if m!=n {panic!("matr_b should be symmetric")};
+
+    let k = if trans.to_string().to_lowercase().eq("n") {matr_a.size()[1] as i32} else {matr_a.size()[0] as i32};
+    let lda = if trans.to_string().to_lowercase().eq("n") {n.max(1)} else {k.max(1)}; 
+    let ldc = n.max(1);
+
+
+    unsafe {
+        dsyrk(uplo as u8, trans as u8, n, k, alpha, matr_a.data_ref().unwrap(), lda, beta, matr_c.data_ref_mut().unwrap(),ldc)
     }
 
 }

@@ -192,8 +192,8 @@ where I:Iterator,
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
 
-        let curr_row = self.position%self.size[0];
-        let curr_column = self.position/self.size[0];
+        let curr_row = self.position%unsafe{self.size.get_unchecked(0)};
+        let curr_column = self.position/unsafe{self.size.get_unchecked(0)};
         
         let is_in_range = 
             curr_row >= self.rows.start && curr_row < self.rows.end &&
@@ -239,8 +239,8 @@ where I:Iterator,
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
 
-        let curr_row = self.position%self.size[0];
-        let curr_column = self.position/self.size[0];
+        let curr_row = self.position%unsafe{self.size.get_unchecked(0)};
+        let curr_column = self.position/unsafe{self.size.get_unchecked(0)};
         
         let is_in_range = curr_row <= curr_column;
 
@@ -898,7 +898,7 @@ impl<'a, T: Copy + Clone + Add + AddAssign> Add<T> for SubMatrixFull<'a, T> {
     type Output = MatrixFull<T>;
 
     fn add(self, factor: T) -> MatrixFull<T> {
-        let size = self.size().clone();
+        let size = self.size();
         let size = [size[0],size[1]];
         match self {
             Self::Contiguous(matr) => {
@@ -906,7 +906,7 @@ impl<'a, T: Copy + Clone + Add + AddAssign> Add<T> for SubMatrixFull<'a, T> {
                 MatrixFull::from_vec(size,new_vec).unwrap() + factor
             },
             Self::Detached(matr) => {
-                let mut new_vec = matr.data.iter().map(|x| *x.clone()).collect::<Vec<T>>();
+                let mut new_vec = matr.data.iter().map(|x| **x).collect::<Vec<T>>();
                 MatrixFull::from_vec(size,new_vec).unwrap() + factor
             }
         }
@@ -914,7 +914,7 @@ impl<'a, T: Copy + Clone + Add + AddAssign> Add<T> for SubMatrixFull<'a, T> {
 }
 impl<'a, T: Copy + Clone + Add + AddAssign> AddAssign<T> for SubMatrixFullMut<'a, T> {
     fn add_assign(&mut self, factor: T) {
-        let size = self.size().clone();
+        //let size = self.size();
         match self {
             Self::Contiguous(matr) => {
                 matr.data.iter_mut().for_each(|t| {*t += factor});
@@ -930,7 +930,7 @@ impl<'a, T: Copy + Clone + Add + AddAssign> Add<SubMatrixFull<'a, T>> for Matrix
     type Output = Self;
 
     fn add(self, other: SubMatrixFull<T>) -> MatrixFull<T> {
-        let o_size = other.size().clone();
+        let o_size = other.size();
         let check_shape = self.size.iter().zip(o_size.iter()).fold(true, |flag, (a,b)| flag && *a==*b);
         if ! check_shape {
             panic!("It is not allowed to add two matrices with different size: {:?}, {:?}", &self.size, &o_size);
@@ -942,7 +942,7 @@ impl<'a, T: Copy + Clone + Add + AddAssign> Add<SubMatrixFull<'a, T>> for Matrix
 
             },
             SubMatrixFull::Detached(matr) => {
-                new_tensor.data.iter_mut().zip(matr.data.iter()).for_each(|(t,f)| {*t += *f.clone()});
+                new_tensor.data.iter_mut().zip(matr.data.iter()).for_each(|(t,f)| {*t += **f});
             },
         }
         new_tensor
@@ -950,17 +950,17 @@ impl<'a, T: Copy + Clone + Add + AddAssign> Add<SubMatrixFull<'a, T>> for Matrix
 }
 impl<'a, T: Copy + Clone + Add + AddAssign> AddAssign<SubMatrixFull<'a, T>> for MatrixFull<T> {
     fn add_assign(&mut self, other: SubMatrixFull<T>) {
-        let o_size = other.size().clone();
+        let o_size = other.size();
         let check_shape = self.size.iter().zip(o_size.iter()).fold(true, |flag, (a,b)| flag && *a==*b);
         if ! check_shape {
             panic!("It is not allowed to add two matrices with different size: {:?}, {:?}", &self.size, &o_size);
         }
         match &other {
             SubMatrixFull::Contiguous(matr) => {
-                self.data.iter_mut().zip(matr.data.iter()).for_each(|(t,f)| {*t += f.clone()});
+                self.data.iter_mut().zip(matr.data.iter()).for_each(|(t,f)| {*t += *f});
             },
             SubMatrixFull::Detached(matr) => {
-                self.data.iter_mut().zip(matr.data.iter()).for_each(|(t,f)| {*t += *f.clone()});
+                self.data.iter_mut().zip(matr.data.iter()).for_each(|(t,f)| {*t += **f});
             }
         }
     }
@@ -970,7 +970,7 @@ impl<'a, T: Copy + Clone + Add + AddAssign> Add<MatrixFull<T>> for SubMatrixFull
     type Output = MatrixFull<T>;
 
     fn add(self, other: MatrixFull<T>) -> MatrixFull<T> {
-        let self_size = self.size().clone();
+        let self_size = self.size();
         let check_shape = self_size.iter().zip(other.size.iter()).fold(true, |flag, (a,b)| flag && *a==*b);
         if ! check_shape {
             panic!("It is not allowed to add two matrices with different size: {:?}, {:?}", &self_size, &other.size);
@@ -978,10 +978,10 @@ impl<'a, T: Copy + Clone + Add + AddAssign> Add<MatrixFull<T>> for SubMatrixFull
         let mut new_tensor: MatrixFull<T> = other.clone();
         match &self {
             SubMatrixFull::Contiguous(matr) => {
-                new_tensor.data.iter_mut().zip(matr.data.iter()).for_each(|(t,f)| {*t += f.clone()});
+                new_tensor.data.iter_mut().zip(matr.data.iter()).for_each(|(t,f)| {*t += *f});
             },
             SubMatrixFull::Detached(matr) => {
-                new_tensor.data.iter_mut().zip(matr.data.iter()).for_each(|(t,f)| {*t += *f.clone()});
+                new_tensor.data.iter_mut().zip(matr.data.iter()).for_each(|(t,f)| {*t += **f});
             },
         }
         new_tensor
@@ -989,7 +989,7 @@ impl<'a, T: Copy + Clone + Add + AddAssign> Add<MatrixFull<T>> for SubMatrixFull
 }
 impl<'a, T: Clone + Add + AddAssign> AddAssign<MatrixFull<T>> for SubMatrixFullMut<'a, T> {
     fn add_assign(&mut self, other: MatrixFull<T>) {
-        let self_size = self.size().clone();
+        let self_size = self.size();
         let check_shape = self_size.iter().zip(other.size.iter()).fold(true, |flag, (a,b)| flag && *a==*b);
         if ! check_shape {
             panic!("It is not allowed to add two matrices with different size: {:?}, {:?}", &self_size, &other.size);
@@ -1006,8 +1006,8 @@ impl<'a, T: Clone + Add + AddAssign> AddAssign<MatrixFull<T>> for SubMatrixFullM
 }
 impl<'a, T: Copy + Clone + Add + AddAssign> AddAssign<SubMatrixFull<'a, T>> for SubMatrixFullMut<'a, T> {
     fn add_assign(&mut self, other: SubMatrixFull<T>) {
-        let s_size = self.size().clone();
-        let o_size = other.size().clone();
+        let s_size = self.size();
+        let o_size = other.size();
         let check_shape = s_size.iter().zip(o_size.iter()).fold(true, |flag, (a,b)| flag && *a==*b);
         if ! check_shape {
             panic!("It is not allowed to add two matrices with different size: {:?}, {:?}", &s_size, &o_size);
@@ -1017,13 +1017,13 @@ impl<'a, T: Copy + Clone + Add + AddAssign> AddAssign<SubMatrixFull<'a, T>> for 
                 s_matr.data.iter_mut().zip(o_matr.data.iter()).for_each(|(t,f)| {*t += f.clone()});
             },
             (SubMatrixFullMut::Contiguous(s_matr), SubMatrixFull::Detached(o_matr)) => {
-                s_matr.data.iter_mut().zip(o_matr.data.iter()).for_each(|(t,f)| {*t += *f.clone()});
+                s_matr.data.iter_mut().zip(o_matr.data.iter()).for_each(|(t,f)| {*t += **f});
             },
             (SubMatrixFullMut::Detached(s_matr), SubMatrixFull::Contiguous(o_matr)) => {
                 s_matr.data.iter_mut().zip(o_matr.data.iter()).for_each(|(t,f)| {**t += f.clone()});
             },
             (SubMatrixFullMut::Detached(s_matr), SubMatrixFull::Detached(o_matr)) => {
-                s_matr.data.iter_mut().zip(o_matr.data.iter()).for_each(|(t,f)| {**t += *f.clone()});
+                s_matr.data.iter_mut().zip(o_matr.data.iter()).for_each(|(t,f)| {**t += **f});
             },
         }
     }
@@ -1074,14 +1074,14 @@ impl<T: Clone + Sub + SubAssign> SubAssign<T> for MatrixFull<T> {
 impl<'a, T: Copy + Clone + Sub + SubAssign> Sub<T> for SubMatrixFull<'a,T> {
     type Output = MatrixFull<T>;
     fn sub(self, f: T) -> MatrixFull<T> {
-        let s_size = self.size().clone();
+        let s_size = self.size();
         let s_size = [s_size[0],s_size[1]];
         let mut new_tensor: MatrixFull<T> = match &self {
             SubMatrixFull::Contiguous(matr) => {
                 MatrixFull::from_vec(s_size, matr.data.iter().map(|x| x.clone()).collect::<Vec<T>>()).unwrap()
             },
             SubMatrixFull::Detached(matr) => {
-                MatrixFull::from_vec(s_size, matr.data.iter().map(|x| *x.clone()).collect::<Vec<T>>()).unwrap()
+                MatrixFull::from_vec(s_size, matr.data.iter().map(|x| **x).collect::<Vec<T>>()).unwrap()
             },
         };
         new_tensor.data.iter_mut().for_each(|t| {*t -= f.clone()});
@@ -1104,7 +1104,7 @@ impl<'a, T: Clone + Sub + SubAssign> SubAssign<T> for SubMatrixFullMut<'a, T> {
 impl<'a, T: Copy + Clone + Sub + SubAssign> Sub<SubMatrixFull<'a, T>> for MatrixFull<T> {
     type Output = Self;
     fn sub(self, other: SubMatrixFull<T>) -> MatrixFull<T> {
-        let o_size = other.size().clone();
+        let o_size = other.size();
         let check_shape = self.size.iter().zip(o_size.iter()).fold(true, |flag, (a,b)| flag && *a==*b);
         if ! check_shape {
             panic!("It is not allowed to subtract two matrices with different size: {:?}, {:?}", &self.size, &o_size);
@@ -1115,7 +1115,7 @@ impl<'a, T: Copy + Clone + Sub + SubAssign> Sub<SubMatrixFull<'a, T>> for Matrix
                 new_tensors.data.iter_mut().zip(matr.data.iter()).for_each(|(t,f)| {*t -= f.clone()});
             },
             SubMatrixFull::Detached(matr) => {
-                new_tensors.data.iter_mut().zip(matr.data.iter()).for_each(|(t,f)| {*t -= *f.clone()});
+                new_tensors.data.iter_mut().zip(matr.data.iter()).for_each(|(t,f)| {*t -= **f});
             },
         }
         new_tensors
@@ -1123,7 +1123,7 @@ impl<'a, T: Copy + Clone + Sub + SubAssign> Sub<SubMatrixFull<'a, T>> for Matrix
 }
 impl<'a, T: Copy + Clone + Sub + SubAssign> SubAssign<SubMatrixFull<'a, T>> for MatrixFull<T> {
     fn sub_assign(&mut self, other: SubMatrixFull<T>){
-        let o_size = other.size().clone();
+        let o_size = other.size();
         let check_shape = self.size.iter().zip(o_size.iter()).fold(true, |flag, (a,b)| flag && *a==*b);
         if ! check_shape {
             panic!("It is not allowed to subtract two matrices with different size: {:?}, {:?}", &self.size, &o_size);
@@ -1133,7 +1133,7 @@ impl<'a, T: Copy + Clone + Sub + SubAssign> SubAssign<SubMatrixFull<'a, T>> for 
                 self.data.iter_mut().zip(matr.data.iter()).for_each(|(t,f)| {*t -= f.clone()});
             },
             SubMatrixFull::Detached(matr) => {
-                self.data.iter_mut().zip(matr.data.iter()).for_each(|(t,f)| {*t -= *f.clone()});
+                self.data.iter_mut().zip(matr.data.iter()).for_each(|(t,f)| {*t -= **f});
             },
         }
     }
@@ -1142,7 +1142,7 @@ impl<'a, T: Copy + Clone + Sub<Output=T> + SubAssign> Sub<MatrixFull<T>> for Sub
     type Output = MatrixFull<T>;
 
     fn sub(self, other: MatrixFull<T>) -> MatrixFull<T> {
-        let s_size = self.size().clone();
+        let s_size = self.size();
         let check_shape = s_size.iter().zip(other.size.iter()).fold(true, |flag, (a,b)| flag && *a==*b);
         if ! check_shape {
             panic!("It is not allowed to subtract two matrices with different size: {:?}, {:?}", &s_size, &other.size);
@@ -1153,7 +1153,7 @@ impl<'a, T: Copy + Clone + Sub<Output=T> + SubAssign> Sub<MatrixFull<T>> for Sub
                 new_tensor.data.iter_mut().zip(matr.data.iter()).for_each(|(t,f)| {*t = (f.clone()-*t)});
             },
             SubMatrixFull::Detached(matr) => {
-                new_tensor.data.iter_mut().zip(matr.data.iter()).for_each(|(t,f)| {*t = (*f.clone()-*t)});
+                new_tensor.data.iter_mut().zip(matr.data.iter()).for_each(|(t,f)| {*t = (**f-*t)});
             },
         }
         new_tensor
@@ -1161,7 +1161,7 @@ impl<'a, T: Copy + Clone + Sub<Output=T> + SubAssign> Sub<MatrixFull<T>> for Sub
 }
 impl<'a, T: Clone + Sub + SubAssign> SubAssign<MatrixFull<T>> for SubMatrixFullMut<'a, T> {
     fn sub_assign(&mut self, other: MatrixFull<T>) {
-        let s_size = self.size().clone();
+        let s_size = self.size();
         let check_shape = s_size.iter().zip(other.size.iter()).fold(true, |flag, (a,b)| flag && *a==*b);
         if ! check_shape {
             panic!("It is not allowed to subtract two matrices with different size: {:?}, {:?}", &s_size, &other.size);
@@ -1178,8 +1178,8 @@ impl<'a, T: Clone + Sub + SubAssign> SubAssign<MatrixFull<T>> for SubMatrixFullM
 }
 impl<'a, T: Copy + Clone + Sub + SubAssign> SubAssign<SubMatrixFull<'a, T>> for SubMatrixFullMut<'a, T> {
     fn sub_assign(&mut self, other: SubMatrixFull<T>) {
-        let s_size = self.size().clone();
-        let o_size = other.size().clone();
+        let s_size = self.size();
+        let o_size = other.size();
         let check_shape = s_size.iter().zip(o_size.iter()).fold(true, |flag, (a,b)| flag && *a==*b);
         if ! check_shape {
             panic!("It is not allowed to subtract two matrices with different size: {:?}, {:?}", &s_size, &o_size);
@@ -1189,13 +1189,13 @@ impl<'a, T: Copy + Clone + Sub + SubAssign> SubAssign<SubMatrixFull<'a, T>> for 
                 s_matr.data.iter_mut().zip(o_matr.data.iter()).for_each(|(t,f)| {*t -= f.clone()});
             },
             (SubMatrixFullMut::Contiguous(s_matr), SubMatrixFull::Detached(o_matr)) => {
-                s_matr.data.iter_mut().zip(o_matr.data.iter()).for_each(|(t,f)| {*t -= *f.clone()});
+                s_matr.data.iter_mut().zip(o_matr.data.iter()).for_each(|(t,f)| {*t -= **f});
             },
             (SubMatrixFullMut::Detached(s_matr), SubMatrixFull::Contiguous(o_matr)) => {
                 s_matr.data.iter_mut().zip(o_matr.data.iter()).for_each(|(t,f)| {**t -= f.clone()});
             },
             (SubMatrixFullMut::Detached(s_matr), SubMatrixFull::Detached(o_matr)) => {
-                s_matr.data.iter_mut().zip(o_matr.data.iter()).for_each(|(t,f)| {**t -= *f.clone()});
+                s_matr.data.iter_mut().zip(o_matr.data.iter()).for_each(|(t,f)| {**t -= **f});
             },
         }
     }
@@ -1217,14 +1217,14 @@ impl<T: Clone + Mul + MulAssign> MulAssign<T> for MatrixFull<T> {
 impl<'a, T: Copy + Clone + Mul + MulAssign> Mul<T> for SubMatrixFull<'a,T> {
     type Output = MatrixFull<T>;
     fn mul(self, f: T) -> MatrixFull<T> {
-        let s_size = self.size().clone();
+        let s_size = self.size();
         let s_size = [s_size[0],s_size[1]];
         let mut new_tensor: MatrixFull<T> = match &self {
             SubMatrixFull::Contiguous(matr) => {
                 MatrixFull::from_vec(s_size, matr.data.to_vec()).unwrap()
             },
             SubMatrixFull::Detached(matr) => {
-                MatrixFull::from_vec(s_size, matr.data.iter().map(|x| *x.clone()).collect::<Vec<T>>()).unwrap()
+                MatrixFull::from_vec(s_size, matr.data.iter().map(|x| **x).collect::<Vec<T>>()).unwrap()
             },
         };
         new_tensor.data.iter_mut().for_each(|t| {*t *= f.clone()});
@@ -1259,14 +1259,14 @@ impl<T: Clone + Div + DivAssign> DivAssign<T> for MatrixFull<T> {
 impl<'a, T: Copy + Clone + Div + DivAssign> Div<T> for SubMatrixFull<'a,T> {
     type Output = MatrixFull<T>;
     fn div(self, f: T) -> MatrixFull<T> {
-        let s_size = self.size().clone();
+        let s_size = self.size();
         let s_size = [s_size[0],s_size[1]];
         let mut new_tensor: MatrixFull<T> = match &self {
             SubMatrixFull::Contiguous(matr) => {
                 MatrixFull::from_vec(s_size, matr.data.to_vec()).unwrap()
             },
             SubMatrixFull::Detached(matr) => {
-                MatrixFull::from_vec(s_size, matr.data.iter().map(|x| *x.clone()).collect::<Vec<T>>()).unwrap()
+                MatrixFull::from_vec(s_size, matr.data.iter().map(|x| **x).collect::<Vec<T>>()).unwrap()
             },
         };
         new_tensor.data.iter_mut().for_each(|t| {*t /= f.clone()});

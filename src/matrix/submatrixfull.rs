@@ -114,7 +114,7 @@ impl <'a, T: Copy + Clone> SubMatrixFull<'a, T> {
         match &self {
             SubMatrixFull::Contiguous(matr) => {matr.data.to_vec()},
             SubMatrixFull::Detached(matr) => {
-                matr.data.iter().map(|x| *x.clone()).collect::<Vec<T>>()
+                matr.data.iter().map(|x| **x).collect::<Vec<T>>()
             },
         }
     }
@@ -139,7 +139,7 @@ impl <'a, T: Copy + Clone> SubMatrixFullMut<'a, T> {
         match &self {
             Self::Contiguous(matr) => {matr.data.to_vec()},
             Self::Detached(matr) => {
-                matr.data.iter().map(|x| **x.clone()).collect::<Vec<T>>()
+                matr.data.iter().map(|x| **x).collect::<Vec<T>>()
             },
         }
     }
