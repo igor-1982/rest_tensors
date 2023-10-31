@@ -1,6 +1,6 @@
 use std::{iter::Flatten, vec::IntoIter, ops::Range};
 
-use blas::{dgemm,dtrmm, dsymm, dsyrk};
+use blas::{dgemm,dtrmm, dsymm, dsyrk, dgemv};
 use lapack::{dsyev, dspgvx, dspevx,dgetrf,dgetri,dlamch, dsyevx, dpotrf, dtrtri, dpotri, dgeev};
 use nalgebra::matrix;
 use rayon::prelude::*;
@@ -31,6 +31,44 @@ where T: BasicMatrix<'a, P>,
 
     }
 }
+
+
+/// Level 2 BLAS
+pub fn _dgemv<'a, T>(matr_a: &T, vec_x: &[f64], vec_y: &mut [f64], trans: char, alpha: f64, beta: f64, incx: usize, incy: usize) 
+where T: BasicMatrix<'a, f64> 
+{
+
+    let m = matr_a.size()[0];
+    let n = matr_a.size()[1];
+    let lda = m.max(1);
+
+    let check_shape_x = if trans.to_string().to_lowercase().eq("n") {
+        vec_x.len() == 1 + (n-1)*incx
+    } else {
+        vec_x.len() == 1 + (m-1)*incx
+    }; 
+
+    let check_shape_y = if trans.to_string().to_lowercase().eq("n") {
+        vec_y.len() == 1 + (m-1)*incx
+    } else {
+        vec_y.len() == 1 + (n-1)*incx
+    }; 
+
+    // check the shapes of the input matrices for the dgemm operation
+    if ! (check_shape_x || check_shape_y) {panic!("ERROR:: Matr_A[{:},{:},{:}] * Vec_X[{:}] -> Vec_Y[{:}]",
+         m, n, &trans,
+         vec_x.len(), 
+         vec_y.len() 
+        )
+    }
+
+    unsafe{
+        dgemv(trans as u8, m as i32, n as i32, alpha, matr_a.data_ref().unwrap(), lda as i32, vec_x, incx as i32, beta, vec_y, incy as i32);
+    }
+
+}
+
+
 
 /// # an efficient dgemm manipulation for the matrices equipped with the BasicMatrix trait:
 ///  matr_c[(range_row_c, range_column_c)] =
