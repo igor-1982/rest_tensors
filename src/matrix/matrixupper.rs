@@ -61,9 +61,11 @@ impl <T> MatrixUpper<T> {
     pub fn iter_diagonal(&self) -> IncreaseStepBy<std::slice::Iter<T>> {
         self.data.iter().step_by_increase(1,1)
     }
+
     pub fn iter_diagonal_mut(&mut self) -> IncreaseStepBy<std::slice::IterMut<T>> {
         self.data.iter_mut().step_by_increase(1,1)
     }
+
     #[inline]
     pub fn to_slice_mut(&mut self) -> &mut [T] {
         &mut self.data[..]

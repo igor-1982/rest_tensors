@@ -49,13 +49,13 @@ where T: BasicMatrix<'a, f64>
     }; 
 
     let check_shape_y = if trans.to_string().to_lowercase().eq("n") {
-        vec_y.len() == 1 + (m-1)*incx
+        vec_y.len() == 1 + (m-1)*incy
     } else {
-        vec_y.len() == 1 + (n-1)*incx
+        vec_y.len() == 1 + (n-1)*incy
     }; 
 
     // check the shapes of the input matrices for the dgemm operation
-    if ! (check_shape_x || check_shape_y) {panic!("ERROR:: Matr_A[{:},{:},{:}] * Vec_X[{:}] -> Vec_Y[{:}]",
+    if ! (check_shape_x & check_shape_y) {panic!("ERROR:: Matr_A[{:},{:},{:}] * Vec_X[{:}] -> Vec_Y[{:}]",
          m, n, &trans,
          vec_x.len(), 
          vec_y.len() 
