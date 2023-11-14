@@ -375,7 +375,7 @@ where T: BasicMatrix<'a, f64>,
 
 }
 
-/// # DSYMM performs one of the matrix-matrix operations  
+/// # DSYRK performs one of the matrix-matrix operations  
 ///    C := alpha*A*A**T + beta*C,  
 /// or  
 ///    C := alpha*A**T*A + beta*C,  
@@ -406,7 +406,7 @@ where T: BasicMatrix<'a, f64>,
 /// # computes the Cholesky factorization of a real symmetric positive definite matrix A  
 /// uplo: char, `U` or `L`  
 /// = `U`: Upper triangle of A is stored  
-/// = `V`: Lower triangle of A is stored  
+/// = `L`: Lower triangle of A is stored  
 /// 
 /// **Note**: [`_dpotrf`] destroys the input matrix `matr_a`, which, on exist is the factor 'U' or 'L' from
 /// the Cholesky factorizatoin A = U**T*U or A = L*L**T  
@@ -507,6 +507,118 @@ where T: BasicMatrix<'a, f64>
     }
 }
 
+
+pub fn _power<'a, T>(matr_a: &T, p: f64, threshold: f64) -> Option<MatrixFull<f64>> 
+where T: BasicMatrix<'a, f64>
+{
+    let size = matr_a.size();
+    if size[0]==size[1] {
+
+        // because lapack sorts eigenvalues from small to large, we multiply the elements with -1.0
+        let mut om = MatrixFull::new([size[0],size[1]],0.0);
+        om.data.iter_mut().zip(matr_a.data_ref().unwrap().iter()).for_each(|value| {*value.0=*value.1*-1.0f64});
+
+
+        // diagonalize the matrix
+        let (mut opt_eigenvector, mut eigenvalues, mut n) = _dsyev(&om, 'V');
+        let mut eigenvector = opt_eigenvector.unwrap();
+
+        // now we get the eigenvectors with the eigenvalues from large to small
+        let (mut n_nonsigular, mut tmpv) = (0usize,0.0);
+        eigenvalues.iter_mut().for_each(|value| {
+            *value = *value*(-1.0);
+            //if *value >= threshold && *value <= tmpv {
+            if *value >= threshold {
+                n_nonsigular +=1;
+            };
+        });
+
+        if n as usize != size[0] {
+            panic!("Found unphysical eigenvalues");
+        } else if n_nonsigular != size[0] {
+            println!("n_nonsigular: {}", n_nonsigular);
+        }
+
+        //&eigenvector.data.par_chunks_exact_mut(size[0]).enumerate()
+        eigenvector.iter_columns_full_mut().enumerate()
+            //.filter(|(i,value)| i<&n_nonsigular)
+            .for_each(|(i,value)| {
+                if i<n_nonsigular {
+                    if let Some(ev) = eigenvalues.get(i) {
+                        let ev_sqrt = ev.sqrt();
+                        value.iter_mut().for_each(|v| {*v = *v*ev_sqrt.powf(p)});
+                    }
+                } else {
+                    value.iter_mut().for_each(|v| {*v = 0.0f64});
+                }
+        });
+
+        
+        _dgemm_full(&eigenvector, 'N', &eigenvector, 'T', &mut om, 1.0, 0.0);
+
+        Some(om)
+    } else {
+        println!("Error: The matrix for power operations should be NxN");
+        None
+    }
+
+}
+
+pub fn _power_rayon<'a, T>(matr_a: &T, p: f64, threshold: f64) -> Option<MatrixFull<f64>> 
+where T: BasicMatrix<'a, f64>
+{
+    let size = matr_a.size();
+    if size[0]==size[1] {
+
+        // because lapack sorts eigenvalues from small to large, we multiply the elements with -1.0
+        let mut om = MatrixFull::new([size[0],size[1]],0.0);
+        om.data.par_iter_mut().zip(matr_a.data_ref().unwrap().par_iter()).for_each(|value| {*value.0=*value.1*-1.0f64});
+
+
+        // diagonalize the matrix
+        let (mut opt_eigenvector, mut eigenvalues, mut n) = _dsyev(&om, 'V');
+        let mut eigenvector = opt_eigenvector.unwrap();
+
+        // now we get the eigenvectors with the eigenvalues from large to small
+        let (mut n_nonsigular, mut tmpv) = (0usize,0.0);
+        eigenvalues.iter_mut().for_each(|value| {
+            *value = *value*(-1.0);
+            //if *value >= threshold && *value <= tmpv {
+            if *value >= threshold {
+                n_nonsigular +=1;
+            };
+        });
+
+        if n as usize != size[0] {
+            panic!("Found unphysical eigenvalues");
+        } else if n_nonsigular != size[0] {
+            println!("n_nonsigular: {}", n_nonsigular);
+        }
+
+        &eigenvector.data.par_chunks_exact_mut(size[0]).enumerate()
+        //eigenvector.iter_columns_full_mut().enumerate()
+            //.filter(|(i,value)| i<&n_nonsigular)
+            .for_each(|(i,value)| {
+                if i<n_nonsigular {
+                    if let Some(ev) = eigenvalues.get(i) {
+                        let ev_sqrt = ev.sqrt();
+                        value.iter_mut().for_each(|v| {*v = *v*ev_sqrt.powf(p)});
+                    }
+                } else {
+                    value.iter_mut().for_each(|v| {*v = 0.0f64});
+                }
+        });
+
+        
+        _dgemm_full(&eigenvector, 'N', &eigenvector, 'T', &mut om, 1.0, 0.0);
+
+        Some(om)
+    } else {
+        println!("Error: The matrix for power operations should be NxN");
+        None
+    }
+
+}
 //i, j -> ij
 //vec_a: column vec of i rows, vec_b: row vec of j columns
 

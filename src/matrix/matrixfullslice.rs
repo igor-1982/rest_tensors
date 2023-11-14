@@ -54,6 +54,18 @@ impl <'a, T: Copy + Clone + Display + Send + Sync> MatrixFullSliceMut<'a, T> {
     //    }
     //}
     #[inline]
+    pub fn get_column_mut(&mut self, j: usize) -> &mut [T] {
+        let start = self.size[0]*j;
+        let end = start + self.size[0];
+        &mut self.data[start..end]
+    }
+    #[inline]
+    pub fn iter_column_mut(&mut self, j: usize) -> std::slice::IterMut<T> {
+        let start = self.size[0]*j;
+        let end = start + self.size[0];
+        self.data[start..end].iter_mut()
+    }
+    #[inline]
     pub fn iter_mut_j(&mut self, j: usize) -> std::slice::IterMut<T> {
         let start = self.size[0]*j;
         let end = start + self.size[0];
