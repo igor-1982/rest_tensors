@@ -1,8 +1,9 @@
-use std::{iter::Flatten, vec::IntoIter, ops::Range};
+use std::{iter::Flatten, vec::IntoIter, ops::Range, ptr::addr_of_mut};
 
 use blas::{dgemm,dtrmm, dsymm, dsyrk, dgemv};
-use lapack::{dsyev, dspgvx, dspevx,dgetrf,dgetri,dlamch, dsyevx, dpotrf, dtrtri, dpotri, dgeev};
-use nalgebra::matrix;
+use itertools::Itertools;
+use lapack::{dsyev, dspgvx, dspevx,dgetrf,dgetri,dlamch, dsyevx, dpotrf, dtrtri, dpotri, dgeev, dgees, Select2F64};
+use nalgebra::{matrix, Matrix};
 use rayon::prelude::*;
 
 use crate::{MatrixFullSliceMut, MatrixFull, SAFE_MINIMUM, MatrixUpperSliceMut, TensorSlice, TensorSliceMut, MatrixFullSlice, MatrixFullSliceMut2, BasicMatrix};
@@ -380,6 +381,13 @@ where T: BasicMatrix<'a, f64>,
 /// or  
 ///    C := alpha*A**T*A + beta*C,  
 /// where alpha and beta are scalars, A is a symmetric matrix and B and C are m by n matrices
+/// 
+/// Two important keywords:
+/// uplo =  'U' or 'u' Only the upper triangular part of C is to be referenced
+///         'L' or 'l' Only the lower triangular part of C is to be referenced
+/// trans = 'N' or 'n' C := alpha*A*A**T + beta*C  
+///         'T' or 't' C := alpha*A**T*A + beta*C  
+/// 
 pub fn _dsyrk<'a, T, P> (
     matr_a: &T, matr_c: &mut P,
     uplo: char, trans: char, 
@@ -403,7 +411,86 @@ where T: BasicMatrix<'a, f64>,
 
 }
 
-/// # computes the Cholesky factorization of a real symmetric positive definite matrix A  
+/// # [`_dgees`] computs for an N-by-N real nonsymmetric matrix A, the eigenvalues, the real Schur form T, and optionally, the matrix of Schur vectors Z. This gives the Schur factorization A = Z*T*(T**T)
+/// 
+/// Optionally, it also orders the eigenvalues on the diagonal of the
+/// real Schur form so that selected eigenvalues are at the top left.
+/// The leading columns of Z then form an orthonormal basis for the
+/// invariant subspace corresponding to the selected eigenvalues.
+///
+/// A matrix is in real Schur form if it is upper quasi-triangular with
+/// 1-by-1 and 2-by-2 blocks. 2-by-2 blocks will be standardized in the
+/// form
+///         [  a  b  ]
+///         [  c  a  ]
+///
+/// where b*c < 0. The eigenvalues of such a block are a +- sqrt(bc).
+/// 
+/// Example
+/// ```
+///    use rest_tensors::{MatrixFull, MatrixUpper};
+///    use rest_tensors::matrix::matrix_blas_lapack::_dgees;
+///    // generate a matrix with only the upper triangle of A is stored in `MatrixUpper`.
+///    let matr_0 = MatrixUpper::from_vec(6, vec![4.0,12.0,37.0,-16.0,-43.0,98.0]).unwrap();
+///    // transfer it to a MatrixFull format and store in matr_a
+///    let mut matr_a = matr_0.to_matrixfull().unwrap();
+///    //println!("{:?}", &matr_a);
+///    //            |  4.0 | 12.0 |-16.0 |
+///    // matr_a =   | 12.0 | 37.0 |-43.0 |
+///    //            |-16.0 |-43.0 | 98.0 |
+///    let (matr_b, vs, wr, wi) = _dgees(&mut matr_a, 'V', 'N', None);
+///    //let U = matr_a.iter_matrixupper().unwrap().map(|x| *x).collect::<Vec<f64>>();
+///    //assert_eq!(U, vec![2.0,6.0,1.0,-8.0,5.0,3.0]);
+///    matr_b.formated_output(3, "T");
+///    vs.formated_output(3,"Eigenvector");
+///    println!("{:?}", &wr);
+///    println!("{:?}", &wi);
+///    
+/// ```
+/// 
+pub fn _dgees<'a, T>(matr: &T, jobvs: char, sort: char, select: Select2F64)  -> (MatrixFull<f64>, MatrixFull<f64>, Vec<f64>, Vec<f64>, usize)
+where T: BasicMatrix<'a, f64> {
+    let mut matr_a = unsafe{MatrixFull::from_vec_unchecked(
+        [matr.size()[0], matr.size()[1]],
+        matr.data_ref().unwrap().iter().map(|x| *x).collect())};
+    let n0 = matr_a.size()[0];
+    let n = n0 as i32;
+
+    let lda = n;
+    let ldvs = if jobvs.to_string().to_lowercase().eq("v") {n} else {1};
+    let mut vs = MatrixFull::new([ldvs as usize,n0],0.0);
+    let mut sdim = if sort.to_string().to_lowercase().eq("s") {n} else {0};;
+    let mut wr: Vec<f64> = vec![0.0;n0];
+    let mut wi: Vec<f64> = vec![0.0;n0];
+    let mut work: Vec<f64> = vec![0.0;4*n0];
+    let lwork = 4*n;
+    let mut bwork: Vec<i32> = vec![0;n0];
+    let mut info = 0;
+    //let a = matr_a.data_ref_mut().unwrap();
+
+    unsafe{dgees(
+        jobvs as u8, 
+        sort as u8, 
+        select, 
+        n, 
+        matr_a.data_ref_mut().unwrap(), 
+        lda, 
+        &mut sdim, 
+        &mut wr, 
+        &mut wi, 
+        vs.data_ref_mut().unwrap(), 
+        ldvs, 
+        &mut work, 
+        lwork, 
+        &mut bwork, 
+        &mut info)}
+
+    (matr_a, vs, wr, wi, sdim as usize)
+    //MatrixFull::new([10,10],0.0)
+}
+
+
+/// # [`_dpotrf`] dpotrf computes the Cholesky factorization of a real symmetric positive definite matrix A  
 /// uplo: char, `U` or `L`  
 /// = `U`: Upper triangle of A is stored  
 /// = `L`: Lower triangle of A is stored  
@@ -851,12 +938,14 @@ impl <'a> MatrixFullSliceMut<'a, f64> {
             //perform Cholesky decomposition on the matrix A -> A = L*L'
             unsafe{dpotrf(uplo.clone() as u8, n, &mut data,n, &mut info)};
             if info!=0 {
-                panic!("ERROR: DPOTRF failed with {}", info);
+                println!("ERROR: DPOTRF failed with {}", info);
+                return None;
             }
             // compute the inverse of L 
             unsafe{dpotri(uplo.clone() as u8, n, &mut data,n, &mut info)};
             if info!=0 {
-                panic!("ERROR: DPOTRI failed with {}", info);
+                println!("ERROR: DPOTRI failed with {}", info);
+                return None
             }
 
             let mut l_matr = MatrixFull::from_vec(size.clone(), data).unwrap();
@@ -1369,4 +1458,661 @@ fn test_symm_dgemm() {
         &mut mat_c, (0..3,0..3), 1.0, 0.0);
     mat_c.formated_output(3, "full");
     println!("{},{},{}",(0..20).start, (0..20).end, (0..20).len());
+}
+
+pub fn _sqrt_inverse_efficient() {
+
+}
+// A function to determine if an eigenvalue should be selected based on some criterion.
+extern "C" fn select(ar: *const f64, ai: *const f64) -> i32 {
+    unsafe{if ((*ar)*(*ar)).sqrt() < 1.0e-8 || ((*ai)*(*ai)).sqrt() > 1.0e-8 { 0 } else { 1 }} // Example criterion
+    //unsafe{if *ar < 1.0e-8  { 0 } else { 1 }} // Example criterion
+}
+
+#[test]
+fn test_dgees() {
+
+    //let matr_0 = crate::MatrixUpper::from_vec(6, vec![4.0,12.0,37.0,-16.0,-43.0,98.0]).unwrap();
+    //let matr_0 = crate::MatrixUpper::from_vec(6, vec![2.0,-1.0,2.0,0.0,-1.0,2.0]).unwrap();
+    //let mut matr_a = matr_0.to_matrixfull().unwrap();
+    let mut matr_a = MatrixFull::from_vec([3,3],vec![1.0,2.0,3.0,2.0,5.0,6.0,3.0,6.0,9.0]).unwrap();
+    //let mut matr_a = MatrixFull::from_vec([3,3],vec![1.0,2.2,0.3,2.2,5.0,1.0,0.3,1.0,9.0]).unwrap();
+    //let mut matr_a = MatrixFull::from_vec([3,3],vec![1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0]).unwrap();
+    println!("matr_a:");
+    matr_a.formated_output(6, "full");
+
+    let mut matr_b = MatrixFull::new([3,3],0.0);
+    let mut matr_c = MatrixFull::new([3,3],0.0);
+    let mut matr_d = MatrixFull::new([3,3],0.0);
+    let mut matr_e = MatrixFull::new([3,3],0.0);
+
+
+    // ================================= initial_guess with schur decomposition =========
+    //let (mut matr_b, vs, wr, wi,sdim) = _dgees(&matr_a, 'V', 'S', Some(select));
+    //matr_b.formated_output(3, "full");
+    //vs.formated_output(3, "full");
+    //println!("{:?}", &wr);
+    //println!("{:?}", &wi);
+    //println!("{:?}", sdim);
+    ////let sdim = 3;
+
+    //matr_b.iter_mut().for_each(|x| {
+    //    if (*x).abs() < 1.0e-10 {
+    //        *x = 0.0
+    //    }
+    //});
+
+    //(sdim..matr_b.size()[0]).for_each(|i| {matr_b[(i,i)]=0.0});
+    //matr_b.formated_output(3, "full");
+
+
+    //_dgemm_full(&vs, 'N', &matr_b, 'N', &mut matr_d, 1.0, 0.0);
+    //_dgemm_full(&matr_d, 'N', &vs, 'T', &mut matr_c, 1.0, 0.0);
+    //matr_c.formated_output(3, "full");
+
+    //let (mut matr_b, vs, wr, wi,sdim) = _dgees(&matr_c, 'V', 'S', Some(select));
+    //matr_b.formated_output(3, "full");
+    //vs.formated_output(3, "full");
+
+    //let mut n_singular = 0_usize;
+    //let mut converged_flag = false;
+    ////let level_shift = vec![2.0,1.0,0.1,0.05];
+    ////let level_shift = vec![1.0e-3,1.0e-5,1.0e-6, 1.0e-7, 1.0e-8, 0.0];
+    //let level_shift = vec![1.0e-3, 1.0e-4, 0.0];
+    //let sub_matr = MatrixFull::from_vec([sdim, sdim],matr_b.iter_submatrix(0..sdim, 0..sdim).map(|x| *x).collect_vec()).unwrap();
+    //let mut sub_matr_c = MatrixFull::new([sdim,sdim],0.0);
+    //let mut sub_matr_d = MatrixFull::new([sdim,sdim],0.0);
+
+    //(sub_matr_c, n_singular, converged_flag) = _newton_schulz_inverse_square_root_v02(&sub_matr, 1.0e-8, 0.3, 20, &level_shift);
+
+    //let mut matr_c = matr_b.clone();
+    ////let mut matr_c = MatrixFull::new([3,3],0.0);
+
+    //matr_c.iter_submatrix_mut(0..sdim, 0..sdim).zip(sub_matr_c.iter()).for_each(|(x,y)| {*x = *y});
+
+    //matr_c.formated_output(3, "full");
+
+    ////_dgemm_full(&matr_c, 'N', &matr_c, 'N', &mut matr_d, 1.0, 0.0);
+    //println!("==== print final results ====");
+    //println!("original matr_a:");
+    //matr_a.formated_output(6, "full");
+
+    //_dgemm_full(&vs, 'N', &matr_c, 'N', &mut matr_d, 1.0, 0.0);
+    //_dgemm_full(&matr_d, 'N', &vs, 'T', &mut matr_b, 1.0, 0.0);
+    //println!("\n matr_b = 1/sqrt(matr_a): inverse square root of matr_a by using newton_schulz algorithm:");
+    //matr_b.formated_output(6, "full");
+
+    //_dgemm_full(&matr_b, 'N', &matr_b, 'N', &mut matr_c, 1.0, 0.0);
+    //println!("\n matr_c = matr_b * matr_b: inverse of matr_a:");
+    //matr_c.formated_output(6, "full");
+
+    //println!("\n matr_d = matr_c^(-1) = matr_a:");
+    //matr_d = _power(&matr_c, -1.0, 1.0e-8).unwrap();
+    //matr_d.formated_output(6, "full");
+
+    //println!("\n matr_e = matr_a * matr_c = I");
+    //_dgemm_full(&matr_a, 'N', &matr_c, 'N', &mut matr_e, 1.0, 0.0);
+    //matr_e.formated_output(6, "full");
+    // ================================= initial_guess with schur decomposition =========
+
+    // ================================= plant initial_guess ========================
+    let (mut matr_b, vs, wr, wi,sdim) = _dgees(&matr_a, 'V', 'S', Some(select));
+    matr_b.formated_output(3, "full");
+    vs.formated_output(3, "full");
+    println!("{:?}", &wr);
+    println!("{:?}", &wi);
+    println!("{:?}", sdim);
+    //let sdim = 3;
+
+    matr_b.iter_mut().for_each(|x| {
+        if (*x).abs() < 1.0e-10 {
+            *x = 0.0
+        }
+    });
+
+    (sdim..matr_b.size()[0]).for_each(|i| {matr_b[(i,i)]=0.0});
+    matr_b.formated_output(3, "full");
+
+
+    _dgemm_full(&vs, 'N', &matr_b, 'N', &mut matr_d, 1.0, 0.0);
+    _dgemm_full(&matr_d, 'N', &vs, 'T', &mut matr_c, 1.0, 0.0);
+    matr_c.formated_output(3, "full");
+    let mut n_singular = 0;
+    let mut converged_flag = false;
+    let level_shift = vec![0.0];
+    (matr_c, n_singular, converged_flag) = _newton_schulz_inverse_square_root_v02(&matr_c, 1.0e-8, 1.0, 100, &level_shift);
+    _dgemm_full(&matr_c, 'N', &matr_c, 'N', &mut matr_d, 1.0, 0.0);
+    println!("inverse of matr_a:");
+    matr_d.formated_output(6, "full");
+    _dgemm_full(&matr_d, 'N', &matr_a, 'N', &mut matr_c, 1.0, 0.0);
+    matr_c.formated_output(6, "full");
+    // ================================= plant initial_guess ========================
+
+
+
+    //let (mut matr_b, vs, wr, wi) = _dgees(&mut matr_a, 'V', 'N', None);
+    //println!("quasi triangular matrix T:");
+    //matr_b.formated_output(6, "full");
+    //println!("U and corresponding eigenvalues (real and image parts):");
+    //vs.formated_output(6,"full");
+    //println!("{:?}", &wr);
+    //println!("{:?}", &wi);
+
+    //_dgemm_full(&vs, 'N', &matr_b, 'N', &mut matr_c, 1.0, 0.0);
+    //_dgemm_full(&matr_c, 'N', &vs, 'T', &mut matr_a, 1.0, 0.0);
+    //println!("Repeat matr_a by U*T*U**T:");
+    //matr_a.formated_output(6, "full");
+
+    //// ================================= using _newton_schulz =========
+    ////let mut sub_matr = MatrixFull::from_vec([2,2],matr_b.iter_submatrix(0..2, 0..2).map(|x| *x).collect_vec()).unwrap();
+    //// perform the inverse of squart root 
+    //let mut n_singular = 0_usize;
+    //let mut converged_flag = false;
+    //(matr_c, n_singular, converged_flag) = _newton_schulz_inverse_square_root(&matr_b, 1.0e-8, 0.3, 100);
+    //matr_c.formated_output(6, "full");
+    ////matr_c = matr_b.clone();
+    ////matr_c.iter_submatrix_mut(0..2,0..2).zip(sub_matr.iter()).for_each(|(to, from)| {*to = *from});
+    //_dgemm_full(&vs, 'N', &matr_c, 'N', &mut matr_b, 1.0, 0.0);
+    //_dgemm_full(&matr_b, 'N', &vs, 'T', &mut matr_d, 1.0, 0.0);
+    //_dgemm_full(&matr_d, 'N', &matr_d, 'N', &mut matr_c, 1.0, 0.0);
+    //println!("inverse of matr_a:");
+    //matr_c.formated_output(6, "full");
+    //_dgemm_full(&matr_c, 'N', &matr_a, 'N', &mut matr_d, 1.0, 0.0);
+    //matr_d.formated_output(6, "full");
+    // ================================= using _newton_schulz =========
+
+
+    // ================================= using _power =========
+    //matr_c = _power(&matr_b, -0.5, 1.0e-8).unwrap();
+    ////matr_c = matr_b.clone();
+    ////matr_c.iter_submatrix_mut(0..2,0..2).zip(sub_matr.iter()).for_each(|(to, from)| {*to = *from});
+
+    //_dgemm_full(&vs, 'N', &matr_c, 'N', &mut matr_b, 1.0, 0.0);
+    //_dgemm_full(&matr_b, 'N', &vs, 'T', &mut matr_d, 1.0, 0.0);
+    //println!("inverse of matr_a:");
+    //matr_d.formated_output(6, "full");
+    //_dgemm_full(&matr_d, 'N', &matr_d, 'N', &mut matr_c, 1.0, 0.0);
+    //matr_c.formated_output(6, "full");
+    // ================================= using _power =========
+
+
+    //let mut sub_matr = MatrixFull::from_vec([2,2], matr_b.iter_submatrix(0..2, 0..2).map(|x| *x).collect()).unwrap();
+    //sub_matr.formated_output(2, "full");
+
+    //let mut sqrt_sub = _power_rayon(&sub_matr, 0.5, 1.0e-8).unwrap();
+    //sqrt_sub.formated_output(2, "full");
+
+    //sub_matr = _power(&sqrt_sub, 2.0, 1.0e-8).unwrap();
+    //sub_matr.formated_output(2, "full");
+
+    ////sqrt_sub[(1,0)] = 0.0;
+
+    //matr_b.iter_submatrix_mut(0..2, 0..2).zip(sqrt_sub.data_ref().unwrap()).for_each(|(to, from)| {*to = *from});
+
+    //_dgemm_full(&vs, 'N', &matr_b, 'N', &mut matr_c, 1.0, 0.0);
+
+    //_dgemm_full(&matr_c, 'N', &vs, 'T', &mut matr_a, 1.0, 0.0);
+
+    ////_dgemm_full(&matr_a, 'N', &matr_a, 'N', &mut matr_c, 1.0, 0.0);
+    //matr_c = _power_rayon(&matr_a, 2.0, 1.0E-8).unwrap();
+
+    //matr_c.formated_output(6, "full");
+
+    // ===========================================================================================================
+    ////let matr_0 = crate::MatrixUpper::from_vec(6, vec![1.0, 0.5, 2.0, 12.0,37.0,98.0]).unwrap();
+    //let matr_0 = crate::MatrixUpper::from_vec(6, vec![4.0,12.0,37.0,-16.0,-43.0,98.0]).unwrap();
+    ////let matr_0 = crate::MatrixUpper::from_vec(6, vec![2.0,-1.0,2.0,0.0,-1.0,2.0]).unwrap();
+    //// transfer it to a MatrixFull format and store in matr_a
+    //let mut matr_a = matr_0.to_matrixfull().unwrap();
+    ////let mut matr_a = MatrixFull::from_vec([3,3],vec![2.0,1.0,3.0,4.0,5.0,6.0,7.0,8.0,9.0]).unwrap();
+    //let mut matr_b = MatrixFull::new([3,3],0.0);
+    //let mut matr_c = MatrixFull::new([3,3],0.0);
+    //let trace = matr_a.iter_diagonal();
+    //matr_a.formated_output(6, "full");
+    //let mut matr_b = _power(&matr_a, -0.5, 1.0e-10).unwrap();
+    //matr_b.formated_output(6, "full");
+    //_dgemm_full(&matr_b, 'N', &matr_b, 'N', &mut matr_c, 1.0, 0.0);
+    //_dgemm_full(&matr_c, 'N', &matr_a, 'N', &mut matr_b, 1.0, 0.0);
+    //matr_b.formated_output(6, "full");
+    ////_dgemm_full(&matr_c, 'N', &matr_a, 'N', &mut matr_b, 1.0, 0.0);
+    ////println!("inverse using _power:");
+    ////matr_b.formated_output(6, "full");
+    ////let mut matr_c = _dinverse(&matr_a).unwrap();
+    ////matr_c.formated_output(6, "full");
+    ////_dgemm_full(&matr_c, 'N', &matr_a, 'N', &mut matr_b, 1.0, 0.0);
+    ////println!("inverse using _dinverse:");
+    ////matr_b.formated_output(6, "full");
+
+
+
+    //let (mut matr_b, n_sigular, converge_flag) = _newton_schulz_inverse_square_root(&matr_a, 1.0e-7, 0.6, 300);
+    //_dgemm_full(&matr_b, 'N', &matr_b, 'N', &mut matr_c, 1.0, 0.0);
+    //matr_c.formated_output(6, "full");
+    //println!("n_singular: {}", n_sigular);
+    //_dgemm_full(&matr_c, 'N', &matr_a, 'N', &mut matr_b, 1.0, 0.0);
+    //matr_b.formated_output(6, "full");
+
+    ////let matr_b = _newton_schulz_inverse_square_root(&matr_a, 1.0e-4, 100);
+
+    ////_dgemm_full(&matr_b, 'N', &matr_b, 'N', &mut matr_c, 1.0, 0.0);
+    ////matr_c.formated_output(6, "full");
+
+
+    //////let mut matr_b = _power(&matr_c, 2.0, 1.0e-8).unwrap();
+    ////let mut matr_b = MatrixFull::new([3,3],0.0);
+    ////_dgemm_full(&matr_c, 'N', &matr_c, 'N', &mut matr_b, 1.0, 0.0);
+    ////matr_b.formated_output(6, "full");
+    // ===========================================================================================================
+}
+
+pub fn _newton_schulz_inverse_square_root_v02(original_matr: &MatrixFull<f64>, threshold: f64, mix_parameter: f64, num_iter: usize, level_shift: &Vec<f64>)  -> (MatrixFull<f64>, usize, bool)
+{
+    let num_elems = original_matr.data_ref().unwrap().len();
+    let mut unit_matr = MatrixFull::new([original_matr.size()[0],original_matr.size()[1]],0.0);
+    unit_matr.iter_diagonal_mut().unwrap().for_each(|x| *x = 3.0);
+
+    let mut next_matr_0 = MatrixFull::new([original_matr.size()[0],original_matr.size()[1]],0.0);
+    let mut next_matr_1 =  next_matr_0.clone();
+    let mut prev_matr_0 =  next_matr_0.clone();
+
+    // now prepare the initial guess 
+    let mut initial_matr = MatrixFull::new([original_matr.size()[0],original_matr.size()[1]],0.0);
+    let mut original_norm = original_matr.data_ref().unwrap().par_iter()
+        .fold_with(0.0, |acc, x| { acc + x.powf(2.0)}).sum::<f64>();
+    original_norm = original_norm.sqrt();
+
+
+    //   1) renormalize the matrix with respect to its norm
+    let matr_0 = MatrixFull::from_vec([original_matr.size()[0], original_matr.size()[1]], 
+        original_matr.iter().map(|x| {*x/original_norm}).collect_vec()).unwrap();
+    matr_0.formated_output(3, "full");
+    let norm = matr_0.data_ref().unwrap().par_iter()
+        .fold_with(0.0, |acc, x| { acc + x.powf(2.0)}).sum::<f64>().sqrt();
+    println!("norm: {} before, {} after scale", &original_norm, &norm);
+
+    let mut initial_guess = None;
+    let mut converge_flag = false;
+    //let level_shift = vec![1.0e-3, 1.0e-4, 1.0e-5, 1.0e-6];
+    for i in 0..level_shift.len() {
+        let mut out_matr = matr_0.clone();
+        let mut n_singular = 0;
+        let mut lf_converge_flag = false;
+        //let original_guess = initial_guess.clone();
+        (out_matr, n_singular, lf_converge_flag) = _newton_schulz_inverse_square_root_lf(&matr_0, &initial_guess, threshold,mix_parameter, level_shift[i], num_iter);
+
+        let mut fine_mix_parameter = mix_parameter;
+
+        if !lf_converge_flag {
+            let mut lf_converge_flag_2 = lf_converge_flag;
+            let mut curr_step = 0;
+            while ! lf_converge_flag_2 {
+                fine_mix_parameter = fine_mix_parameter/2.0;
+                curr_step += 1;
+                //println!("fine_mix_parameter: {}", &fine_mix_parameter);
+                (out_matr, n_singular, lf_converge_flag_2) = _newton_schulz_inverse_square_root_lf(&matr_0, &initial_guess, threshold,fine_mix_parameter, level_shift[i], num_iter);
+                if curr_step > 5 {
+                    //initial_guess = Some(out_matr);
+                    //converge_flag = lf_converge_flag_2;
+                    break
+                }
+            }
+            initial_guess = Some(out_matr);
+            converge_flag = lf_converge_flag_2;
+            break
+        } else {
+            converge_flag = lf_converge_flag;
+            initial_guess = Some(out_matr)
+        }
+    }
+
+    next_matr_1 = initial_guess.unwrap();
+
+    let n_singular = 0;
+
+    let rescaled_norm = original_norm.powf(-0.5);
+    next_matr_1.data.par_iter_mut().for_each(|x| *x *= rescaled_norm);
+
+    (next_matr_1, n_singular, converge_flag)
+}
+
+pub fn _newton_schulz_inverse_square_root_lf(input_matr: &MatrixFull<f64>, initial_guess: &Option<MatrixFull<f64>>, threshold: f64, mix_parameter: f64, level_shift: f64, num_iter: usize)  -> (MatrixFull<f64>, usize, bool)
+{
+
+    println!("mix_parameter: {}", mix_parameter);
+    let num_elems = input_matr.data_ref().unwrap().len();
+    let mut unit_matr = MatrixFull::new([input_matr.size()[0],input_matr.size()[1]],0.0);
+    unit_matr.iter_diagonal_mut().unwrap().for_each(|x| *x = 3.0);
+
+    //  level-shift
+    let mut matr = input_matr.clone();
+    matr.iter_diagonal_mut().unwrap().for_each(|to| {
+        if *to > threshold {
+            *to += level_shift
+        }  else {
+            *to = 0.0
+        }
+    });
+
+    let mut trace_1 = matr.iter_diagonal().unwrap()
+        .fold(0.0, |acc, x| {acc + x })/input_matr.size()[0] as f64;
+    let initial_a = 1.0/trace_1.sqrt();
+    //println!("trace: {:16.8},initial_a: {:16.8}", &trace_1, &initial_a);
+
+    let mut next_matr_0 = MatrixFull::new([input_matr.size()[0],input_matr.size()[1]],0.0);
+    let mut next_matr_1 =  next_matr_0.clone();
+    let mut prev_matr_0 =  next_matr_0.clone();
+
+    // now prepare the initial guess 
+    let mut initial_matr = if let Some(tmp_matr) = initial_guess {
+        tmp_matr.clone()
+    } else {
+        let mut initial_matr = MatrixFull::new([input_matr.size()[0],input_matr.size()[1]],0.0);
+        initial_matr.iter_diagonal_mut().unwrap().zip(matr.iter_diagonal().unwrap()).for_each(|(to, from) | {
+            if (*from).abs() < threshold {
+                *to = 0.0;
+            } else {
+                *to = initial_a
+            }
+        });
+        initial_matr
+    };
+
+    // X_next = 0.5* X_curr * (3I - A*X_curr*X_curr)
+    _dgemm_full(&matr, 'N', &initial_matr, 'N', &mut next_matr_0, 1.0, 0.0);
+    _dgemm_full(&next_matr_0, 'N', &initial_matr, 'N', &mut next_matr_1, 1.0, 0.0);
+
+    next_matr_0 = unit_matr.par_scaled_add(&next_matr_1, -1.0).unwrap();
+
+    _dgemm_full(&initial_matr, 'N', &next_matr_0, 'N', &mut next_matr_1, 0.5, 0.0);
+
+    let mut norm = initial_matr.data_ref().unwrap().par_iter().zip(next_matr_1.data_ref().unwrap().par_iter())
+        .fold_with(0.0, |acc, (x,y)| { acc + (x-y).powf(2.0)}).sum::<f64>().sqrt()/num_elems as f64;
+    
+
+    let mut prev_norm = norm;
+    prev_matr_0 = initial_matr.clone();
+    initial_matr = next_matr_1.clone();
+
+
+    let mut converge_flag = norm<=threshold;
+    let mut final_iter = 0_usize;
+
+    let mut count_unchanged_results = 0;
+    for cur_iter in 0..num_iter {
+
+        // X_next = 0.5* X_curr * (3I - A*X_curr*X_curr)
+
+        _dgemm_full(&matr, 'N', &initial_matr, 'N', &mut next_matr_0, 1.0, 0.0);
+        _dgemm_full(&next_matr_0, 'N', &initial_matr, 'N', &mut next_matr_1, 1.0, 0.0);
+        next_matr_0 = unit_matr.par_scaled_add(&next_matr_1, -1.0).unwrap();
+        _dgemm_full(&initial_matr, 'N', &next_matr_0, 'N', &mut next_matr_1, 0.5, 0.0);
+
+        // compute the difference between X_next and X_curr: ||X_next - X_curr||
+        let mut norm = initial_matr.data_ref().unwrap().par_iter().zip(next_matr_1.data_ref().unwrap().par_iter())
+            .fold_with(0.0, |acc, (x,y)| { acc + (x-y).powf(2.0)}).sum::<f64>().sqrt()/num_elems as f64;
+
+        let self_norm = next_matr_1.data_ref().unwrap().par_iter()
+            .fold_with(0.0, |acc, x| { acc + x.powf(2.0)}).sum::<f64>().sqrt();
+
+
+        converge_flag = norm <= threshold;
+
+        let change_norm = norm - prev_norm;
+        prev_norm = norm;
+
+        let mut dev_symm_norm = 0.0;
+
+        prev_matr_0 = initial_matr.clone();
+        
+
+        if converge_flag {
+            println!("Iteration after {} steps: 1) diff_norm: {:16.8}; 2) self_norm: {:16.8}; 3) broken symmetry: {:16.8}", &cur_iter, &norm, &self_norm/num_elems as f64, &dev_symm_norm);
+            break
+        } else {
+            if norm <= threshold * 10.0 {
+                initial_matr.data_ref_mut().unwrap().par_iter_mut().zip(next_matr_1.data_ref().unwrap().par_iter()).for_each(|(to, from)| {
+                    *to = mix_parameter*(*from) + (1.0-mix_parameter)*(*to);
+                });
+                initial_matr.data_ref_mut().unwrap().par_iter_mut().zip(prev_matr_0.data_ref().unwrap().par_iter()).for_each(|(to, from)| {
+                    *to = mix_parameter*(*from) + (1.0-mix_parameter)*(*to);
+                });
+                count_unchanged_results = 0;
+
+            } else if change_norm > threshold {
+                count_unchanged_results = 0;
+                initial_matr.data_ref_mut().unwrap().par_iter_mut().zip(next_matr_1.data_ref().unwrap().par_iter()).for_each(|(to, from)| {
+                    *to = mix_parameter*(*from) + (1.0-mix_parameter)*(*to);
+                });
+                //initial_matr  = (initial_matr.transpose() + initial_matr)*0.5;
+                
+                let tmp_self_norm = initial_matr.data_ref().unwrap().par_iter()
+                    .fold_with(0.0, |acc, x| { acc + x.powf(2.0)}).sum::<f64>().sqrt();
+                if tmp_self_norm >= 100.0 {
+
+                    initial_matr.data_ref_mut().unwrap().par_iter_mut().for_each(|x| *x /= tmp_self_norm);
+                    //let wr = initial_matr.iter_diagonal().unwrap().map(|x| *x).collect_vec();
+                    initial_matr.data_ref_mut().unwrap().par_iter_mut().for_each(|x| *x /= tmp_self_norm);
+                    initial_matr.iter_diagonal_mut().unwrap().for_each(|x| *x *= tmp_self_norm);
+                }
+            }  else if change_norm.abs() <= threshold {
+                if count_unchanged_results < 5 {
+                    initial_matr.data_ref_mut().unwrap().par_iter_mut().zip(next_matr_1.data_ref().unwrap().par_iter()).for_each(|(to, from)| {
+                        *to = mix_parameter*(*from) + (1.0-mix_parameter)*(*to);
+                    });
+                    count_unchanged_results += 1;
+                } else {
+                    initial_matr.iter_diagonal_mut().unwrap().for_each(|to | *to = initial_a);
+                    count_unchanged_results = 0;
+                }
+            } else {
+                initial_matr = next_matr_1.clone();
+                count_unchanged_results = 0;
+            }
+        };
+
+        println!("Iteration after {} steps: 1) diff_norm: {:16.8}; 2) self_norm: {:16.8}", &cur_iter, &norm, &self_norm/num_elems as f64);
+
+        final_iter += 1;
+
+        //initial_matr.formated_output(3, "full");
+
+
+    }
+    if converge_flag {
+        println!("Iteration is converged after {} steps", final_iter);
+    } else {
+        println!("WARNNING: Iteration IS NOT converged after {} steps", final_iter);
+    }
+
+    let n_singular = 0;
+
+    (next_matr_1, n_singular, converge_flag)
+}
+
+
+//fn _newton_schulz_inverse_square_root<'a, T>(matr: &MatrixFull<f64>, threshold: f64, num_iter: usize)  -> MatrixFull<f64>
+//where T: BasicMatrix<'a, f64> 
+pub fn _newton_schulz_inverse_square_root_v01(original_matr: &MatrixFull<f64>, threshold: f64, mix_parameter: f64, num_iter: usize)  -> (MatrixFull<f64>, usize, bool)
+{
+
+    let num_elems = original_matr.data_ref().unwrap().len();
+    let mut unit_matr = MatrixFull::new([original_matr.size()[0],original_matr.size()[1]],0.0);
+    unit_matr.iter_diagonal_mut().unwrap().for_each(|x| *x = 3.0);
+
+    let mut next_matr_0 = MatrixFull::new([original_matr.size()[0],original_matr.size()[1]],0.0);
+    let mut next_matr_1 =  next_matr_0.clone();
+    let mut prev_matr_0 =  next_matr_0.clone();
+
+    // now prepare the initial guess 
+    let mut initial_matr = MatrixFull::new([original_matr.size()[0],original_matr.size()[1]],0.0);
+    let mut original_norm = original_matr.data_ref().unwrap().par_iter()
+        .fold_with(0.0, |acc, x| { acc + x.powf(2.0)}).sum::<f64>();
+    original_norm = original_norm.sqrt();
+
+
+    //   1) renomalize the matrix with respect to its norm
+    let matr_0 = MatrixFull::from_vec([original_matr.size()[0], original_matr.size()[1]], 
+        original_matr.iter().map(|x| {*x/original_norm}).collect_vec()).unwrap();
+    matr_0.formated_output(3, "full");
+    let norm = matr_0.data_ref().unwrap().par_iter()
+        .fold_with(0.0, |acc, x| { acc + x.powf(2.0)}).sum::<f64>().sqrt();
+    println!("norm: {} before, {} after scale", &original_norm, &norm);
+
+    // processing
+    //let mut p_matr = MatrixFull::new([original_matr.size()[0], original_matr.size()[1]], 0.0);
+    //p_matr.iter_diagonal_mut().unwrap().zip(matr_0.iter_diagonal().unwrap()).for_each(|(to,from)| {
+    //    if *from < 1.0e-8 {
+    //        *to = 1.0;
+    //    } else {
+    //        *to = 1.0/(*from)
+    //    }
+    //});
+    //p_matr.formated_output(3, "full");
+    //let mut matr = MatrixFull::new([original_matr.size()[0], original_matr.size()[1]], 0.0);
+    //_dgemm_full(&p_matr, 'N', &matr_0, 'N', &mut next_matr_0, 1.0, 0.0);
+    //_dgemm_full(&next_matr_0, 'N', &p_matr, 'N', &mut matr, 1.0, 0.0);
+
+    //  level-shift
+    let mut matr = matr_0.clone();
+    matr.iter_diagonal_mut().unwrap().for_each(|to| *to += 1.0e-3);
+    
+
+    let mut trace_1 = matr.iter_diagonal().unwrap()
+        .fold(0.0, |acc, x| {acc + x })/matr.size()[0] as f64;
+    let initial_a = 1.0/trace_1.sqrt();
+    println!("trace: {:16.8},initial_a: {:16.8}", &trace_1, &initial_a);
+    initial_matr.iter_diagonal_mut().unwrap().for_each(|to | *to = initial_a);
+    let n_singular = 0;
+
+    //let (mut matr_b, vs, wr, wi) = _dgees(&matr, 'N', 'N', None);
+    //let mut n_singular = 0_usize;
+    //wr.iter().for_each(|x| {if *x<=1.0e-8 {n_singular += 1}});
+    //initial_matr.iter_diagonal_mut().unwrap().zip(wr.iter()).for_each(|(to, from)| {
+    //    *to = if *from<=0.0 {
+    //        initial_a
+    //    } else if *from<=1.0e-3 {
+    //        initial_a
+    //    } else {
+    //        (*from).powf(-0.5)
+    //    }
+    //});
+
+    //initial_matr.formated_output(3, "full");
+
+    // X_next = 0.5* X_curr * (3I - A*X_curr*X_curr)
+    // _dgemm_full(&matr, 'N', &initial_matr, 'N', &mut next_matr_0, 1.0, 0.0);
+    // _dgemm_full(&next_matr_0, 'N', &initial_matr, 'N', &mut next_matr_1, 1.0, 0.0);
+
+    // next_matr_0 = unit_matr.par_scaled_add(&next_matr_1, -1.0).unwrap();
+
+    // _dgemm_full(&initial_matr, 'N', &next_matr_0, 'N', &mut next_matr_1, 0.5, 0.0);
+
+    // let mut norm = initial_matr.data_ref().unwrap().par_iter().zip(next_matr_1.data_ref().unwrap().par_iter())
+    //     .fold_with(0.0, |acc, (x,y)| { acc + (x-y).powf(2.0)}).sum::<f64>().sqrt()/num_elems as f64;
+
+    
+
+    let mut prev_norm = norm;
+    //prev_matr_0 = initial_matr.clone();
+    //initial_matr = next_matr_1.clone();
+
+
+    let mut converge_flag = norm<=threshold;
+    let mut final_iter = 0_usize;
+    for cur_iter in 0..num_iter {
+
+        // X_next = 0.5* X_curr * (3I - A*X_curr*X_curr)
+
+        _dgemm_full(&matr, 'N', &initial_matr, 'N', &mut next_matr_0, 1.0, 0.0);
+        _dgemm_full(&next_matr_0, 'N', &initial_matr, 'N', &mut next_matr_1, 1.0, 0.0);
+        next_matr_0 = unit_matr.par_scaled_add(&next_matr_1, -1.0).unwrap();
+        _dgemm_full(&initial_matr, 'N', &next_matr_0, 'N', &mut next_matr_1, 0.5, 0.0);
+
+        // compute the difference between X_next and X_curr: ||X_next - X_curr||
+        let mut norm = initial_matr.data_ref().unwrap().par_iter().zip(next_matr_1.data_ref().unwrap().par_iter())
+            .fold_with(0.0, |acc, (x,y)| { acc + (x-y).powf(2.0)}).sum::<f64>().sqrt()/num_elems as f64;
+
+        let self_norm = next_matr_1.data_ref().unwrap().par_iter()
+            .fold_with(0.0, |acc, x| { acc + x.powf(2.0)}).sum::<f64>().sqrt();
+
+
+        converge_flag = norm <= threshold;
+
+        let change_norm = norm - prev_norm;
+        prev_norm = norm;
+
+        let mut dev_symm_norm = 0.0;
+
+        prev_matr_0 = initial_matr.clone();
+        
+
+        if converge_flag {
+            println!("Iteration after {} steps: 1) diff_norm: {:16.8}; 2) self_norm: {:16.8}; 3) broken symmetry: {:16.8}", &cur_iter, &norm, &self_norm/num_elems as f64, &dev_symm_norm);
+            break
+        } else {
+            if norm <= threshold * 10.0 {
+                initial_matr.data_ref_mut().unwrap().par_iter_mut().zip(next_matr_1.data_ref().unwrap().par_iter()).for_each(|(to, from)| {
+                    *to = mix_parameter*(*from) + (1.0-mix_parameter)*(*to);
+                });
+                initial_matr.data_ref_mut().unwrap().par_iter_mut().zip(prev_matr_0.data_ref().unwrap().par_iter()).for_each(|(to, from)| {
+                    *to = mix_parameter*(*from) + (1.0-mix_parameter)*(*to);
+                });
+
+            } else if change_norm > 1.0e-3 {
+                initial_matr.data_ref_mut().unwrap().par_iter_mut().zip(next_matr_1.data_ref().unwrap().par_iter()).for_each(|(to, from)| {
+                    *to = mix_parameter*(*from) + (1.0-mix_parameter)*(*to);
+                });
+                //initial_matr  = (initial_matr.transpose() + initial_matr)*0.5;
+                
+                let tmp_self_norm = initial_matr.data_ref().unwrap().par_iter()
+                    .fold_with(0.0, |acc, x| { acc + x.powf(2.0)}).sum::<f64>().sqrt();
+                if tmp_self_norm >= 100.0 {
+
+                    initial_matr.data_ref_mut().unwrap().par_iter_mut().for_each(|x| *x /= tmp_self_norm);
+                    //let wr = initial_matr.iter_diagonal().unwrap().map(|x| *x).collect_vec();
+                    initial_matr.data_ref_mut().unwrap().par_iter_mut().for_each(|x| *x /= tmp_self_norm);
+                    initial_matr.iter_diagonal_mut().unwrap().for_each(|x| *x *= tmp_self_norm);
+                }
+            }  else if change_norm.abs() < 1.0e-3 {
+                //initial_matr = next_matr_1.clone();
+                //initial_matr = (initial_matr.transpose() + initial_matr)*0.5;
+                //dev_symm_norm = initial_matr.data_ref().unwrap().par_iter().zip(next_matr_1.data_ref().unwrap().par_iter())
+                //    .fold_with(0.0, |acc, (x,y)| { acc + (x-y).powf(2.0)}).sum::<f64>();
+                initial_matr.iter_diagonal_mut().unwrap().for_each(|to | *to = initial_a);
+
+            }
+            else {
+                initial_matr = next_matr_1.clone();
+                //initial_matr = (initial_matr.transpose() + initial_matr)*0.5;
+                dev_symm_norm = initial_matr.data_ref().unwrap().par_iter().zip(next_matr_1.data_ref().unwrap().par_iter())
+                    .fold_with(0.0, |acc, (x,y)| { acc + (x-y).powf(2.0)}).sum::<f64>();
+
+            }
+        };
+
+        println!("Iteration after {} steps: 1) diff_norm: {:16.8}; 2) self_norm: {:16.8}; 3) broken symmetry: {:16.8}", &cur_iter, &norm, &self_norm/num_elems as f64, &dev_symm_norm);
+
+        final_iter += 1;
+
+        //initial_matr.formated_output(3, "full");
+
+
+    }
+    if converge_flag {
+        println!("Iteration is converged after {} steps", final_iter);
+    } else {
+        println!("WARNNING: Iteration IS NOT converged after {} steps", final_iter);
+    }
+
+    //p_matr.iter_diagonal_mut().unwrap().for_each(|to| {
+    //    *to = (*to).sqrt()
+    //});
+    //_dgemm_full(&p_matr, 'N', &next_matr_1, 'N', &mut next_matr_0, 1.0, 0.0);
+    //_dgemm_full(&next_matr_0, 'N', &p_matr, 'N', &mut next_matr_1, 1.0, 0.0);
+
+
+    let rescaled_norm = original_norm.powf(-0.5);
+    next_matr_1.data.par_iter_mut().for_each(|x| *x *= rescaled_norm);
+
+    (next_matr_1, n_singular, converge_flag)
 }
