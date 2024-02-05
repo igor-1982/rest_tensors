@@ -2,17 +2,20 @@
 use std::{fmt::Display, collections::binary_heap::Iter, iter::{Filter,Flatten, Map, StepBy}, convert, slice::{ChunksExact,ChunksExactMut, self}, mem::ManuallyDrop, marker, cell::RefCell, ops::{IndexMut, RangeFull, MulAssign, DivAssign, Div, DerefMut, Deref}, thread::panicking};
 use std::ops::{Add, Sub, Mul, AddAssign, SubAssign, Index, Range};
 use libc::{CLOSE_RANGE_CLOEXEC, SYS_userfaultfd};
+use nalgebra::Matrix;
 use typenum::{U2, Pow};
-use rayon::{prelude::*, collections::btree_map::IterMut, iter::Enumerate};
+use rayon::{prelude::*, collections::btree_map::IterMut, iter::Enumerate, vec};
 use std::vec::IntoIter;
 use regex::Regex;
 use lapack::{dgesv,dgesvd,dgelss,dgesvj};
 use rayon::prelude::*;
+use ndarray::{Array,Array2, ArrayBase};
+use ndarray_einsum_beta::{einsum, ArrayLike};
 /* use lapack::{Layout::RowMajor,dgesvd};
 use blas::Layout;
 use lapack::svd::{SVDCC,SVDError}; */
 
-use crate::{matrix::{MatrixFull, BasicMatrix, MatFormat, MathMatrix, ParMathMatrix, BasicMatrixOpt}, RIFull};
+use crate::{matrix::{MatrixFull, BasicMatrix, MatFormat, MathMatrix, ParMathMatrix, BasicMatrixOpt}, RIFull, matrix_blas_lapack::_dsyev, einsum};
 use crate::{external_libs::matr_copy, check_shape};
 use crate::index::*; 
 use crate::tensor_basic_operation::*;
@@ -735,6 +738,12 @@ impl <T: Copy + Clone> MatrixFull<T> {
             indicing: [1,i,j], 
             data: self.data.clone()
         }
+    }
+
+    #[inline]
+    pub fn to_ndarray(&self) -> Array2<T> {
+        let t = self.transpose();
+        Array::from_shape_vec((self.size[0],self.size[1]), t.data).unwrap()
     }
 }
 
@@ -1543,6 +1552,37 @@ impl MatrixFull<f64> {
 
     }
 
+    pub fn eigenvalue_pinv(&mut self, rcond: f64) -> MatrixFull<f64> {
+        // pseudo inverse based on eigenvalue
+        let n = self.size[0];
+        let (eigenvectors, eigenvalues, a) = _dsyev(self, 'V');
+        let mut eigv = eigenvectors.unwrap();
+        //println!("eigvalues: {:?}", &eigenvalues);
+        let mut s = MatrixFull::new([n,n], 0.0);
+        let threshold = rcond * eigenvalues[n-1];
+        for i in 0..n{
+            let mut ev = 1.0/eigenvalues[i].sqrt();
+            if eigenvalues[i] > threshold{
+                s[(i,i)] = ev
+            }else{
+                s[(i,i)] = 0.0
+            }
+        }
+        //s.formated_output(5, "full");
+
+        let mut mid = MatrixFull::new([n,n],0.0);
+        crate::matrix_blas_lapack::_dgemm(&eigv,(0..n, 0..n),'N',
+                &s,(0..n,0..n),'N',
+                &mut mid, (0..n, 0..n),
+                1.0,0.0);
+        let mut a_inv = MatrixFull::new([n,n],0.0);
+        crate::matrix_blas_lapack::_dgemm(&mid,(0..n, 0..n),'N',
+                &eigv,(0..n,0..n),'T',
+                &mut a_inv, (0..n, 0..n),
+                1.0,0.0);
+        
+        a_inv
+    }
 
     pub fn lapack_power(&mut self,p:f64, threshold: f64) -> Option<MatrixFull<f64>> {
         if let Some(tmp_mat) = self.to_matrixfullslicemut().lapack_power(p,threshold) {
@@ -1551,6 +1591,17 @@ impl MatrixFull<f64> {
             None
         }
     }
+
+    /* pub fn einsum_meta(einsum_type: &str, matrices: Vec<MatrixFull<f64>>) -> Option<MatrixFull<f64>>{
+        let n = matrices.len();
+        let mut operands_0 = vec![];
+        matrices.iter().for_each(|mat|{
+            operands_0.push(mat.to_ndarray().into_dyn());
+        });
+        let operands = operands_0.try_into().unwrap_or_else|operands_0: Vec<ArrayLike>|panic!("length error in einsum.");
+        let arr = einsum(einsum_type, &operands).unwrap();
+    }  */
+
     pub fn formated_output_e(&self, n_len: usize, mat_form: &str) {
         let mat_format = if mat_form.to_lowercase()==String::from("full") {MatFormat::Full
         } else if mat_form.to_lowercase()==String::from("upper") {MatFormat::Upper

@@ -441,6 +441,44 @@ where T: BasicMatrix<'a, f64>
     }
 }
 
+pub fn _dpinverse<'a, T>(matr_a: &T, threshold: f64) -> Option<MatrixFull<f64>> 
+where T: BasicMatrix<'a, f64>
+{
+    let size = [matr_a.size()[0], matr_a.size()[1]];
+    if size[0]==size[1] {
+        let ndim = size[0];
+        let n= ndim as i32;
+        let mut a = matr_a.data_ref().unwrap().iter().map(|x| *x).collect::<Vec<f64>>();
+        let mut w: Vec<f64> = vec![0.0;ndim];
+        let mut work: Vec<f64> = vec![0.0;4*ndim];
+        let mut ipiv: Vec<i32> = vec![0;ndim];
+        let lwork = 4*n;
+        let mut info1 = 0;
+        let mut info2 = 0;
+        unsafe {
+            dgetrf(n,n,&mut a,n, &mut ipiv, &mut info1)
+        }
+        if info1 != 0 {
+            panic!("LU decomposition (dgetrf) failed with info = {}", info1);
+        }
+    
+        // Apply the threshold to the diagonal elements
+        for i in 0..n {
+            if a[(i * n + i) as usize].abs() < threshold {
+                a[(i * n + i) as usize] = 0.0;
+            }
+        }
+        unsafe{
+            dgetri(n,&mut a,n, &mut ipiv, &mut work, lwork, &mut info2);
+        }
+        let inv_mat = MatrixFull::from_vec([ndim,ndim], a).unwrap();
+        Some(inv_mat)
+    } else {
+        println!("Error: The matrix for inversion should be NxN");
+        None
+    }
+}
+
 //i, j -> ij
 //vec_a: column vec of i rows, vec_b: row vec of j columns
 
