@@ -7,7 +7,7 @@ description = "Provide efficient tensor operations for the Rust-based Electronic
 license = "MIT OR Apache-2.0"
 
 #build = "build.rs"
-[build_dependencies]
+[build-dependencies]
 dunce = "1.0.0"
 
 [lib]

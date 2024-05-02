@@ -6,7 +6,7 @@ use lapack::{dsyev, dspgvx, dspevx,dgetrf,dgetri,dlamch, dsyevx, dpotrf, dtrtri,
 use nalgebra::{matrix, Matrix};
 use rayon::prelude::*;
 
-use crate::{MatrixFullSliceMut, MatrixFull, SAFE_MINIMUM, MatrixUpperSliceMut, TensorSlice, TensorSliceMut, MatrixFullSlice, MatrixFullSliceMut2, BasicMatrix};
+use crate::{basic_check_shape, BasicMatUp, BasicMatrix, MatrixFull, MatrixFullSlice, MatrixFullSliceMut, MatrixFullSliceMut2, MatrixUpperSliceMut, TensorSlice, TensorSliceMut, SAFE_MINIMUM};
 
 use super::ParMathMatrix;
 
@@ -250,6 +250,7 @@ where T: BasicMatrix<'a, f64>,
     }
 
 }
+
 
 #[inline]
 pub fn _dgemm_full_new<'a, T,Q> (
@@ -623,7 +624,7 @@ where T: BasicMatrix<'a, f64>
         if n as usize != size[0] {
             panic!("Found unphysical eigenvalues");
         } else if n_nonsigular != size[0] {
-            println!("n_nonsigular: {}", n_nonsigular);
+            println!("debug: _power: n_nonsigular: {}", n_nonsigular);
         }
 
         //&eigenvector.data.par_chunks_exact_mut(size[0]).enumerate()
@@ -679,7 +680,8 @@ where T: BasicMatrix<'a, f64>
         if n as usize != size[0] {
             panic!("Found unphysical eigenvalues");
         } else if n_nonsigular != size[0] {
-            println!("n_nonsigular: {}", n_nonsigular);
+            //println!("_power_rayon => n_nonsigular: {}, {}", n_nonsigular, size[0]);
+            //println!("{:?}", &eigenvalues);
         }
 
         &eigenvector.data.par_chunks_exact_mut(size[0]).enumerate()
@@ -2115,4 +2117,70 @@ pub fn _newton_schulz_inverse_square_root_v01(original_matr: &MatrixFull<f64>, t
     next_matr_1.data.par_iter_mut().for_each(|x| *x *= rescaled_norm);
 
     (next_matr_1, n_singular, converge_flag)
+}
+
+//pub fn _dspgvx(&mut self,ovlp:MatrixUpperSliceMut<f64>,num_orb:usize) -> Option<(MatrixFull<f64>,Vec<f64>)> {
+pub fn _dspgvx<'a, T, Q>(matr_a: &T, matr_b: &Q, num_orb: usize)  -> Option<(MatrixFull<f64>,Vec<f64>)> 
+where T: BasicMatUp<'a, f64>,
+      Q: BasicMatUp<'a, f64>, 
+      //P: BasicMatrix<'a, f64>
+{
+    ///solve A*x=(lambda)*B*x
+    /// A is "self"; B is ovlp
+    let mut itype: i32 = 1;
+    //let n = ((8.0*self.size.to_owned() as f32+1.0).sqrt()/2.0) as i32;
+    let a_size = matr_a.size();
+    let b_size = matr_b.size();
+    if ! basic_check_shape(&a_size, &b_size) {
+        panic!("ERROR:: _dspgvx for BasicMatUp, Matr_A[{:},{:}] and Matr_B[{:},{:}] have different size",
+         a_size[0], a_size[1], b_size[0], b_size[1]
+        )
+    };
+    let ndim = a_size[0];
+    let n = ndim as i32;
+    let mut a = matr_a.data_ref().unwrap().to_vec().clone();
+    let mut b = matr_b.data_ref().unwrap().to_vec().clone();
+    let mut m = 0;
+    let mut w: Vec<f64> = vec![0.0;ndim];
+    let mut z: Vec<f64> = vec![0.0;ndim*ndim];
+    let mut work: Vec<f64> = vec![0.0;8*ndim];
+    let mut iwork:Vec<i32> = vec![0;5*ndim];
+    let mut ifail:Vec<i32> = vec![0;ndim];
+    let mut info: i32  = 0;
+    unsafe{
+        dspgvx(&[itype],
+            b'V',
+            b'I',
+            b'U',
+            n,
+            &mut a,
+            &mut b,
+            0.0,
+            0.0,
+            1,
+            num_orb as i32,
+            SAFE_MINIMUM,
+            &mut m,
+            &mut w,
+            &mut z,
+            n,
+            &mut work,
+            &mut iwork,
+            &mut ifail,
+            &mut info);
+    }
+    //println!("{:?}",&w);
+    if info < 0 {
+        panic!("Error:: Generalized eigenvalue problem solver dspgvx()\n The -{}th argument in dspgvx() has an illegal value. Check", info);
+    } else if info > n {
+        panic!("Error:: Generalized eigenvalue problem solver dspgvx()\n The leading minor of order {} of ovlp is not positive definite", info-n);
+    } else if info > 0 {
+        panic!("Error:: Generalized eigenvalue problem solver dspgvx()\n {} vectors failed to converge", info);
+    }
+    if m!=num_orb as i32 {
+        panic!("Error:: The number of outcoming eigenvectors {} is unequal to the orbital number {}", m, num_orb);
+    }
+    let eigenvectors = MatrixFull::from_vec([ndim,num_orb],z).unwrap();
+    //let eigenvalues = Tensors::from_vec("full".to_string(),vec![n as usize],w);
+    Some((eigenvectors, w))
 }

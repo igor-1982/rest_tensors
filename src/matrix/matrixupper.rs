@@ -27,6 +27,101 @@ impl<'a,T> MatrixUpperIterator for std::slice::IterMut<'a,T> {
     type Item = T;
 }
 
+//impl <'a, T> BasicMatrix<'a, T> for MatrixUpper<T> {
+//    #[inline]
+//    /// `matr_a.size()' return &matr_a.size;
+//    fn size(&self) -> &[usize] {
+//        let n = ((8.0*self.size.to_owned() as f32+1.0).sqrt()/2.0) as usize;
+//        let full_size = [n,n];
+//        &full_size
+//    }
+//    #[inline]
+//    /// `matr_a.indicing()' return &matr_a.indicing;
+//    fn indicing(&self) -> &[usize] {
+//        &self.indicing
+//    }
+//    #[inline]
+//    fn data_ref(&self) -> Option<&[T]> {
+//        Some(&self.data[..])
+//    }
+//    #[inline]
+//    fn data_ref_mut(&mut self) -> Option<&mut [T]> {
+//        Some(&mut self.data[..])
+//    }
+//}
+pub trait BasicMatUp<'a, T> {
+
+    fn size(&self) -> [usize;2];
+
+    fn len(&self) -> usize;
+
+    fn indicing(&self) -> [usize;2];
+
+    /// by default, the matrix should be contiguous, unless specify explicitly.
+    fn is_contiguous(&self) -> bool {true}
+
+    fn data_ref(&self) -> Option<&[T]>; 
+
+    fn data_ref_mut(&mut self) -> Option<&mut [T]>; 
+
+}
+
+impl <'a, T> BasicMatUp<'a, T> for MatrixUpper<T> {
+    #[inline]
+    fn size(&self) -> [usize;2] {
+        let n = ((8.0*self.size.to_owned() as f32+1.0).sqrt()/2.0) as usize;
+        [n,n]
+    }
+    #[inline]
+    fn len(&self) -> usize {self.data.len()}
+    #[inline]
+    fn indicing(&self) -> [usize;2] {
+        let n = ((8.0*self.size.to_owned() as f32+1.0).sqrt()/2.0) as usize;
+        [1,n]
+    }
+    #[inline]
+    fn data_ref(&self) -> Option<&[T]> {Some(&self.data)}
+    #[inline]
+    fn data_ref_mut(&mut self) -> Option<&mut [T]> {Some(&mut self.data)}
+}
+impl <'a, T> BasicMatUp<'a, T> for MatrixUpperSlice<'a, T> {
+    #[inline]
+    fn size(&self) -> [usize;2] {
+        let n = ((8.0*self.size.to_owned() as f32+1.0).sqrt()/2.0) as usize;
+        [n,n]
+    }
+    #[inline]
+    fn len(&self) -> usize {self.data.len()}
+    #[inline]
+    fn indicing(&self) -> [usize;2] {
+        let n = ((8.0*self.size.to_owned() as f32+1.0).sqrt()/2.0) as usize;
+        [1,n]
+    }
+    #[inline]
+    fn data_ref(&self) -> Option<&[T]> {Some(&self.data)}
+    #[inline]
+    fn data_ref_mut(&mut self) -> Option<&mut [T]> {None}
+}
+
+impl <'a, T> BasicMatUp<'a, T> for MatrixUpperSliceMut<'a, T> {
+    #[inline]
+    fn size(&self) -> [usize;2] {
+        let n = ((8.0*self.size.to_owned() as f32+1.0).sqrt()/2.0) as usize;
+        [n,n]
+    }
+    #[inline]
+    fn len(&self) -> usize {self.data.len()}
+    #[inline]
+    fn indicing(&self) -> [usize;2] {
+        let n = ((8.0*self.size.to_owned() as f32+1.0).sqrt()/2.0) as usize;
+        [1,n]
+    }
+    #[inline]
+    fn data_ref(&self) -> Option<&[T]> {Some(&self.data)}
+    #[inline]
+    fn data_ref_mut(&mut self) -> Option<&mut [T]> {Some(&mut self.data)}
+}
+
 
 #[derive(Clone,Debug,PartialEq)]
 pub struct MatrixUpper<T> {

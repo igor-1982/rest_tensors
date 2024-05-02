@@ -485,6 +485,9 @@ pub enum MatFormat {
     Upper,
     Lower
 }
+pub struct MatFull;
+pub struct MatUpper;
+
 pub trait BasicMatrix<'a, T> {
 
     fn size(&self) -> &[usize];
