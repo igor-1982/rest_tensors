@@ -35,7 +35,7 @@ where T: BasicMatrix<'a, P>,
 
 
 /// Level 2 BLAS
-pub fn _dgemv<'a, T>(matr_a: &T, vec_x: &[f64], vec_y: &mut [f64], trans: char, alpha: f64, beta: f64, incx: usize, incy: usize) 
+pub fn _dgemv<'a, T>(matr_a: &T, vec_x: &[f64], vec_y: &mut [f64], trans: char, alpha: f64, beta: f64, incx: i32, incy: i32) 
 where T: BasicMatrix<'a, f64> 
 {
 
@@ -44,15 +44,15 @@ where T: BasicMatrix<'a, f64>
     let lda = m.max(1);
 
     let check_shape_x = if trans.to_string().to_lowercase().eq("n") {
-        vec_x.len() == 1 + (n-1)*incx
+        vec_x.len() == 1 + (n-1)*incx.abs() as usize
     } else {
-        vec_x.len() == 1 + (m-1)*incx
+        vec_x.len() == 1 + (m-1)*incx.abs() as usize
     }; 
 
     let check_shape_y = if trans.to_string().to_lowercase().eq("n") {
-        vec_y.len() == 1 + (m-1)*incy
+        vec_y.len() == 1 + (m-1)*incy.abs() as usize
     } else {
-        vec_y.len() == 1 + (n-1)*incy
+        vec_y.len() == 1 + (n-1)*incy.abs() as usize
     }; 
 
     // check the shapes of the input matrices for the dgemm operation
