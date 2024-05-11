@@ -1,5 +1,5 @@
 //#![warn(missing_docs)]
-use std::{fmt::Display, collections::binary_heap::Iter, iter::{Filter,Flatten, Map}, convert, slice::{ChunksExact,ChunksExactMut, self}, mem::ManuallyDrop, marker, cell::RefCell, ops::{IndexMut, RangeFull, MulAssign, DivAssign, Div, DerefMut, Deref}, thread::panicking};
+use std::{cell::RefCell, collections::binary_heap::Iter, convert, fmt::Display, iter::{Filter,Flatten, Map, StepBy}, marker, mem::ManuallyDrop, ops::{Deref, DerefMut, Div, DivAssign, IndexMut, MulAssign, RangeFull}, slice::{self, ChunksExact, ChunksExactMut}, thread::panicking};
 use std::ops::{Add, Sub, Mul, AddAssign, SubAssign, Index, Range};
 use libc::{CLOSE_RANGE_CLOEXEC, SYS_userfaultfd};
 use typenum::{U2, Pow};
@@ -10,7 +10,9 @@ use crate::{MatrixFull, BasicMatrix, MatFormat, BasicMatrixOpt, MathMatrix, ParM
 use crate::index::*; 
 use crate::tensor_basic_operation::*;
 use crate::matrix::matrixfull::*;
-use crate::matrix::matrixupper::*;
+//use crate::matrix::matrixupper::*;
+
+use super::matrix_trait::*;
 
 
 #[derive(Debug,PartialEq)]
@@ -90,7 +92,7 @@ impl <'a, T: Copy + Clone + Display + Send + Sync> MatrixFullSliceMut<'a, T> {
         }
     }
     #[inline]
-    pub fn iter_submatrix_mut(& mut self, x: Range<usize>, y: Range<usize>) -> Flatten<IntoIter<&mut [T]>> {
+    pub fn iter_submatrix_mut_old(& mut self, x: Range<usize>, y: Range<usize>) -> Flatten<IntoIter<&mut [T]>> {
         let mut tmp_slices: Vec<&mut [T]> = Vec::with_capacity(y.len());
         let mut dd = self.data.split_at_mut(0).1;
         let len_slices_x = x.len();
@@ -102,6 +104,77 @@ impl <'a, T: Copy + Clone + Display + Send + Sync> MatrixFullSliceMut<'a, T> {
             (gg.1,start+len_slices_x)
         });
         tmp_slices.into_iter().flatten()
+    }
+
+    #[inline]
+    pub fn iter(&self) -> slice::Iter<T> {
+        self.data.iter()
+    }
+    #[inline]
+    pub fn iter_submatrix(&self, x: Range<usize>, y: Range<usize>) ->  SubMatrixStepBy<slice::Iter<T>>{
+        self.iter().submatrix_step_by(x, y, [self.size[0],self.size[1]])
+    }
+    #[inline]
+    pub fn iter_matrixupper_submatrix(&self, x: Range<usize>, y: Range<usize>) ->  SubMatrixInUpperStepBy<slice::Iter<T>>{
+        self.iter().submatrix_in_upper_step_by(x, y, [self.size[0],self.size[1]])
+    }
+    #[inline]
+    pub fn iter_diagonal(&self) -> Option<StepBy<std::slice::Iter<T>>> {
+        //let [x,y] = self.size;
+        let x = self.size[0];
+        let y = self.size[1];
+        if x==0 || y==0 || x!=y {
+            return None
+        } else {
+            return Some(self.iter().step_by(x+1))
+        }
+    }
+    #[inline]
+    pub fn iter_matrixupper(&self) -> Option<MatrixUpperStepBy<std::slice::Iter<T>>> {
+        //let [x,y] = self.size;
+        let x = self.size[0];
+        let y = self.size[1];
+        if x==0 || y==0 || x!=y {
+            return None
+        } else {
+            return Some(self.iter().matrixupper_step_by([x,y]))
+        }
+    }
+
+    #[inline]
+    pub fn iter_mut(&mut self) -> slice::IterMut<T> {
+        self.data.iter_mut()
+    }
+    #[inline]
+    pub fn iter_submatrix_mut(&mut self, x: Range<usize>, y: Range<usize>) ->  SubMatrixStepBy<slice::IterMut<T>>{
+        let size = [self.size[0],self.size[1]];
+        self.iter_mut().submatrix_step_by(x, y, size)
+    }
+    #[inline]
+    pub fn iter_matrixupper_submatrix_mut(&mut self, x: Range<usize>, y: Range<usize>) ->  SubMatrixInUpperStepBy<slice::IterMut<T>>{
+        let size = [self.size[0],self.size[1]];
+        self.iter_mut().submatrix_in_upper_step_by(x, y, size)
+    }
+    pub fn iter_diagonal_mut(&mut self) -> Option<StepBy<std::slice::IterMut<T>>> {
+        //let [x,y] = self.size;
+        let x = self.size[0];
+        let y = self.size[1];
+        if x==0 || y==0 || x!=y {
+            return None
+        } else {
+            return Some(self.iter_mut().step_by(x+1))
+        }
+    }
+    #[inline]
+    pub fn iter_matrixupper_mut(& mut self) -> Option<MatrixUpperStepBy<std::slice::IterMut<T>>> {
+        //let [x,y] = self.size;
+        let x = self.size[0];
+        let y = self.size[1];
+        if x==0 || y==0 || x!=y {
+            return None
+        } else {
+            return Some(self.iter_mut().matrixupper_step_by([x,y]))
+        }
     }
 }
 
@@ -140,6 +213,40 @@ impl<'a, T> MathMatrix<'a, T> for MatrixFullSlice<'a, T> where T: Copy + Clone {
 impl<'a, T> ParMathMatrix<'a, T> for MatrixFullSlice<'a, T> where T: Copy + Clone + Send + Sync {}
 
 impl <'a, T: Copy + Clone + Display + Send + Sync> MatrixFullSlice<'a, T> {
+    #[inline]
+    pub fn iter(&self) -> slice::Iter<T> {
+        self.data.iter()
+    }
+    #[inline]
+    pub fn iter_submatrix(&self, x: Range<usize>, y: Range<usize>) ->  SubMatrixStepBy<slice::Iter<T>>{
+        self.iter().submatrix_step_by(x, y, [self.size[0],self.size[1]])
+    }
+    #[inline]
+    pub fn iter_matrixupper_submatrix(&self, x: Range<usize>, y: Range<usize>) ->  SubMatrixInUpperStepBy<slice::Iter<T>>{
+        self.iter().submatrix_in_upper_step_by(x, y, [self.size[0],self.size[1]])
+    }
+    #[inline]
+    pub fn iter_diagonal(&self) -> Option<StepBy<std::slice::Iter<T>>> {
+        //let [x,y] = self.size;
+        let x = self.size[0];
+        let y = self.size[1];
+        if x==0 || y==0 || x!=y {
+            return None
+        } else {
+            return Some(self.iter().step_by(x+1))
+        }
+    }
+    #[inline]
+    pub fn iter_matrixupper(&self) -> Option<MatrixUpperStepBy<std::slice::Iter<T>>> {
+        //let [x,y] = self.size;
+        let x = self.size[0];
+        let y = self.size[1];
+        if x==0 || y==0 || x!=y {
+            return None
+        } else {
+            return Some(self.iter().matrixupper_step_by([x,y]))
+        }
+    }
     #[inline]
     pub fn iter_j(&self, j: usize) -> std::slice::Iter<T> {
         let start = self.size[0]*j;

@@ -12,11 +12,90 @@ use crate::tensor_basic_operation::*;
 use crate::matrix::matrixfull::*;
 use crate::matrix::matrixfullslice::*;
 
+use super::matrix_trait::IncreaseStepBy;
+
+pub struct SubMatrixUpperStepBy<'a, I> {
+    pub iter: I,
+    rows: Range<usize>,
+    columns: Range<usize>,
+    max: Option<usize>,
+    position: usize,
+    matrixupper_index: &'a MatrixUpper<[usize;2]>,
+    first_take: bool,
+}
+impl<'a, I> SubMatrixUpperStepBy<'a, I> {
+    pub fn new(iter: I, rows: Range<usize>, columns: Range<usize>, matrixupper_index: &'a MatrixUpper<[usize;2]>) -> SubMatrixUpperStepBy<I> {
+        //let position =columns.start*size[0] + rows.start;
+        let position =if rows.start<=columns.start {
+            columns.start*(columns.start+1)/2 + rows.start
+        } else {
+            //(columns.start+1)*(columns.start+2)/2 + rows.start
+            rows.start*(rows.start+1)/2 + rows.start
+        };
+        let max = if rows.start>columns.end-1 {
+            None
+        } else if columns.end >= rows.end {
+            Some((columns.end-1)*columns.end/2 + rows.end-1)
+        } else {
+            Some((columns.end-1)*columns.end/2 + columns.end-1)
+        };
+        //println!("start: {}, end: {}", position, &max.unwrap());
+        SubMatrixUpperStepBy{iter, rows, columns, position,max, matrixupper_index, first_take: true}
+    }
+}
+
+impl<'a, I> Iterator for SubMatrixUpperStepBy<'a, I>
+where I:Iterator,
+{
+    type Item = I::Item;
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+
+        //println!("debug: {} -> ({},{})", self.position, curr_row, curr_column);
+
+        if let Some(max) = self.max {
+            if self.position > max {
+                None
+            } else {
+                let [curr_row, curr_column] = self.matrixupper_index[self.position];
+                let is_in_row_range = curr_row >= self.rows.start && curr_row < self.rows.end;
+                if self.first_take {
+                    //println!("the first position is {}", self.position);
+                    self.position += 1;
+                    self.first_take = false;
+                    self.iter.nth(self.position-1)
+                } else if is_in_row_range {
+                    //println!("the current position is {}", self.position);
+                    self.position += 1;
+                    self.iter.next()
+                } else {
+                    let step = if curr_row >= self.rows.end {
+                        (curr_column+1)*(curr_column+2)/2 + self.rows.start - self.position
+                    //} else if curr_row < self.rows.start {  ==> Identical, because the condition of is_in_row_range has been considered upper.
+                    } else {
+                        (curr_column+1)*curr_column/2 + self.rows.start - self.position
+                    };
+                    //println!("debug: ({},{})-> {}", curr_row, curr_column, self.position+ step);
+                    self.position += step+1;
+                    //println!("the current position is {}", self.position-1);
+                    self.iter.nth(step)
+                }
+            }
+        } else {
+            None
+        }
+    }
+}
+
 trait MatrixUpperIterator: Iterator {
     type Item;
-    fn step_by_increase(self, step:usize, increase: usize) -> IncreaseStepBy<Self>
+    fn matrixupper_step_by_increase(self, step:usize, increase: usize) -> IncreaseStepBy<Self>
     where Self:Sized {
         IncreaseStepBy::new(self, step, increase)
+    }
+    fn submatrixupper_step_by<'a>(self, rows: Range<usize>, columns: Range<usize>, matrixupper_index: &'a MatrixUpper<[usize;2]>) -> SubMatrixUpperStepBy<'a, Self> 
+    where Self:Sized {
+        SubMatrixUpperStepBy::new(self, rows, columns, matrixupper_index)
     }
 }
 
@@ -25,6 +104,24 @@ impl<'a,T> MatrixUpperIterator for std::slice::Iter<'a,T> {
 }
 impl<'a,T> MatrixUpperIterator for std::slice::IterMut<'a,T> {
     type Item = T;
+}
+
+#[test]
+fn test_matrixupper() {
+    let dd = MatrixUpper::from_vec(435, (0..435).collect::<Vec<usize>>()).unwrap();
+    let ff = dd.to_matrixfull().unwrap();
+    ff.formated_output_general(20, "full");
+    //dd.iter_diagonal().for_each(|x| {println!("{}",x)});
+    //ff.iter_diagonal().unwrap().for_each(|x| {println!("{}",x)});
+
+
+    let matrixupper_index = map_upper_to_full(435).unwrap();
+    
+    //println!("{:?}", &matrixupper_index);
+    let mut output = String::new();
+    matrixupper_index.iter().enumerate().for_each(|(i,u)| output = format!("{}; ({},{:?})", output, i, u));
+    println!("{}", output);
+    dd.iter_submatrix(26..29, 26..29, &matrixupper_index).for_each(|x| {println!("{}",x)});
 }
 
 //impl <'a, T> BasicMatrix<'a, T> for MatrixUpper<T> {
@@ -154,11 +251,20 @@ impl <T> MatrixUpper<T> {
         }
     }
     pub fn iter_diagonal(&self) -> IncreaseStepBy<std::slice::Iter<T>> {
-        self.data.iter().step_by_increase(1,1)
+        self.data.iter().matrixupper_step_by_increase(1,1)
     }
 
     pub fn iter_diagonal_mut(&mut self) -> IncreaseStepBy<std::slice::IterMut<T>> {
-        self.data.iter_mut().step_by_increase(1,1)
+        self.data.iter_mut().matrixupper_step_by_increase(1,1)
+    }
+
+    pub fn iter_submatrix<'a> (&'a self, rows: Range<usize>, columns: Range<usize>, matrixupper_index: &'a MatrixUpper<[usize;2]>) 
+        -> SubMatrixUpperStepBy<slice::Iter<'a, T>> {
+        self.data.iter().submatrixupper_step_by(rows, columns, matrixupper_index)
+    }
+    pub fn iter_submatrix_mut<'a> (&'a mut self, rows: Range<usize>, columns: Range<usize>, matrixupper_index: &'a MatrixUpper<[usize;2]>) 
+        -> SubMatrixUpperStepBy<slice::IterMut<'a, T>> {
+        self.data.iter_mut().submatrixupper_step_by(rows, columns, matrixupper_index)
     }
 
     #[inline]
@@ -176,6 +282,13 @@ impl <T> MatrixUpper<T> {
     pub fn size(&self) -> [usize;2] {
         let ndim = ((1.0+8.0*(self.size as f64)).sqrt()*0.5-0.5) as usize;
         [ndim, ndim]
+    }
+
+    pub fn iter(&self) -> core::slice::Iter<'_, T> {
+        self.data.iter()
+    }
+    pub fn iter_mut(&mut self) -> core::slice::IterMut<'_, T> {
+        self.data.iter_mut()
     }
 
     pub fn get_diagonal_terms(&self) -> Option<Vec<&T>> {
@@ -246,6 +359,25 @@ impl<T: Copy + Clone> MatrixUpper<T> {
         } else {
             None
         }
+    }
+
+    pub fn map_to_matrixfull(&self) -> Option<MatrixUpper<[usize;2]>> {
+        let tmp_len = self.size as f64;
+        let new_size = ((1.0+8.0*tmp_len).sqrt()*0.5-0.5) as usize;
+        //println!("{},{}",self.size,new_size);
+        if new_size*(new_size+1)/2 == self.size {
+            let mut tmp_index = MatrixUpper::new(self.size,[0_usize,0_usize]);
+            let mut i_up = 0_usize;
+            for j in (0..new_size) {
+                for i in (0..j+1) {
+                    tmp_index.data[i_up] = [i,j]
+                }
+            }
+            Some(tmp_index)
+        } else {
+            None
+        }
+
     }
 
 }
@@ -347,6 +479,7 @@ impl MatrixUpper<f64> {
             }
         });
     }
+
 }
 
 
@@ -436,7 +569,39 @@ impl<'a, T> MatrixUpperSlice<'a, T> {
 
     }
     pub fn iter_diagonal(&self) -> IncreaseStepBy<std::slice::Iter<T>> {
-        self.data.iter().step_by_increase(1,1)
+        self.data.iter().matrixupper_step_by_increase(1,1)
+    }
+}
+
+pub fn map_upper_to_full(size: usize) -> Option<MatrixUpper<[usize;2]>> {
+    let tmp_len = size as f64;
+    let new_size = ((1.0+8.0*tmp_len).sqrt()*0.5-0.5) as usize;
+    //println!("{},{}",self.size,new_size);
+    if new_size*(new_size+1)/2 == size {
+        let mut tmp_index = MatrixUpper::new(size,[0_usize,0_usize]);
+        let mut i_up = 0_usize;
+        for j in (0..new_size) {
+            for i in (0..j+1) {
+                tmp_index.data[i_up] = [i,j];
+                i_up += 1;
+            }
+        }
+        Some(tmp_index)
+    } else {
+        None
+    }
+}
+pub fn map_full_to_upper(size: [usize;2]) -> Option<MatrixFull<usize>> {
+    //let tmp_len = size as f64;
+    //let new_size = ((1.0+8.0*tmp_len).sqrt()*0.5-0.5) as usize;
+    //println!("{},{}",self.size,new_size);
+    if size[0]==size[1]{
+        let mut tmp_index = MatrixFull::new(size,0_usize);
+        let mut i_up = 0_usize;
+        tmp_index.iter_matrixupper_mut().unwrap().enumerate().for_each(|(i,to)| {*to = i});
+        Some(tmp_index)
+    } else {
+        None
     }
 }
 

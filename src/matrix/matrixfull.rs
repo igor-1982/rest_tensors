@@ -21,6 +21,9 @@ use crate::matrix::matrixupper::*;
 use crate::matrix::submatrixfull::*;
 //{Indexing,Tensors4D};
 
+//mod matrix_trait;
+use crate::matrix::matrix_trait::*;
+
 
 impl <'a, T> BasicMatrix<'a, T> for MatrixFull<T> {
     #[inline]
@@ -134,155 +137,18 @@ impl<'a, T> MathMatrix<'a, T> for MatrixFull<T> where T: Copy + Clone {}
 impl<'a, T> ParMathMatrix<'a, T> for MatrixFull<T> where T: Copy + Clone + Send + Sync {}
 
 
-pub struct IncreaseStepBy<I> {
-    pub iter: I,
-    step: usize,
-    increase: usize,
-    first_take: bool, 
-}
+//impl<'a,T> MatrixIterator for std::slice::Iter<'a,T> {
+//    type Item = T;
+//}
+//impl<'a,T> MatrixIterator for std::slice::IterMut<'a,T> {
+//    type Item = T;
+//}
 
-impl<I> IncreaseStepBy<I> {
-    pub fn new(iter: I, step: usize, increase: usize) -> IncreaseStepBy<I> {
-        assert!(step!=0);
-        IncreaseStepBy {iter, step, first_take: true, increase }
-    }
-}
-
-impl<I> Iterator for IncreaseStepBy<I> 
-where I: Iterator,
-{
-    type Item = I::Item;
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.first_take {
-            self.first_take = false;
-            //self.step -= self.increase;
-            self.iter.next()
-        } else {
-            self.step += self.increase;
-            self.iter.nth(self.step-self.increase)
-        }
-    }
-}
-
-pub struct SubMatrixStepBy<I> {
-    pub iter: I,
-    rows: Range<usize>,
-    columns: Range<usize>,
-    size: [usize;2],
-    step: usize,
-    max: usize,
-    position: usize,
-    first_take: bool,
-}
-impl<I> SubMatrixStepBy<I> {
-    pub fn new(iter: I, rows: Range<usize>, columns: Range<usize>, size:[usize;2]) -> SubMatrixStepBy<I> {
-        let position =columns.start*size[0] + rows.start;
-        let step = size[0]-rows.end+rows.start;
-        let max = (columns.end-1)*size[0] + rows.end;
-        SubMatrixStepBy{iter, rows, columns, size, step, position,max,first_take: true}
-    }
-}
-
-
-impl<I> Iterator for SubMatrixStepBy<I>
-where I:Iterator,
-{
-    type Item = I::Item;
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-
-        let curr_row = self.position%unsafe{self.size.get_unchecked(0)};
-        let curr_column = self.position/unsafe{self.size.get_unchecked(0)};
-        
-        let is_in_range = 
-            curr_row >= self.rows.start && curr_row < self.rows.end &&
-            curr_column >= self.columns.start && curr_column < self.columns.end;
-
-        if self.position >= self.max {
-            None
-        } else if self.first_take {
-            self.position += 1;
-            self.first_take = false;
-            self.iter.nth(self.position-1)
-        } else if is_in_range {
-            //self.step -= self.increase;
-            self.position += 1;
-            self.iter.next()
-        } else {
-            self.position += self.step+1;
-            self.iter.nth(self.step)
-        }
-    }
-}
-
-pub struct MatrixUpperStepBy<I> {
-    pub iter: I,
-    size: [usize;2],
-    step: usize,
-    position: usize,
-    first_take: bool,
-}
-
-impl<I> MatrixUpperStepBy<I> {
-    pub fn new(iter: I, size:[usize;2]) -> MatrixUpperStepBy<I> {
-        let position =0;
-        let step = size[0];
-        MatrixUpperStepBy{iter, size, step, position,first_take: true}
-    }
-}
-
-impl<I> Iterator for MatrixUpperStepBy<I>
-where I:Iterator,
-{
-    type Item = I::Item;
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-
-        let curr_row = self.position%unsafe{self.size.get_unchecked(0)};
-        let curr_column = self.position/unsafe{self.size.get_unchecked(0)};
-        
-        let is_in_range = curr_row <= curr_column;
-
-        if self.first_take {
-            self.position = 1;
-            self.first_take = false;
-            self.iter.next()
-        } else if is_in_range {
-            //self.step -= self.increase;
-            self.position += 1;
-            self.iter.next()
-        } else {
-            let step = self.size[0]-curr_column;
-            self.position += step;
-            self.iter.nth(step-1)
-        }
-    }
-}
-
-trait MatrixIterator: Iterator {
-    type Item;
-    fn step_by_increase(self, step:usize, increase: usize) -> IncreaseStepBy<Self>
-    where Self:Sized {
-        IncreaseStepBy::new(self, step, increase)
-    }
-    //pub fn new(iter: I, rows: Range<usize>, columns: Range<usize>, size:[usize;2]) -> SubMatrixStepBy<I> {
-    fn submatrix_step_by(self, rows: Range<usize>, columns: Range<usize>, size:[usize;2]) -> SubMatrixStepBy<Self> 
-    where Self:Sized {
-        SubMatrixStepBy::new(self, rows, columns, size)
-    }
-    fn matrixupper_step_by(self, size:[usize;2]) -> MatrixUpperStepBy<Self> 
-    where Self:Sized {
-        MatrixUpperStepBy::new(self, size)
-    }
-}
-
-
-impl<'a,T> MatrixIterator for std::slice::Iter<'a,T> {
-    type Item = T;
-}
-impl<'a,T> MatrixIterator for std::slice::IterMut<'a,T> {
-    type Item = T;
+#[test]
+fn test_iter_matrixupper_submatrix() {
+    let dd = MatrixFull::from_vec([6,6], (0..36).collect::<Vec<usize>>()).unwrap();
+    dd.formated_output_general(6,"full");
+    dd.iter_matrixupper_submatrix(0..2, 3..6).for_each(|x| {println!("{}",x)});
 }
 
 
@@ -383,9 +249,24 @@ impl <T> MatrixFull<T> {
     ///   let mut tmp_iter = matr_a.iter_submatrix_mut(1..2,0..4).collect::<Vec<&mut i32>>();
     ///   assert_eq!(tmp_iter, vec![&2,&5,&8,&11])
     /// ```
+    #[inline]
     pub fn iter_submatrix(&self, x: Range<usize>, y: Range<usize>) ->  SubMatrixStepBy<slice::Iter<T>>{
         self.iter().submatrix_step_by(x, y, self.size.clone())
     }
+    pub fn iter_submatrix_mut(&mut self, x: Range<usize>, y: Range<usize>) ->  SubMatrixStepBy<slice::IterMut<T>>{
+        let size = [self.size[0],self.size[1]];
+        self.iter_mut().submatrix_step_by(x, y, size)
+    }
+    #[inline]
+    pub fn iter_matrixupper_submatrix(&self, x: Range<usize>, y: Range<usize>) ->  SubMatrixInUpperStepBy<slice::Iter<T>>{
+        self.iter().submatrix_in_upper_step_by(x, y, self.size.clone())
+    }
+    #[inline]
+    pub fn iter_matrixupper_submatrix_mut(&mut self, x: Range<usize>, y: Range<usize>) ->  SubMatrixInUpperStepBy<slice::IterMut<T>>{
+        let size = [self.size[0],self.size[1]];
+        self.iter_mut().submatrix_in_upper_step_by(x, y, size)
+    }
+
     #[inline]
     pub fn get_submatrix<'a>(&'a self, x: Range<usize>, y: Range<usize>) -> SubMatrixFull<T> {
         let new_x_len = x.len();
@@ -421,10 +302,7 @@ impl <T> MatrixFull<T> {
         });
         tmp_slices.into_iter().flatten()
     }
-    pub fn iter_submatrix_mut(&mut self, x: Range<usize>, y: Range<usize>) ->  SubMatrixStepBy<slice::IterMut<T>>{
-        let size = [self.size[0],self.size[1]];
-        self.iter_mut().submatrix_step_by(x, y, size)
-    }
+
 
 
     #[inline]
@@ -1298,9 +1176,8 @@ impl <'a, T> IntoIterator for &'a MatrixFull<T> {
     }
 }
 
-/// Add by Tianyi Gao
 impl<T> MatrixFull<T> 
-where T: std::fmt::Debug,
+where T: std::fmt::Debug + std::fmt::Display,
 {
     pub fn get_antidiag_terms(&self) -> Option<Vec<&T>> {
         //let tmp_len = self.size;
@@ -1353,6 +1230,76 @@ where T: std::fmt::Debug,
             };
         //new_vec.into_iter().map(|v| return_vec.push(*v));
         result
+    }
+    pub fn formated_output_general(&self, n_len: usize, mat_form: &str) {
+        let mat_format = if mat_form.to_lowercase()==String::from("full") {MatFormat::Full
+        } else if mat_form.to_lowercase()==String::from("upper") {MatFormat::Upper
+        } else if mat_form.to_lowercase()==String::from("lower") {MatFormat::Lower
+        } else {
+            panic!("Error in determing the layout format of the matrix: {}", mat_form)
+        };
+        let n_row = self.size[0];
+        let n_column = self.size[1];
+        //let n_row = self.size[0];
+        //let n_column = self.size[1];
+        let n_block = if n_column%n_len==0 {n_column/n_len} else {n_column/n_len+1};
+        let mut index:usize = 0;
+        //println!("{}",n_block);
+        (0..n_block).into_iter().for_each(|i_block| {
+            let t_len = if (i_block+1)*n_len<=n_column {n_len} else {n_column%n_len};
+            //println!("{},{}",i_block,t_len);
+            let mut tmp_s:String = format!("{:5}","");
+            for i in 0..t_len {
+                if tmp_s.len()==5 {
+                    tmp_s = format!("{} {:6}",tmp_s,i+i_block*n_len);
+                } else {
+                    tmp_s = format!("{},{:6}",tmp_s,i+i_block*n_len);
+                }
+            }
+            println!("{}",tmp_s);
+            for i in 0..n_row as usize {
+                let mut tmp_s = format!("{:5}",i);
+                let j_start = i_block*n_len;
+                let mut turn_off_comma = true;
+                for j in (j_start..j_start+t_len) {
+                    match &mat_format {
+                        MatFormat::Full => {
+                            let tmp_f = self.get(&[i,j]).unwrap();
+                            if tmp_s.len()==5 {
+                                tmp_s = format!("{} {:6}",tmp_s,tmp_f);
+                            } else {
+                                tmp_s = format!("{},{:6}",tmp_s,tmp_f);
+                            }
+                        },
+                        MatFormat::Upper => {
+                            if i<=j {
+                                let tmp_f = self.get(&[i,j]).unwrap();
+                                if turn_off_comma {
+                                    tmp_s = format!("{} {:6}",tmp_s,tmp_f);
+                                    turn_off_comma = false;
+                                } else {
+                                    tmp_s = format!("{},{:6}",tmp_s,tmp_f);
+                                }
+                            } else {
+                                tmp_s = format!("{} {:6}",tmp_s,String::from(" "));
+                            }
+                        },
+                        MatFormat::Lower => {
+                            if i>=j {
+                                let tmp_f = self.get(&[i,j]).unwrap();
+                                if tmp_s.len()==5 {
+                                    tmp_s = format!("{} {:6}",tmp_s,tmp_f);
+                                } else {
+                                    tmp_s = format!("{},{:6}",tmp_s,tmp_f);
+                                }
+                            }
+                        }
+                    };
+                    //println!("{},{}",tmp_i,j);
+                };
+                if tmp_s.len()>5 {println!("{}",tmp_s)};
+            }
+        });
     }
 }
 
