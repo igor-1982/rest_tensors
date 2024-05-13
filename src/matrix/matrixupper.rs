@@ -1,7 +1,7 @@
 //#![warn(missing_docs)]
 use std::{fmt::Display, collections::binary_heap::Iter, iter::{Filter,Flatten, Map}, convert, slice::{ChunksExact,ChunksExactMut, self}, mem::ManuallyDrop, marker, cell::RefCell, ops::{IndexMut, RangeFull, MulAssign, DivAssign, Div, DerefMut, Deref}, thread::panicking};
 use std::ops::{Add, Sub, Mul, AddAssign, SubAssign, Index, Range};
-use libc::{CLOSE_RANGE_CLOEXEC, SYS_userfaultfd};
+use libc::{glob, SYS_userfaultfd, CLOSE_RANGE_CLOEXEC};
 use typenum::{U2, Pow};
 use rayon::{prelude::*, collections::btree_map::IterMut, iter::Enumerate};
 use std::vec::IntoIter;
@@ -87,9 +87,14 @@ where I:Iterator,
     }
 }
 
+
 trait MatrixUpperIterator: Iterator {
     type Item;
     fn matrixupper_step_by_increase(self, step:usize, increase: usize) -> IncreaseStepBy<Self>
+    where Self:Sized {
+        IncreaseStepBy::new(self, step, increase)
+    }
+    fn matrixupper_step_by_shift(self, step:usize, increase: usize) -> IncreaseStepBy<Self>
     where Self:Sized {
         IncreaseStepBy::new(self, step, increase)
     }
@@ -113,6 +118,8 @@ fn test_matrixupper() {
     ff.formated_output_general(20, "full");
     //dd.iter_diagonal().for_each(|x| {println!("{}",x)});
     //ff.iter_diagonal().unwrap().for_each(|x| {println!("{}",x)});
+
+    //println!("{}", (3..10).len());
 
 
     let matrixupper_index = map_upper_to_full(435).unwrap();
@@ -619,4 +626,202 @@ impl<'a, T> MatrixFullSliceMut2<'a,T> {
         self.data.chunks_exact_mut(self.size[0])
     }
     
+}
+
+#[derive(Clone,Debug,PartialEq)]
+pub struct SubMatrixUpper<T> {
+    pub size : usize,
+    pub global_range: Range<usize>,
+    pub full_size: usize,
+    pub data : Vec<T>
+}
+
+impl<T> SubMatrixUpper<T> 
+where T: Clone + Copy {
+    pub fn new(global_range: Range<usize>, full_size: usize, value: T) -> SubMatrixUpper<T> {
+        let size = global_range.len();
+        SubMatrixUpper {
+            size: global_range.len(),
+            global_range,
+            full_size,
+            data: vec![value;size],
+        }
+    }
+    pub fn from_vec(from_vec: Vec<T>, global_range: Range<usize>, full_size: usize) -> SubMatrixUpper<T> {
+        SubMatrixUpper {
+            size: global_range.len(),
+            global_range,
+            full_size,
+            data: from_vec 
+        }
+    }
+
+    pub fn iter(&self) -> slice::Iter<T> {
+        self.data.iter()
+    }
+    pub fn iter_mut(&mut self) -> slice::IterMut<T> {
+        self.data.iter_mut()
+    }
+    pub fn iter_submatrix<'a> (&'a self, rows: Range<usize>, columns: Range<usize>, matrixupper_index: &'a MatrixUpper<[usize;2]>) 
+        -> SubSubMatrixUpperStepBy<slice::Iter<'a, T>> {
+        self.data.iter().subsubmatrixupper_step_by(rows, columns, self.global_range.clone(), matrixupper_index)
+    }
+    pub fn iter_submatrix_mut<'a> (&'a mut self, rows: Range<usize>, columns: Range<usize>, matrixupper_index: &'a MatrixUpper<[usize;2]>) 
+        -> SubSubMatrixUpperStepBy<slice::IterMut<'a, T>> {
+        self.data.iter_mut().subsubmatrixupper_step_by(rows, columns, self.global_range.clone(), matrixupper_index)
+    }
+}
+
+
+pub struct SubSubMatrixUpperStepBy<'a, I> {
+    pub iter: I,
+    rows: Range<usize>,
+    columns: Range<usize>,
+    max: Option<usize>,
+    position: usize,
+    global_range: Range<usize>,
+    matrixupper_index: &'a MatrixUpper<[usize;2]>,
+    first_take: bool,
+}
+impl<'a, I> SubSubMatrixUpperStepBy<'a, I> {
+    pub fn new(iter: I, rows: Range<usize>, columns: Range<usize>, global_range: Range<usize>,matrixupper_index: &'a MatrixUpper<[usize;2]>) -> SubSubMatrixUpperStepBy<I> {
+        // determin the starting point of the sub matrix in the global upper part
+        let global_position =if rows.start<=columns.start {
+            columns.start*(columns.start+1)/2 + rows.start
+        } else {
+            rows.start*(rows.start+1)/2 + rows.start-global_range.start
+        };
+        // shift
+        let shift = global_range.start as i32 - global_position as i32;
+        // determin the starting point of the sub matrix in the sub upper part
+        let position = if global_position >= global_range.start {
+                global_position - global_range.start
+        } else {
+            let [s_row, s_col] = matrixupper_index[global_range.start];
+            let is_in_range = s_row >=rows.start && s_row < rows.end &&
+                s_col >= columns.start && s_col <columns.end;
+            if is_in_range {
+                0
+            } else {
+                if s_row >= rows.end {
+                    (s_col+1)*(s_col+2)/2 + rows.start - global_range.start
+                } else {
+                    s_col*(s_col+1)/2 + rows.start - global_range.start
+                }
+            }
+        };
+        //println!("debug: global_position: {}, local_position: {}, shift: {}", global_position,position, shift);
+        // check if the sub matrix is in the global upper part
+        let global_max = if rows.start>columns.end-1 {
+            None
+        } else if columns.end >= rows.end {
+            Some((columns.end-1)*columns.end/2 + rows.end-1)
+        } else {
+            Some((columns.end-1)*columns.end/2 + columns.end-1)
+        };
+
+        // check if a part of the sub matrix is in the sub upper part and 
+        // determin the end position of the sub matrix in the sub upper part
+        let max = if let Some(global_end) = &global_max {
+            //let mut local_max = 0_usize;
+            if global_position > global_range.end {
+                None
+            } else if *global_end >= global_range.start {
+                if *global_end <= global_range.end -1 {
+                    Some(((*global_end - global_position) as i32 - shift) as usize)
+                } else {
+                    println!("{},{},{}", global_range.end, global_position, shift);
+                    Some(((global_range.end-1 - global_position) as i32 - shift) as usize)
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        //println!("start: {}, end: {}", position, &max.unwrap());
+        SubSubMatrixUpperStepBy{iter, rows, columns, position,max, global_range, matrixupper_index, first_take: true}
+    }
+}
+
+impl<'a, I> Iterator for SubSubMatrixUpperStepBy<'a, I>
+where I:Iterator,
+{
+    type Item = I::Item;
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+
+        //println!("debug: {} -> ({},{})", self.position, curr_row, curr_column);
+
+        if let Some(max) = self.max {
+            if self.position > max {
+                None
+            } else {
+                let [curr_row, curr_column] = self.matrixupper_index[self.position+self.global_range.start];
+                let is_in_row_range = curr_row >= self.rows.start && curr_row < self.rows.end;
+                if self.first_take {
+                    //println!("the first position is {}", self.position);
+                    self.position += 1;
+                    self.first_take = false;
+                    self.iter.nth(self.position-1)
+                } else if is_in_row_range {
+                    //println!("the current position is {}", self.position);
+                    self.position += 1;
+                    self.iter.next()
+                } else {
+                    let step = if curr_row >= self.rows.end {
+                        (curr_column+1)*(curr_column+2)/2 + self.rows.start - (self.position+self.global_range.start)
+                    //} else if curr_row < self.rows.start {  ==> Identical, because the condition of is_in_row_range has been considered upper.
+                    } else {
+                        (curr_column+1)*curr_column/2 + self.rows.start - (self.position+self.global_range.start)
+                    };
+                    //println!("debug: ({},{})-> {}", curr_row, curr_column, self.position+ step);
+                    self.position += step+1;
+                    //println!("the current position is {}", self.position-1);
+                    self.iter.nth(step)
+                }
+            }
+        } else {
+            None
+        }
+    }
+}
+
+trait SubMatrixUpperIterator: Iterator {
+    type Item;
+    fn subsubmatrixupper_step_by<'a>(self, rows: Range<usize>, columns: Range<usize>, global_range: Range<usize>, matrixupper_index: &'a MatrixUpper<[usize;2]>) -> SubSubMatrixUpperStepBy<'a, Self> 
+    where Self:Sized {
+        SubSubMatrixUpperStepBy::new(self, rows, columns, global_range, matrixupper_index)
+    }
+}
+
+impl<'a,T> SubMatrixUpperIterator for std::slice::Iter<'a,T> {
+    type Item = T;
+}
+impl<'a,T> SubMatrixUpperIterator for std::slice::IterMut<'a,T> {
+    type Item = T;
+}
+
+#[test]
+fn test_submatrixupper() {
+    let dd = MatrixUpper::from_vec(435, (0..435).collect::<Vec<usize>>()).unwrap();
+    let ff = dd.to_matrixfull().unwrap();
+    ff.formated_output_general(20, "full");
+    //dd.iter_diagonal().for_each(|x| {println!("{}",x)});
+    //ff.iter_diagonal().unwrap().for_each(|x| {println!("{}",x)});
+
+    //let sdd = SubMatrixUpper::from_vec(dd[345..435].to_vec(), 345..435, 435);
+    let sdd = SubMatrixUpper::from_vec(dd[10..30].to_vec(), 10..30, 435);
+
+    //println!("{}", (3..10).len());
+
+
+    let matrixupper_index = map_upper_to_full(435).unwrap();
+    
+    //println!("{:?}", &matrixupper_index);
+    let mut output = String::new();
+    matrixupper_index.iter().enumerate().for_each(|(i,u)| output = format!("{}; ({},{:?})", output, i, u));
+    println!("{}", output);
+    //sdd.iter_submatrix(26..29, 26..29, &matrixupper_index).for_each(|x| {println!("{}",x)});
+    sdd.iter_submatrix(4..9, 2..8, &matrixupper_index).for_each(|x| {println!("{}",x)});
 }

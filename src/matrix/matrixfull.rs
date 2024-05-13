@@ -258,6 +258,26 @@ impl <T> MatrixFull<T> {
         self.iter_mut().submatrix_step_by(x, y, size)
     }
     #[inline]
+    /// `iter_matrixupper_submatrix` provides a home-made submatrix StepBy iterator for 
+    /// the sub-matrix elements in the upper part one by one.
+    /// Example
+    /// ```
+    ///   use rest_tensors::MatrixFull;
+    ///   let mut matr_a = MatrixFull::from_vec(
+    ///     [4,4],
+    ///     (1..17).collect::<Vec<i32>>()
+    /// ).unwrap();
+    ///   //          |  1 |  5 |  9 | 13 |
+    ///   //matr_a =  |  2 |  6 | 10 | 14 |  with the type of MatrixFull<i32>
+    ///   //          |  3 |  7 | 11 | 15 |
+    ///   //          |  4 |  8 | 12 | 16 |
+    ///   let tmp_iter = matr_a.iter_matrixupper_submatrix(1..3,0..4).collect::<Vec<&i32>>();
+    ///   assert_eq!(tmp_iter, vec![&6,&10,&11,&14, &15]);
+    ///   let tmp_iter = matr_a.iter_matrixupper_submatrix(0..2,2..4).collect::<Vec<&i32>>();
+    ///   assert_eq!(tmp_iter, vec![&9,&10,&13,&14]);
+    ///   let tmp_iter = matr_a.iter_matrixupper_submatrix(1..4,2..4).collect::<Vec<&i32>>();
+    ///   assert_eq!(tmp_iter, vec![&10,&11,&14,&15,&16]);
+    /// ```
     pub fn iter_matrixupper_submatrix(&self, x: Range<usize>, y: Range<usize>) ->  SubMatrixInUpperStepBy<slice::Iter<T>>{
         self.iter().submatrix_in_upper_step_by(x, y, self.size.clone())
     }
@@ -267,57 +287,6 @@ impl <T> MatrixFull<T> {
         self.iter_mut().submatrix_in_upper_step_by(x, y, size)
     }
 
-    #[inline]
-    pub fn get_submatrix<'a>(&'a self, x: Range<usize>, y: Range<usize>) -> SubMatrixFull<T> {
-        let new_x_len = x.len();
-        let new_y_len = y.len();
-        let new_vec: Vec<&T> = self.iter_submatrix(x,y).collect();
-
-        SubMatrixFull::Detached(
-            MatrixFull::from_vec([new_x_len, new_y_len], new_vec).unwrap())
-    }
-    pub fn iter_submatrix_old(&self, x: Range<usize>, y: Range<usize>) -> Flatten<IntoIter<&[T]>> {
-        let mut tmp_slices = vec![&self.data[..]; y.len()];
-        let len_slices_x = x.len();
-        let len_y = self.indicing[1];
-        tmp_slices.iter_mut().zip(y).for_each(|(t,y)| {
-            let start = x.start + y*len_y;
-            *t = &self.data[start..start + len_slices_x];
-        });
-        tmp_slices.into_iter().flatten()
-    }
-    #[inline]
-    /// `iter_submatrix_mut` provides a flatten iterator for the mutable elements in the sub-matrix one by one
-    /// **NOTE:: the current implementation is not efficient.
-    pub fn iter_submatrix_mut_old(& mut self, x: Range<usize>, y: Range<usize>) -> Flatten<IntoIter<&mut [T]>> {
-        let mut tmp_slices: Vec<&mut [T]> = Vec::with_capacity(y.len());
-        let mut dd = self.data.split_at_mut(0).1;
-        let len_slices_x = x.len();
-        let len_y = self.indicing[1];
-        y.fold((dd,0_usize),|(ee, offset), y| {
-            let start = x.start + y*len_y;
-            let gg = ee.split_at_mut(start-offset).1.split_at_mut(len_slices_x);
-            tmp_slices.push(gg.0);
-            (gg.1,start+len_slices_x)
-        });
-        tmp_slices.into_iter().flatten()
-    }
-
-
-
-    #[inline]
-    pub fn get_submatrix_mut<'a>(&'a mut self, x: Range<usize>, y: Range<usize>) -> SubMatrixFullMut<T> 
-    {
-        let new_x_len = x.len();
-        let new_y_len = y.len();
-        let data =  self.iter_submatrix_mut(x,y).collect::<Vec<&mut T>>();
-
-        SubMatrixFullMut::Detached(
-            MatrixFull {
-                size: [new_x_len, new_y_len],
-                indicing: [1, new_x_len],
-                data})
-    }
     #[inline]
     pub fn iter_column(&self, y: usize) -> std::slice::Iter<T> {
         let len = self.indicing[1];
@@ -348,19 +317,10 @@ impl <T> MatrixFull<T> {
     pub fn iter_columns_full_mut(&mut self) -> ChunksExactMut<T>{
         self.data.chunks_exact_mut(self.size[0])
     }
-    #[inline]
-    pub fn iter_row_old(&self, x: usize) -> Flatten<IntoIter<&[T]>> {
-        let y_len = self.size[1];
-        self.iter_submatrix_old(x..x+1,0..y_len)
-    }
+
     #[inline]
     pub fn iter_row(&self, x: usize) -> StepBy<std::slice::Iter<T>> {
         self.slice()[x..].iter().step_by(self.indicing[1])
-    }
-    #[inline]
-    pub fn iter_row_mut_old(&mut self, x: usize) -> Flatten<IntoIter<&mut [T]>> {
-        let y_len = self.size[1];
-        self.iter_submatrix_mut_old(x..x+1,0..y_len)
     }
     #[inline]
     pub fn iter_row_mut(&mut self, x: usize) -> StepBy<std::slice::IterMut<T>> {
@@ -368,19 +328,9 @@ impl <T> MatrixFull<T> {
         self.slice_mut()[x..].iter_mut().step_by(step)
     }
     #[inline]
-    pub fn iter_rows_old(&self, x: Range<usize>) -> Flatten<IntoIter<&[T]>> {
-        let y = 0..self.size[1];
-        self.iter_submatrix_old(x,y)
-    }
-    #[inline]
     pub fn iter_rows(&self, x: Range<usize>) -> SubMatrixStepBy<slice::Iter<T>>  {
         let y = 0..self.size[1];
         self.iter_submatrix(x,y)
-    }
-    #[inline]
-    pub fn iter_rows_mut_old(&mut self, x: Range<usize>) -> Flatten<IntoIter<&mut [T]>> {
-        let y = 0..self.size[1];
-        self.iter_submatrix_mut_old(x,y)
     }
     #[inline]
     pub fn iter_rows_mut(&mut self, x: Range<usize>) -> SubMatrixStepBy<slice::IterMut<T>>  {
@@ -454,6 +404,77 @@ impl <T> MatrixFull<T> {
         let end = self.indicing[1]*y.end;
         &mut self.data[start..end]
     }
+
+
+    // will be discarded
+    //#[inline]
+    //pub fn get_submatrix<'a>(&'a self, x: Range<usize>, y: Range<usize>) -> SubMatrixFull<T> {
+    //    let new_x_len = x.len();
+    //    let new_y_len = y.len();
+    //    let new_vec: Vec<&T> = self.iter_submatrix(x,y).collect();
+
+    //    SubMatrixFull::Detached(
+    //        MatrixFull::from_vec([new_x_len, new_y_len], new_vec).unwrap())
+    //}
+    //pub fn iter_submatrix_old(&self, x: Range<usize>, y: Range<usize>) -> Flatten<IntoIter<&[T]>> {
+    //    let mut tmp_slices = vec![&self.data[..]; y.len()];
+    //    let len_slices_x = x.len();
+    //    let len_y = self.indicing[1];
+    //    tmp_slices.iter_mut().zip(y).for_each(|(t,y)| {
+    //        let start = x.start + y*len_y;
+    //        *t = &self.data[start..start + len_slices_x];
+    //    });
+    //    tmp_slices.into_iter().flatten()
+    //}
+    //#[inline]
+    ///// `iter_submatrix_mut` provides a flatten iterator for the mutable elements in the sub-matrix one by one
+    ///// **NOTE:: the current implementation is not efficient.
+    //pub fn iter_submatrix_mut_old(& mut self, x: Range<usize>, y: Range<usize>) -> Flatten<IntoIter<&mut [T]>> {
+    //    let mut tmp_slices: Vec<&mut [T]> = Vec::with_capacity(y.len());
+    //    let mut dd = self.data.split_at_mut(0).1;
+    //    let len_slices_x = x.len();
+    //    let len_y = self.indicing[1];
+    //    y.fold((dd,0_usize),|(ee, offset), y| {
+    //        let start = x.start + y*len_y;
+    //        let gg = ee.split_at_mut(start-offset).1.split_at_mut(len_slices_x);
+    //        tmp_slices.push(gg.0);
+    //        (gg.1,start+len_slices_x)
+    //    });
+    //    tmp_slices.into_iter().flatten()
+    //}
+    //#[inline]
+    //pub fn get_submatrix_mut<'a>(&'a mut self, x: Range<usize>, y: Range<usize>) -> SubMatrixFullMut<T> 
+    //{
+    //    let new_x_len = x.len();
+    //    let new_y_len = y.len();
+    //    let data =  self.iter_submatrix_mut(x,y).collect::<Vec<&mut T>>();
+
+    //    SubMatrixFullMut::Detached(
+    //        MatrixFull {
+    //            size: [new_x_len, new_y_len],
+    //            indicing: [1, new_x_len],
+    //            data})
+    //}
+    //#[inline]
+    //pub fn iter_row_old(&self, x: usize) -> Flatten<IntoIter<&[T]>> {
+    //    let y_len = self.size[1];
+    //    self.iter_submatrix_old(x..x+1,0..y_len)
+    //}
+    //#[inline]
+    //pub fn iter_row_mut_old(&mut self, x: usize) -> Flatten<IntoIter<&mut [T]>> {
+    //    let y_len = self.size[1];
+    //    self.iter_submatrix_mut_old(x..x+1,0..y_len)
+    //}
+    //#[inline]
+    //pub fn iter_rows_old(&self, x: Range<usize>) -> Flatten<IntoIter<&[T]>> {
+    //    let y = 0..self.size[1];
+    //    self.iter_submatrix_old(x,y)
+    //}
+    //#[inline]
+    //pub fn iter_rows_mut_old(&mut self, x: Range<usize>) -> Flatten<IntoIter<&mut [T]>> {
+    //    let y = 0..self.size[1];
+    //    self.iter_submatrix_mut_old(x,y)
+    //}
 }
 
 /// # more matrix operations needed by the rest package

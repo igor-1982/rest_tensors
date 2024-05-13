@@ -32,6 +32,8 @@ where I: Iterator,
     }
 }
 
+
+
 pub struct SubMatrixStepBy<I> {
     pub iter: I,
     rows: Range<usize>,
@@ -179,6 +181,11 @@ impl<I> MatrixUpperStepBy<I> {
         let step = size[0];
         MatrixUpperStepBy{iter, size, step, position,first_take: true}
     }
+    pub fn new_shift(iter: I, size:[usize;2], shift: usize) -> MatrixUpperStepBy<I> {
+        let position =shift;
+        let step = size[0];
+        MatrixUpperStepBy{iter, size, step, position,first_take: true}
+    }
 }
 
 impl<I> Iterator for MatrixUpperStepBy<I>
@@ -227,6 +234,10 @@ pub trait MatrixIterator: Iterator {
     fn submatrix_in_upper_step_by(self, rows: Range<usize>, columns: Range<usize>, size:[usize;2]) -> SubMatrixInUpperStepBy<Self> 
     where Self:Sized {
         SubMatrixInUpperStepBy::new(self, rows, columns, size)
+    }
+    fn matrixupper_step_by_shift(self, size:[usize;2], shift: usize) -> MatrixUpperStepBy<Self> 
+    where Self:Sized {
+        MatrixUpperStepBy::new_shift(self, size, shift)
     }
 }
 

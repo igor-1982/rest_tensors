@@ -248,6 +248,17 @@ impl <'a, T: Copy + Clone + Display + Send + Sync> MatrixFullSlice<'a, T> {
         }
     }
     #[inline]
+    pub fn iter_matrixupper_shift(&self, shift: usize) -> Option<MatrixUpperStepBy<std::slice::Iter<T>>> {
+        //let [x,y] = self.size;
+        let x = self.size[0];
+        let y = self.size[1];
+        if x==0 || y==0 || x!=y {
+            return None
+        } else {
+            return Some(self.iter().matrixupper_step_by_shift([x,y], shift))
+        }
+    }
+    #[inline]
     pub fn iter_j(&self, j: usize) -> std::slice::Iter<T> {
         let start = self.size[0]*j;
         let end = start + self.size[0];
