@@ -406,7 +406,7 @@ impl <T> MatrixFull<T> {
     }
 
 
-    // will be discarded
+    // Deprecated
     //#[inline]
     //pub fn get_submatrix<'a>(&'a self, x: Range<usize>, y: Range<usize>) -> SubMatrixFull<T> {
     //    let new_x_len = x.len();

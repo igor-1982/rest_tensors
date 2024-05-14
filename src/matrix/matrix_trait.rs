@@ -201,9 +201,9 @@ where I:Iterator,
         let is_in_range = curr_row <= curr_column;
 
         if self.first_take {
-            self.position = 1;
+            self.position += 1;
             self.first_take = false;
-            self.iter.next()
+            self.iter.nth(self.position-1)
         } else if is_in_range {
             //self.step -= self.increase;
             self.position += 1;

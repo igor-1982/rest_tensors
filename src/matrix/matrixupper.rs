@@ -730,7 +730,7 @@ impl<'a, I> SubSubMatrixUpperStepBy<'a, I> {
                 if *global_end <= global_range.end -1 {
                     Some(((*global_end - global_position) as i32 - shift) as usize)
                 } else {
-                    println!("{},{},{}", global_range.end, global_position, shift);
+                    //println!("{},{},{}", global_range.end, global_position, shift);
                     Some(((global_range.end-1 - global_position) as i32 - shift) as usize)
                 }
             } else {
