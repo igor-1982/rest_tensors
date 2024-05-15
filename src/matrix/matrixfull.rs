@@ -12,7 +12,7 @@ use rayon::prelude::*;
 use blas::Layout;
 use lapack::svd::{SVDCC,SVDError}; */
 
-use crate::{matrix::{MatrixFull, BasicMatrix, MatFormat, MathMatrix, ParMathMatrix, BasicMatrixOpt}, RIFull};
+use crate::{matrix::{BasicMatrix, BasicMatrixOpt, MatFormat, MathMatrix, MatrixFull, ParMathMatrix}, matrix_blas_lapack::{_dgemm_full, _power, _power_rayon}, RIFull};
 use crate::{external_libs::matr_copy, check_shape};
 use crate::index::*; 
 use crate::tensor_basic_operation::*;
@@ -151,6 +151,41 @@ fn test_iter_matrixupper_submatrix() {
     dd.iter_matrixupper_submatrix(0..2, 3..6).for_each(|x| {println!("{}",x)});
 }
 
+
+#[test]
+fn matrixupper_to_matrixfull() {
+    let dd = MatrixFull::from_vec([10,6], (0..60).collect::<Vec<usize>>()).unwrap();
+    dd.formated_output_general(10, "full");
+    //let ff = &dd[(..,0)];
+    let matup = MatrixUpper::from_vec(10,dd[(..,0)].to_vec()).unwrap();
+
+    let matfull = matup.to_matrixfull().unwrap();
+
+    matfull.formated_output_general(5, "full");
+
+}
+
+#[test]
+fn matrixupper_copy_from_matrixfull() {
+    let matfull = MatrixFull::from_vec([6,6], (0..36).map(|x| x as f64).collect::<Vec<f64>>()).unwrap();
+    let mut matuppr = MatrixUpper::new(21,0.0);
+
+    matfull.iter_matrixupper().unwrap().zip(matuppr.iter_mut()).for_each(|(from, to)| {*to = *from});
+
+    let mut matfull_2 = MatrixFull::new([6,6],0.0);
+
+    matfull_2.iter_matrixupper_mut().unwrap().zip(matuppr.iter()).for_each(|(to, from)| {*to = *from});
+
+    matfull.formated_output_general(6, "full");
+    matfull_2.formated_output_general(6, "full");
+
+    let mut matfull_3 = _power(&matfull, -1.0, 1.0e-5).unwrap();
+
+    _dgemm_full(&matfull, 'N', &matfull_3, 'N', &mut matfull_2, 1.0, 0.0);
+
+    matfull_2.formated_output(6, "full");
+
+}
 
 impl <T> MatrixFull<T> {
     /// initialize an empty MatrixFull entity
