@@ -331,6 +331,10 @@ impl<T: Copy + Clone> MatrixUpper<T> {
         let tmp_len = self.size as f64;
         let new_size = ((1.0+8.0*tmp_len).sqrt()*0.5-0.5) as usize;
         //println!("{},{}",self.size,new_size);
+
+        if self.len() == 0 {
+            return Some(MatrixFull::empty())
+        }
         if new_size*(new_size+1)/2 == self.size {
             let mut conv_mat = MatrixFull::new([new_size,new_size],self.data[0].clone());
             // now fill the upper part of the matrix

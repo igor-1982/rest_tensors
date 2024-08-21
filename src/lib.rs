@@ -96,7 +96,7 @@ pub struct Tensors4D<T, D> {
 }
 
 
-const SAFE_MINIMUM:f64 = 10E-12;
+const SAFE_MINIMUM:f64 = 1.0E-16;
 
 //recursive wrapper
 struct RecFn<T>(Box<dyn Fn(&RecFn<T>,(T,T)) -> (T,T)>);

@@ -148,7 +148,7 @@ impl<'a, T> ParMathMatrix<'a, T> for MatrixFull<T> where T: Copy + Clone + Send 
 fn test_iter_matrixupper_submatrix() {
     let dd = MatrixFull::from_vec([6,6], (0..36).collect::<Vec<usize>>()).unwrap();
     dd.formated_output_general(6,"full");
-    dd.iter_matrixupper_submatrix(0..2, 3..6).for_each(|x| {println!("{}",x)});
+    dd.iter_matrixupper_submatrix(1..6, 2..6).for_each(|x| {println!("{}",x)});
 }
 
 
