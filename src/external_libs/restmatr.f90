@@ -18,8 +18,8 @@ program test
     integer :: i,j
 
     matr_c(:,:) = 2.0d0
-    do i = 1, 4
-        do j = 1,4
+    do i = 1, 3
+        do j = 1,3
             matr_a(i,j) = i + 3.0*(j-1.0)
             matr_b(i,j) = matr_a(i,j) + 5.0
         end do

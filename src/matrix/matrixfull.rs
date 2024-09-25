@@ -251,11 +251,12 @@ impl <T> MatrixFull<T> {
             });
         }
     }
-    /// Append all columns of the `other` MatrixFull to `self`, leaving `other` no change.
+
+    // Append all columns of the `other` MatrixFull to `self`, leaving `other` no change.
     pub fn append_column(&mut self, other: &MatrixFull<T>) 
     where T: Copy + Clone {
         if self.size[0] != other.size[0] {
-            panic!("Incompatible size of rows for two MatrixFull: {},{}", self.size[0],other.size[0]);
+            panic!("Incompatible size of columns for two MatrixFull objects: {},{}", self.size[0],other.size[0]);
         }
         let new_size = [self.size[0],self.size[1]+other.size[1]];
         let new_data = &mut self.data;
@@ -263,6 +264,19 @@ impl <T> MatrixFull<T> {
         self.size = new_size;
         self.indicing = [1,new_size[0]];
     }    
+
+    // Append a vector into MatrixFull as a new column
+    pub fn push_column(&mut self, in_data: &[T])
+    where T: Copy + Clone {
+        if in_data.len() != self.size[0] {
+            panic!("Vector length {}!= MatrixFull Column Size {}", in_data.len(), self.size[0]);
+        }
+        self.data.append(&mut in_data.to_vec());
+        self.size[1] += 1;
+    }
+
+
+
     pub fn iter(&self) -> core::slice::Iter<'_, T> {
         self.data.iter()
     }
