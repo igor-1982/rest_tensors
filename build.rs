@@ -27,7 +27,7 @@ fn main() -> std::io::Result<()> {
     let restmatr_link = format!("-L{}",&blas_dir.display());
 
     Command::new(fortran_compiler)
-        .args(&["-shared", "-fpic", "-O2",&restmatr_file,"-o",&restmatr_libr,&restmatr_link, -lopenblas])
+        .args(&["-shared", "-fpic", "-O2",&restmatr_file,"-o",&restmatr_libr,&restmatr_link, "-lopenblas"])
         .status().unwrap();
 
 
