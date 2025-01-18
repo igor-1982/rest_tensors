@@ -12,7 +12,7 @@ use rayon::prelude::*;
 use blas::Layout;
 use lapack::svd::{SVDCC,SVDError}; */
 
-use crate::{matrix::{BasicMatrix, BasicMatrixOpt, MatFormat, MathMatrix, MatrixFull, ParMathMatrix}, matrix_blas_lapack::{_dgemm_full, _power, _power_rayon}, RIFull};
+use crate::{matrix::{BasicMatrix, BasicMatrixOpt, MatFormat, MathMatrix, MatrixFull, ParMathMatrix}, matrix_blas_lapack::{_dgemm_full, _power, _power_rayon_for_symmetric_matrix}, RIFull};
 use crate::{external_libs::matr_copy, check_shape};
 use crate::index::*; 
 use crate::tensor_basic_operation::*;
@@ -643,6 +643,21 @@ impl <T: Copy + Clone> MatrixFull<T> {
             self.size[0]*(self.size[0]+1)/2,
             self.iter_matrixupper().unwrap().map(|ad| ad.clone()).collect::<Vec<T>>()
         )}
+    }
+    pub fn fill_lower_part_from_upper(&mut self) {
+        let size:[usize;2] = self.size().try_into().unwrap();
+        if size[0]!= size[1] {panic!("This function only works for symmetric matrix");}
+        for j in (0..size[0]) {
+            for i in (j+1..size[1]) {
+                let value = self.get(&[j,i]).unwrap().clone();
+                self[[i,j]] = value;
+                //if let Some(new_v) = self.get_mut(&[i,j]) {
+                //    *new_v = value;
+                //} else {
+                //    panic!("Error in getting a slice from a matrix in MatrixFull format");
+                //};
+            };
+        };
     }
     #[inline]
     pub fn to_matrixfullslicemut(&mut self) -> MatrixFullSliceMut<T> {
@@ -1842,11 +1857,17 @@ fn test_append() {
     a.formated_output(10, "full");
     b.formated_output(10, "full");
     c.formated_output(10, "full");
-    print!("{:?}{:?}{:?}",a,b,c);
+    println!("{:?}{:?}{:?}",a,b,c);
     //a.append_column(&b);
     //a.formated_output(10, "full");
     a.append_column(&c);
     a.formated_output(10, "full");
-    print!("{:?}",a);
+    println!("{:?}",a);
+    let a_norm = a.iter().fold(0.0,|acc, x| acc + x*x ).powf(0.5);
+    println!("{}", a_norm);
+
+    let mut a_norm = 0.0;
+    a.data_ref().unwrap().iter().for_each(|x| a_norm += x*x);
+    println!("{}", a_norm.powf(0.5));
 
 }

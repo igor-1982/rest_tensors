@@ -2,7 +2,7 @@ use std::{iter::Flatten, vec::IntoIter, ops::Range, ptr::addr_of_mut};
 
 use blas::{dgemm,dtrmm, dsymm, dsyrk, dgemv};
 use itertools::Itertools;
-use lapack::{dsyev, dspgvx, dspevx,dgetrf,dgetri,dlamch, dsyevx, dpotrf, dtrtri, dpotri, dgeev, dgees, Select2F64};
+use lapack::{dgees, dgeev, dgetrf, dgetri, dlamch, dpotrf, dpotri, dspevx, dspgvx, dsyev, dsyevd, dsyevx, dtrtri, Select2F64};
 use nalgebra::{matrix, Matrix};
 use rayon::prelude::*;
 
@@ -346,6 +346,42 @@ where T: BasicMatrix<'a, f64>
         panic!("Error in _dsyev: the algorithm is only vaild for real symmetric matrices")
     }
 }
+
+pub fn _dsyevd<'a, T>(matr_a: &T, jobz: char) -> (Option<MatrixFull<f64>>,Vec<f64>,i32) 
+where T: BasicMatrix<'a, f64>
+{
+    let ndim = matr_a.size()[0];
+    let size = [ndim, matr_a.size()[1]];
+    if size[0]==size[1] {
+        let n= ndim as i32;
+        let mut a = matr_a.data_ref().unwrap().iter().map(|x| *x).collect::<Vec<f64>>();
+        let mut w: Vec<f64> = vec![0.0;ndim];
+        let lwork = if jobz.eq(&'N') {4*n} else {7*n+2*n*n};
+        let mut work: Vec<f64> = vec![0.0;lwork as usize];
+        let liwork = if jobz.eq(&'N') {2} else {4+5*n};
+        let mut iwork: Vec<i32> = vec![0;liwork as usize];
+        let mut info = 0;
+        unsafe {
+            dsyevd(jobz.clone() as u8,b'L',n,&mut a, n, &mut w, &mut work, lwork, &mut iwork, liwork, &mut info);
+        }
+        if info<0 {
+            panic!("Error in _dsyevd: the {}-th argument had an illegal value", -info);
+        } else if info>0 {
+            panic!("Error in _dsyevd: the algorithm failed to converge; {}-off-diagonal elements of an intermediate tridiagonal form did not converge to zero", -info);
+
+        }
+        let eigenvectors = if jobz.eq(&'V') {
+            Some(MatrixFull::from_vec([ndim,ndim], a).unwrap())
+        } else {None};
+        //let eigenvalues = Tensors::from_vec(String::from("full"),vec![self.size[0]], w);
+        (eigenvectors, w,n)
+    } else {
+        panic!("Error in _dsyev: the algorithm is only vaild for real symmetric matrices")
+    }
+}
+/// # DSYMM performs one of the matrix-matrix operations  
+///    C := alpha*A*B + beta*C,  
+/// or  
 /// # DSYMM performs one of the matrix-matrix operations  
 ///    C := alpha*A*B + beta*C,  
 /// or  
@@ -608,7 +644,7 @@ where T: BasicMatrix<'a, f64>
 
 
         // diagonalize the matrix
-        let (mut opt_eigenvector, mut eigenvalues, mut n) = _dsyev(&om, 'V');
+        let (mut opt_eigenvector, mut eigenvalues, mut n) = _dsyevd(&om, 'V');
         let mut eigenvector = opt_eigenvector.unwrap();
 
         // now we get the eigenvectors with the eigenvalues from large to small
@@ -652,7 +688,7 @@ where T: BasicMatrix<'a, f64>
 
 }
 
-pub fn _power_rayon<'a, T>(matr_a: &T, p: f64, threshold: f64) -> Option<MatrixFull<f64>> 
+pub fn _power_rayon_for_symmetric_matrix<'a, T>(matr_a: &T, p: f64, threshold: f64) -> Option<MatrixFull<f64>> 
 where T: BasicMatrix<'a, f64>
 {
     let size = matr_a.size();
@@ -664,7 +700,7 @@ where T: BasicMatrix<'a, f64>
 
 
         // diagonalize the matrix
-        let (mut opt_eigenvector, mut eigenvalues, mut n) = _dsyev(&om, 'V');
+        let (mut opt_eigenvector, mut eigenvalues, mut n) = _dsyevd(&om, 'V');
         let mut eigenvector = opt_eigenvector.unwrap();
 
         // now we get the eigenvectors with the eigenvalues from large to small
@@ -2120,7 +2156,7 @@ pub fn _newton_schulz_inverse_square_root_v01(original_matr: &MatrixFull<f64>, t
 }
 
 //pub fn _dspgvx(&mut self,ovlp:MatrixUpperSliceMut<f64>,num_orb:usize) -> Option<(MatrixFull<f64>,Vec<f64>)> {
-pub fn _dspgvx<'a, T, Q>(matr_a: &T, matr_b: &Q, num_orb: usize)  -> Option<(MatrixFull<f64>,Vec<f64>)> 
+pub fn _dspgvx<'a, T, Q>(matr_a: &T, matr_b: &Q, num_orb: usize)  -> Option<(MatrixFull<f64>,Vec<f64>, usize)> 
 where T: BasicMatUp<'a, f64>,
       Q: BasicMatUp<'a, f64>, 
       //P: BasicMatrix<'a, f64>
@@ -2182,5 +2218,139 @@ where T: BasicMatUp<'a, f64>,
     }
     let eigenvectors = MatrixFull::from_vec([ndim,num_orb],z).unwrap();
     //let eigenvalues = Tensors::from_vec("full".to_string(),vec![n as usize],w);
-    Some((eigenvectors, w))
+    Some((eigenvectors, w, m as usize))
+}
+
+/// # a fast solver for the hamiltonian equation:
+///        0) -> H \cdot C =  S \cdot C \cdot L 
+/// where H is the fock matrix, C the MO coefficient matrix, S the overlap matrix, and L the eigenvalues for this equation
+/// The original implementation in REST is to simply invoke the lapack subroutine '_dspgvx'. 
+/// Unfortuantely, this subroutine is not well optimized for multi-thread parallization.
+/// Therefore, we try another algorithm to solve this problem as follow:
+///  1) Define a transformation matrix X = S^{0.5}, such that the original equation can be changed to:
+///        a) -> H \cdot C = X \cdot X \cdot C \cdot \lambda
+///  2) Then, define a new matrix C' = X \cdot C:
+///        b) -> H \cdot C = X \cdot C' \cdot \lambda
+///        c) -> H \cdot X^{-1} \cdot C' = X \cdot C' \cdot \lambda
+///  3) Then, define a new matrix H' = X \cdot H X^{-1}, the original equation changes to:
+///        d) -> H' \cdot C' =  C' \cdot \lambda
+///  4) Since H' is also a symetric matrix, this standard diagonalization problem could be solved by using the efficient lapack subroutin '_dsyevd'.
+///     It yields the eigenvalue L, and the eigenvector matrix C'
+///  5) The MO coefficient matrix C can then be obtrain by using the following matrix transformation:
+///        e) -> C = X^{-1} \cdot C'
+///       
+/// 
+pub fn _hamiltonian_fast_solver<'a, T, Q>(matr_a: &T, matr_b: &Q, num_orb: &mut usize)  -> Option<(MatrixFull<f64>,Vec<f64>)> 
+//                                                         IGOR:: should turn on the use of num_orb for ill-conditioning check and manipulation
+where T: BasicMatUp<'a, f64>,
+      Q: BasicMatUp<'a, f64>, 
+      //P: BasicMatrix<'a, f64>
+{
+    // first change matr_a and matr_b with matrixup to matrixfull 
+
+    let num_bas = matr_a.size()[0];
+    let mut matr_a_full = MatrixFull::new(matr_a.size(), 0.0);
+    matr_a_full.iter_matrixupper_mut().unwrap().zip(matr_a.data_ref().unwrap()).for_each(|(to, from)| {
+        *to = *from;
+    });
+    matr_a_full.fill_lower_part_from_upper();
+    let mut matr_b_full = MatrixFull::new(matr_b.size(), 0.0);
+    matr_b_full.iter_matrixupper_mut().unwrap().zip(matr_b.data_ref().unwrap()).for_each(|(to, from)| {
+        *to = *from;
+    });
+    matr_b_full.fill_lower_part_from_upper();
+
+    let (matr_b_sqrt, matr_b_sqrt_inv, n_singularity) = _get_sqrt_and_inv_sqrt(&matr_b_full, 1.0e-10).unwrap();
+
+    if n_singularity < *num_orb {*num_orb = n_singularity};
+
+    let mut matr_a_full_p= MatrixFull::new(matr_a.size(), 0.0);
+    let mut matr_a_tmp= MatrixFull::new(matr_a.size(), 0.0);
+
+    _dgemm_full(&matr_a_full, 'N', &matr_b_sqrt_inv, 'N', &mut matr_a_tmp, 1.0, 0.0);
+    _dgemm_full(&matr_b_sqrt, 'N', &matr_a_tmp, 'N', &mut matr_a_full_p, 1.0, 0.0);
+
+    let (mut opt_eigenvector, mut eigenvalues, mut n) = _dsyevd(&matr_a_full_p, 'V');
+    matr_a_tmp = opt_eigenvector.unwrap();
+
+    let mut eigenvector= MatrixFull::new([matr_a.size()[0], *num_orb], 0.0);
+
+    _dgemm(&matr_b_sqrt_inv, (0..num_bas, 0..*num_orb), 'T', 
+           &matr_a_tmp, (0..num_bas, 0..*num_orb), 'N', 
+           &mut eigenvector, (0..num_bas, 0..*num_orb),
+           1.0, 0.0);
+
+    Some((eigenvector, eigenvalues))
+}
+
+pub fn _get_sqrt_and_inv_sqrt<'a, T>(matr_a: &T, threshold: f64) -> Option<(MatrixFull<f64>, MatrixFull<f64>, usize)> 
+where T: BasicMatrix<'a, f64>
+{
+    let size = matr_a.size();
+    if size[0]==size[1] {
+
+        let mut sqrt_om = MatrixFull::new([size[0],size[1]],0.0);
+        let mut inv_sqrt_om = MatrixFull::new([size[0],size[1]],0.0);
+
+        // because lapack sorts eigenvalues from small to large, we multiply the elements with -1.0
+        sqrt_om.data.par_iter_mut().zip(matr_a.data_ref().unwrap().par_iter()).for_each(|value| {*value.0=*value.1*-1.0f64});
+        //inv_sqrt_om.data.par_iter_mut().zip(matr_a.data_ref().unwrap().par_iter()).for_each(|value| {*value.0=*value.1*-1.0f64});
+
+
+        // diagonalize the matrix
+        let (mut opt_eigenvector, mut eigenvalues, mut n) = _dsyevd(&sqrt_om, 'V');
+        let mut sqrt_eigenvector = opt_eigenvector.unwrap();
+        let mut inv_sqrt_eigenvector = sqrt_eigenvector.clone();
+
+        // now we get the eigenvectors with the eigenvalues from large to small
+        let (mut n_nonsigular, mut tmpv) = (0usize,0.0);
+        eigenvalues.iter_mut().for_each(|value| {
+            *value = *value*(-1.0);
+            //if *value >= threshold && *value <= tmpv {
+            if *value >= threshold {
+                n_nonsigular +=1;
+            };
+        });
+
+        if n as usize != size[0] {
+            panic!("Found unphysical eigenvalues");
+        } else if n_nonsigular != size[0] {
+            //println!("_power_rayon => n_nonsigular: {}, {}", n_nonsigular, size[0]);
+            //println!("{:?}", &eigenvalues);
+        }
+
+        &sqrt_eigenvector.data.par_chunks_exact_mut(size[0]).enumerate()
+            .for_each(|(i,value)| {
+            if i<n_nonsigular {
+                if let Some(ev) = eigenvalues.get(i) {
+                    let ev_sqrt = ev.sqrt().sqrt();
+                    value.iter_mut().for_each(|v| {*v = *v*ev_sqrt});
+                }
+            } else {
+                value.iter_mut().for_each(|v| {*v = 0.0f64});
+            }
+        });
+
+        &inv_sqrt_eigenvector.data.par_chunks_exact_mut(size[0]).enumerate()
+            .for_each(|(i,value)| {
+            if i<n_nonsigular {
+                if let Some(ev) = eigenvalues.get(i) {
+                    let ev_sqrt = ev.sqrt().sqrt();
+                    value.iter_mut().for_each(|v| {*v = *v/ev_sqrt});
+                }
+            } else {
+                value.iter_mut().for_each(|v| {*v = 0.0f64});
+            }
+        });
+
+        
+        _dgemm_full(&sqrt_eigenvector, 'N', &sqrt_eigenvector, 'T', &mut sqrt_om, 1.0, 0.0);
+        _dgemm_full(&inv_sqrt_eigenvector, 'N', &inv_sqrt_eigenvector, 'T', &mut inv_sqrt_om, 1.0, 0.0);
+
+        Some((sqrt_om, inv_sqrt_om, n_nonsigular))
+    } else {
+        println!("Error: The matrix for power operations should be NxN");
+        None
+    }
+
 }
