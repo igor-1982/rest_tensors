@@ -2232,7 +2232,7 @@ where T: BasicMatUp<'a, f64>,
 ///  2) Then, define a new matrix C' = X \cdot C:
 ///        b) -> H \cdot C = X \cdot C' \cdot \lambda
 ///        c) -> H \cdot X^{-1} \cdot C' = X \cdot C' \cdot \lambda
-///  3) Then, define a new matrix H' = X \cdot H X^{-1}, the original equation changes to:
+///  3) Then, define a new matrix H' = X^{-1} \cdot H X^{-1}, the original equation changes to:
 ///        d) -> H' \cdot C' =  C' \cdot \lambda
 ///  4) Since H' is also a symetric matrix, this standard diagonalization problem could be solved by using the efficient lapack subroutin '_dsyevd'.
 ///     It yields the eigenvalue L, and the eigenvector matrix C'
@@ -2268,7 +2268,7 @@ where T: BasicMatUp<'a, f64>,
     let mut matr_a_tmp= MatrixFull::new(matr_a.size(), 0.0);
 
     _dgemm_full(&matr_a_full, 'N', &matr_b_sqrt_inv, 'N', &mut matr_a_tmp, 1.0, 0.0);
-    _dgemm_full(&matr_b_sqrt, 'N', &matr_a_tmp, 'N', &mut matr_a_full_p, 1.0, 0.0);
+    _dgemm_full(&matr_b_sqrt_inv, 'N', &matr_a_tmp, 'N', &mut matr_a_full_p, 1.0, 0.0);
 
     let (mut opt_eigenvector, mut eigenvalues, mut n) = _dsyevd(&matr_a_full_p, 'V');
     matr_a_tmp = opt_eigenvector.unwrap();
