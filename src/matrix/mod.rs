@@ -489,9 +489,9 @@ pub enum MatFormat {
 
 pub trait BasicMatrix<'a, T> {
 
-    fn size(&self) -> &[usize];
+    fn size(&self) -> [usize;2];
 
-    fn indicing(&self) -> &[usize];
+    fn indicing(&self) -> [usize;2];
 
     fn is_matr(&self) -> bool {self.size().len() == 2 && self.indicing().len() == 2}
 
@@ -580,7 +580,7 @@ pub trait MathMatrix<'a, T> where Self: BasicMatrix<'a, T> + BasicMatrixOpt<'a, 
     {
         let size_a = [self.size()[0], self.size()[1]];
         /// A = A + B 
-        if ! basic_check_shape(&size_a, bm.size()) {
+        if ! basic_check_shape(&size_a, &bm.size()) {
             panic!("Error: Shape inconsistency happens when plus two matrices");
         }
         self.data_ref_mut().unwrap().iter_mut()
@@ -593,7 +593,7 @@ pub trait MathMatrix<'a, T> where Self: BasicMatrix<'a, T> + BasicMatrixOpt<'a, 
           Q: BasicMatrix<'a, T>, Self:Sized
     {
         let size_a = [self.size()[0], self.size()[1]];
-        if basic_check_shape(&size_a, bm.size()) {
+        if basic_check_shape(&size_a, &bm.size()) {
             self.data_ref_mut().unwrap().iter_mut()
                 .zip(bm.data_ref().unwrap().iter())
                 .for_each(|(c,p)| {*c +=*p*b});
@@ -607,7 +607,7 @@ pub trait MathMatrix<'a, T> where Self: BasicMatrix<'a, T> + BasicMatrixOpt<'a, 
           Q: BasicMatrix<'a, T>, Self:Sized
     {
         let size_a = [self.size()[0], self.size()[1]];
-        if basic_check_shape(&size_a, bm.size()) {
+        if basic_check_shape(&size_a, &bm.size()) {
             //let mut new_tensors: MatrixFull<f64> = self.clone();
             self.data_ref_mut().unwrap().iter_mut().zip(bm.data_ref().unwrap().iter()).for_each(|(c,p)| {*c =*c*a+(*p)*b});
         } else {
@@ -631,7 +631,7 @@ pub trait MathMatrix<'a, T> where Self: BasicMatrix<'a, T> + BasicMatrixOpt<'a, 
     where T: Sub + SubAssign, Q: BasicMatrix<'a, T>, Self: Sized
     {
         let size_a = [self.size()[0], self.size()[1]];
-        if basic_check_shape(&size_a, bm.size()) {
+        if basic_check_shape(&size_a, &bm.size()) {
             self.data_ref_mut().unwrap().iter_mut().zip(bm.data_ref().unwrap().iter()).for_each(|(c,p)| {*c -= *p});
         } else {
             panic!("Error: Shape inconsistency happens when subtract two matrices");
@@ -690,7 +690,7 @@ where Self: Sized + BasicMatrix<'a, T> + BasicMatrixOpt<'a, T>,
           Self: Sized 
     {
         let size_a = [self.size()[0], self.size()[1]];
-        if basic_check_shape(&size_a, bm.size()) {
+        if basic_check_shape(&size_a, &bm.size()) {
             self.data_ref_mut().unwrap().par_iter_mut().zip(bm.data_ref().unwrap().par_iter())
                 .for_each(|(c,p)| {*c += *p});
         } else {
@@ -703,7 +703,7 @@ where Self: Sized + BasicMatrix<'a, T> + BasicMatrixOpt<'a, T>,
           Q: BasicMatrix<'a, T>
     {
         let size_a = [self.size()[0], self.size()[1]];
-        if basic_check_shape(&size_a, bm.size()) {
+        if basic_check_shape(&size_a, &bm.size()) {
             self.data_ref_mut().unwrap().par_iter_mut().zip(bm.data_ref().unwrap().par_iter()).for_each(|(c,p)| {*c += *p*b});
         } else {
             panic!("Error: Shape inconsistency happens when plus two matrices");
@@ -715,7 +715,7 @@ where Self: Sized + BasicMatrix<'a, T> + BasicMatrixOpt<'a, T>,
           Q: BasicMatrix<'a, T>
     {
         let size_a = [self.size()[0], self.size()[1]];
-        if basic_check_shape(&size_a, bm.size()) {
+        if basic_check_shape(&size_a, &bm.size()) {
             //let mut new_tensors: MatrixFull<f64> = self.clone();
             self.data_ref_mut().unwrap().par_iter_mut().zip(bm.data_ref().unwrap().par_iter()).for_each(|(c,p)| {*c =*c*a+(*p)*b});
         } else {
@@ -740,7 +740,7 @@ where Self: Sized + BasicMatrix<'a, T> + BasicMatrixOpt<'a, T>,
           Q: BasicMatrix<'a, T>
     {
         let size_a = [self.size()[0], self.size()[1]];
-        if basic_check_shape(&size_a, bm.size()) {
+        if basic_check_shape(&size_a, &bm.size()) {
             self.data_ref_mut().unwrap().par_iter_mut().zip(bm.data_ref().unwrap().par_iter()).for_each(|(c,p)| {*c -= *p});
         } else {
             panic!("Error: Shape inconsistency happens when plus two matrices");
@@ -753,4 +753,42 @@ where Self: Sized + BasicMatrix<'a, T> + BasicMatrixOpt<'a, T>,
         self.data_ref_mut().unwrap().par_iter_mut().for_each(|c| {*c *= a});
     }
 
+}
+
+/// we implement the basic matrix traits for the `Vec` structure
+impl<'a, T> BasicMatrixOpt<'a, T> for Vec<T> where T: Copy + Clone {
+    fn to_matrixfull(&self) -> Option<MatrixFull<T>> 
+        where T: Copy + Clone {
+        let len = self.len();
+        //MatrixFull::from_vec([len, 1], self.iter(),::collect::<Vec<T>>())
+        Some(MatrixFull {
+            size: [len, 1],
+            indicing: [1,len],
+            data: self.iter().map(|x| *x).collect::<Vec<T>>(),
+        })
+    }
+}
+
+impl<'a, T> BasicMatrix<'a, T> for Vec<T> where T: Copy + Clone {
+    fn size(&self) -> [usize;2] {
+        // fake size
+        [self.len(), 1]
+    }
+
+    fn indicing(&self) -> [usize;2] {
+        //fake size
+        [1, self.len()]
+    }
+
+    fn is_matr(&self) -> bool {true}
+
+    fn is_contiguous(&self) -> bool {true}
+
+    fn data_ref(&self) -> Option<&[T]> {
+        Some(&self[..])
+    }
+
+    fn data_ref_mut(&mut self) -> Option<&mut [T]> {
+        Some(&mut self[..])
+    }
 }

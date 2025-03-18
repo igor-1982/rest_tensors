@@ -24,12 +24,12 @@ pub struct DMatrix7x10 {
 }
 
 impl<'a> BasicMatrix<'a, f64> for DMatrix3x3 {
-    fn size(&self) -> &[usize] {
-        &self.size
+    fn size(&self) -> [usize;2] {
+        self.size.clone()
     }
 
-    fn indicing(&self) -> &[usize] {
-        &self.indicing
+    fn indicing(&self) -> [usize;2] {
+        self.indicing.clone()
     }
 
     fn data_ref(&self) -> Option<&[f64]> {

@@ -426,7 +426,7 @@ impl RIFull<f64> {
             let self_size = self.size.clone();
 
             ri_copy_from_matr(
-                from_matr.data_ref().unwrap(), from_matr.size(), 
+                from_matr.data_ref().unwrap(), &from_matr.size(), 
                 f_range_x,f_range_y,
                 &mut self.data, &self_size, range_x,range_y, i_z, copy_mod
             )

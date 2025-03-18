@@ -26,13 +26,13 @@ pub struct MatrixFullSliceMut<'a,T> {
 impl <'a, T> BasicMatrix<'a, T> for MatrixFullSliceMut<'a,T> {
     #[inline]
     /// `matr_a.size()' return &matr_a.size;
-    fn size(&self) -> &[usize] {
-        &self.size
+    fn size(&self) -> [usize;2] {
+        self.size.try_into().unwrap()
     }
     #[inline]
     /// `matr_a.indicing()' return &matr_a.indicing;
-    fn indicing(&self) -> &[usize] {
-        &self.indicing
+    fn indicing(&self) -> [usize;2] {
+        self.indicing.try_into().unwrap()
     }
 
     fn data_ref(&self) -> Option<&[T]> {
@@ -190,13 +190,13 @@ pub struct MatrixFullSlice<'a,T> {
 impl <'a, T> BasicMatrix<'a, T> for MatrixFullSlice<'a,T> {
     #[inline]
     /// `matr_a.size()' return &matr_a.size;
-    fn size(&self) -> &[usize] {
-        &self.size
+    fn size(&self) -> [usize;2] {
+        self.size.try_into().unwrap()
     }
     #[inline]
     /// `matr_a.indicing()' return &matr_a.indicing;
-    fn indicing(&self) -> &[usize] {
-        &self.indicing
+    fn indicing(&self) -> [usize;2] {
+        self.indicing.try_into().unwrap()
     }
 
     fn data_ref(&self) -> Option<&[T]> {
@@ -351,13 +351,13 @@ pub struct SubMatrixFullSlice<'a,T> {
 impl <'a, T> BasicMatrix<'a, T> for SubMatrixFullSlice<'a,T> {
     #[inline]
     /// `matr_a.size()' return &matr_a.size;
-    fn size(&self) -> &[usize] {
-        &self.size
+    fn size(&self) -> [usize;2] {
+        self.size.try_into().unwrap()
     }
     #[inline]
     /// `matr_a.indicing()' return &matr_a.indicing;
-    fn indicing(&self) -> &[usize] {
-        &self.indicing
+    fn indicing(&self) -> [usize;2] {
+        self.indicing.try_into().unwrap()
     }
 
     fn data_ref(&self) -> Option<&[T]> {

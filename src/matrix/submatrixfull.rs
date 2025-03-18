@@ -25,18 +25,18 @@ pub enum SubMatrixFullMut<'a,T> {
 impl <'a, T: Copy + Clone> BasicMatrix<'a, T> for SubMatrixFull<'a, T> {
     #[inline]
     /// `matr_a.size()' return &matr_a.size;
-    fn size(&self) -> &[usize] {
+    fn size(&self) -> [usize;2] {
         match &self {
-            Self::Contiguous(matr) => {matr.size},
-            Self::Detached(matr) => {&matr.size}
+            Self::Contiguous(matr) => {matr.size.try_into().unwrap()},
+            Self::Detached(matr) => {matr.size.try_into().unwrap()}
         }
     }
     #[inline]
     /// `matr_a.indicing()' return &matr_a.indicing;
-    fn indicing(&self) -> &[usize] {
+    fn indicing(&self) -> [usize;2] {
         match &self {
-            Self::Contiguous(matr) => {matr.indicing},
-            Self::Detached(matr) => {&matr.indicing}
+            Self::Contiguous(matr) => {matr.indicing.try_into().unwrap()},
+            Self::Detached(matr) => {matr.indicing.try_into().unwrap()}
         }
     }
 
@@ -68,18 +68,18 @@ impl<'a, T> ParMathMatrix<'a, T> for SubMatrixFull<'a, T> where T: Copy + Clone 
 impl <'a, T> BasicMatrix<'a, T> for SubMatrixFullMut<'a, T> {
     #[inline]
     /// `matr_a.size()' return &matr_a.size;
-    fn size(&self) -> &[usize] {
+    fn size(&self) -> [usize;2] {
         match &self {
-            Self::Contiguous(matr) => {matr.size},
-            Self::Detached(matr) => {&matr.size}
+            Self::Contiguous(matr) => {matr.size.try_into().unwrap()},
+            Self::Detached(matr) => {matr.size.try_into().unwrap()}
         }
     }
     #[inline]
     /// `matr_a.indicing()' return &matr_a.indicing;
-    fn indicing(&self) -> &[usize] {
+    fn indicing(&self) -> [usize;2] {
         match &self {
-            Self::Contiguous(matr) => {matr.indicing},
-            Self::Detached(matr) => {&matr.indicing}
+            Self::Contiguous(matr) => {matr.indicing.try_into().unwrap()},
+            Self::Detached(matr) => {matr.indicing.try_into().unwrap()}
         }
     }
 

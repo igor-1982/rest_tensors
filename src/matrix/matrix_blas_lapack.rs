@@ -167,8 +167,8 @@ where T: BasicMatrix<'a, f64>,
     if is_contiguous {
         let matr_c_size = [matr_c.size()[0],matr_c.size()[1]];
         crate::external_libs::general_dgemm_f(
-            matr_a.data_ref().unwrap(), matr_a.size(), sub_a_dim.0, sub_a_dim.1, opa, 
-            matr_b.data_ref().unwrap(), matr_b.size(), sub_b_dim.0, sub_b_dim.1, opb, 
+            matr_a.data_ref().unwrap(), &matr_a.size(), sub_a_dim.0, sub_a_dim.1, opa, 
+            matr_b.data_ref().unwrap(), &matr_b.size(), sub_b_dim.0, sub_b_dim.1, opb, 
             matr_c.data_ref_mut().unwrap(), &matr_c_size, sub_c_dim.0, sub_c_dim.1, 
             alpha, beta)
     } else {
@@ -253,10 +253,10 @@ where T: BasicMatrix<'a, f64>,
 
 
 #[inline]
-pub fn _dgemm_full_new<'a, T,Q> (
+pub fn _dgemm_scaled<'a, T,Q> (
     matr_a: &T, opa: char, 
     matr_b: &Q, opb: char, 
-    alpha: f64, beta: f64,
+    alpha: f64
 ) -> MatrixFull<f64>
 where T: BasicMatrix<'a, f64>,
       Q: BasicMatrix<'a, f64> {
@@ -273,7 +273,7 @@ where T: BasicMatrix<'a, f64>,
     
     
     MatrixFull::new([axy[0],bxy[1]], 0.0_f64);
-    _dgemm_full(matr_a, opa, matr_b, opb, &mut c, alpha, beta);
+    _dgemm_full(matr_a, opa, matr_b, opb, &mut c, alpha, 0.0);
     c
 }
 
@@ -733,7 +733,6 @@ where T: BasicMatrix<'a, f64>
                     value.iter_mut().for_each(|v| {*v = 0.0f64});
                 }
         });
-
         
         _dgemm_full(&eigenvector, 'N', &eigenvector, 'T', &mut om, 1.0, 0.0);
 
@@ -1192,7 +1191,7 @@ where T: BasicMatrix<'a, f64>,
 {
     let mat_a_size = [mat_a.size()[0],mat_a.size()[1]];
     match scaling_factor {
-        None =>  {
+        none =>  {
             mat_a.data_ref_mut().unwrap().chunks_exact_mut(mat_a_size[0])
                 .zip(mat_b.data_ref().unwrap().chunks_exact(mat_a_size[0]))
                 .zip(slice_c.iter())

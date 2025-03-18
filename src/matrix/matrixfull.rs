@@ -2,12 +2,15 @@
 use std::{fmt::Display, collections::binary_heap::Iter, iter::{Filter,Flatten, Map, StepBy}, convert, slice::{ChunksExact,ChunksExactMut, self}, mem::ManuallyDrop, marker, cell::RefCell, ops::{IndexMut, RangeFull, MulAssign, DivAssign, Div, DerefMut, Deref}, thread::panicking};
 use std::ops::{Add, Sub, Mul, AddAssign, SubAssign, Index, Range};
 use libc::{CLOSE_RANGE_CLOEXEC, SYS_userfaultfd};
-use typenum::{U2, Pow};
+//use typenum::{Pow, Zero, U2};
 use rayon::{prelude::*, collections::btree_map::IterMut, iter::Enumerate};
 use std::vec::IntoIter;
 use regex::Regex;
 use lapack::{dgesv,dgesvd,dgelss,dgesvj};
 use rayon::prelude::*;
+use rand::prelude::Distribution;
+use rand::thread_rng;
+use num_traits::Zero;
 /* use lapack::{Layout::RowMajor,dgesvd};
 use blas::Layout;
 use lapack::svd::{SVDCC,SVDError}; */
@@ -28,13 +31,13 @@ use crate::matrix::matrix_trait::*;
 impl <'a, T> BasicMatrix<'a, T> for MatrixFull<T> {
     #[inline]
     /// `matr_a.size()' return &matr_a.size;
-    fn size(&self) -> &[usize] {
-        &self.size
+    fn size(&self) -> [usize;2] {
+        self.size.clone()
     }
     #[inline]
     /// `matr_a.indicing()' return &matr_a.indicing;
-    fn indicing(&self) -> &[usize] {
-        &self.indicing
+    fn indicing(&self) -> [usize;2] {
+        self.indicing.clone()
     }
     #[inline]
     fn data_ref(&self) -> Option<&[T]> {
@@ -44,6 +47,10 @@ impl <'a, T> BasicMatrix<'a, T> for MatrixFull<T> {
     fn data_ref_mut(&mut self) -> Option<&mut [T]> {
         Some(&mut self.data[..])
     }
+    
+    fn is_matr(&self) -> bool {self.size().len() == 2 && self.indicing().len() == 2}
+    
+    fn is_contiguous(&self) -> bool {true}
 }
 
 impl<'a, T> BasicMatrixOpt<'a, T> for MatrixFull<T> where T: Copy + Clone {}
@@ -210,6 +217,15 @@ impl <T> MatrixFull<T> {
             data: vec![new_default.clone(); len]
         }
     }
+
+    pub fn random<DIS>(size: [usize;2], distribution: DIS) -> MatrixFull<T> 
+    where DIS: Distribution<T>
+    {
+        let len = size[0]*size[1];
+        let mut rng = thread_rng();
+        MatrixFull::from_vec(size, distribution.sample_iter(rng).take(len).collect::<Vec<T>>()).unwrap()
+    }
+
     pub fn data(&self) -> Vec<T> where T: Copy + Clone {self.data.clone()}
 
     pub unsafe fn from_vec_unchecked(size: [usize;2], new_vec: Vec<T>) -> MatrixFull<T> {
@@ -224,6 +240,7 @@ impl <T> MatrixFull<T> {
             data: new_vec
         }
     }
+
     pub fn from_vec(size: [usize;2], new_vec: Vec<T>) -> Option<MatrixFull<T>> {
         unsafe{
             let tmp_mat = MatrixFull::from_vec_unchecked(size, new_vec);
@@ -252,6 +269,30 @@ impl <T> MatrixFull<T> {
         }
     }
 
+    pub fn sum_axis(&self, axis: usize) -> Option<Vec<T>>
+    where T: Copy + Clone + Add<Output = T> + Zero {
+        if axis == 0 {
+            //let mut new_matr = MatrixFull::new([1,self.size[1]], T::zero());
+            let mut new_vec = vec![T::zero(); self.size[1]];
+            new_vec.iter_mut().zip(self.iter_columns_full()).for_each(|(to, from)| {
+                *to = from.iter().fold(T::zero(), |sum, x| sum + *x);
+            });
+            Some(new_vec)
+        } else if axis == 1 {
+            //let mut new_matr = MatrixFull::new([self.size[0], 1], T::zero());
+            let mut new_vec = vec![T::zero(); self.size[0]];
+            for i_row in 0..self.size[0] {
+                new_vec[i_row] = self.iter_row(i_row).fold(T::zero(), |sum, x| sum + *x);
+            }
+            Some(new_vec)
+            //new_matr.iter_rows_mut(0..self.size[0]).zip(self.iter_rows(0..self.size[0])).for_each(|(to, from));
+        } else {
+            None
+        }
+
+    }
+
+
     // Append all columns of the `other` MatrixFull to `self`, leaving `other` no change.
     pub fn append_column(&mut self, other: &MatrixFull<T>) 
     where T: Copy + Clone {
@@ -274,8 +315,6 @@ impl <T> MatrixFull<T> {
         self.data.append(&mut in_data.to_vec());
         self.size[1] += 1;
     }
-
-
 
     pub fn iter(&self) -> core::slice::Iter<'_, T> {
         self.data.iter()
@@ -1391,6 +1430,7 @@ where T: std::fmt::Debug + std::fmt::Display,
 
 /// More math operations for T: f64
 impl MatrixFull<f64> {
+
     pub fn print_debug(&self, x: Range<usize>, y: Range<usize>)  {
         let length = x.len()*y.len();
         let mut tmp_s:String = format!("debug: ");
@@ -1405,7 +1445,7 @@ impl MatrixFull<f64> {
     {
         let size = self.size.clone();
         unsafe{matr_copy(
-            matr_a.data_ref().unwrap(), matr_a.size(), f_x, f_y, 
+            matr_a.data_ref().unwrap(), &matr_a.size(), f_x, f_y, 
             self.data_ref_mut().unwrap(), &size,x,y 
         )}
     }
@@ -1445,7 +1485,7 @@ impl MatrixFull<f64> {
         MatrixFull::from_vec([n as usize, result.len()/n as usize], result).unwrap()
     }
 
-    pub fn ddot(&self, b: &mut MatrixFull<f64>) -> Option<MatrixFull<f64>> {
+    pub fn ddot(&self, b: &MatrixFull<f64>) -> Option<MatrixFull<f64>> {
         if let Some(tmp_mat) = self.to_matrixfullslice().ddot(&b.to_matrixfullslice()) {
             Some(tmp_mat)
         } else {
