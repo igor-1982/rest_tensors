@@ -186,11 +186,11 @@ where T: BasicMatrix<'a, f64>,
       Q: BasicMatrix<'a, f64>, 
       P: BasicMatrix<'a, f64>
 {
-    let size_a = matr_a.size().to_vec();
+    let size_a = matr_a.size();
     let sub_a_dim = (0..size_a[0], 0..size_a[1]);
-    let size_b = matr_b.size().to_vec();
+    let size_b = matr_b.size();
     let sub_b_dim = (0..size_b[0], 0..size_b[1]);
-    let size_c = matr_c.size().to_vec();
+    let size_c = matr_c.size();
     let sub_c_dim = (0..size_c[0], 0..size_c[1]);
     let check_shape = match (&opa, &opb) {
         ('N','N') => {
@@ -319,8 +319,10 @@ where T: BasicMatrix<'a, f64>,
 pub fn _dsyev<'a, T>(matr_a: &T, jobz: char) -> (Option<MatrixFull<f64>>,Vec<f64>,i32) 
 where T: BasicMatrix<'a, f64>
 {
-    let ndim = matr_a.size()[0];
-    let size = [ndim, matr_a.size()[1]];
+    //let ndim = matr_a.size()[0];
+    //let size = [ndim, matr_a.size()[1]];
+    let size = matr_a.size();
+    let ndim = size[0];
     if size[0]==size[1] {
         let n= ndim as i32;
         let mut a = matr_a.data_ref().unwrap().iter().map(|x| *x).collect::<Vec<f64>>();
@@ -350,8 +352,10 @@ where T: BasicMatrix<'a, f64>
 pub fn _dsyevd<'a, T>(matr_a: &T, jobz: char) -> (Option<MatrixFull<f64>>,Vec<f64>,i32) 
 where T: BasicMatrix<'a, f64>
 {
-    let ndim = matr_a.size()[0];
-    let size = [ndim, matr_a.size()[1]];
+    //let ndim = matr_a.size()[0];
+    //let size = [ndim, matr_a.size()[1]];
+    let size = matr_a.size();
+    let ndim = size[0];
     if size[0]==size[1] {
         let n= ndim as i32;
         let mut a = matr_a.data_ref().unwrap().iter().map(|x| *x).collect::<Vec<f64>>();
@@ -396,10 +400,11 @@ where T: BasicMatrix<'a, f64>,
       Q: BasicMatrix<'a, f64>, 
       P: BasicMatrix<'a, f64>
 {
-    //let side0 = side.to_lowercase();
-    //let uplo0 = uplo.to_lowercase();
-    let m = matr_c.size()[0] as i32;
-    let n = matr_c.size()[1] as i32;
+    //let m = matr_c.size()[0] as i32;
+    //let n = matr_c.size()[1] as i32;
+    let matr_c_size = matr_c.size();
+    let m = matr_c_size[0] as i32;
+    let n = matr_c_size[1] as i32;
 
     let lda = if side.to_string().to_lowercase().eq("l") {m} else {n};
     let ldb = m;
@@ -433,8 +438,11 @@ pub fn _dsyrk<'a, T, P> (
 where T: BasicMatrix<'a, f64>,
       P: BasicMatrix<'a, f64>
 {
-    let m = matr_c.size()[0] as i32;
-    let n = matr_c.size()[1] as i32;
+    //let m = matr_c.size()[0] as i32;
+    //let n = matr_c.size()[1] as i32;
+    let matr_c_size = matr_c.size();
+    let m = matr_c_size[0] as i32;
+    let n = matr_c_size[1] as i32;
     if m!=n {panic!("matr_b should be symmetric")};
 
     let k = if trans.to_string().to_lowercase().eq("n") {matr_a.size()[1] as i32} else {matr_a.size()[0] as i32};
@@ -487,8 +495,9 @@ where T: BasicMatrix<'a, f64>,
 /// 
 pub fn _dgees<'a, T>(matr: &T, jobvs: char, sort: char, select: Select2F64)  -> (MatrixFull<f64>, MatrixFull<f64>, Vec<f64>, Vec<f64>, usize)
 where T: BasicMatrix<'a, f64> {
+    let matr_size = matr.size();
     let mut matr_a = unsafe{MatrixFull::from_vec_unchecked(
-        [matr.size()[0], matr.size()[1]],
+        matr_size,
         matr.data_ref().unwrap().iter().map(|x| *x).collect())};
     let n0 = matr_a.size()[0];
     let n = n0 as i32;
@@ -554,7 +563,8 @@ where T: BasicMatrix<'a, f64> {
 pub fn _dpotrf<'a, T>(matr_a: &mut T, uplo: char)  
 where T: BasicMatrix<'a, f64>
 {
-    let size = [matr_a.size()[0], matr_a.size()[1]];
+    //let size = [matr_a.size()[0], matr_a.size()[1]];
+    let size = matr_a.size();
     if size[0]==size[1] {
         let n = size[0] as i32;
         let mut info = 0;
@@ -1189,11 +1199,11 @@ pub fn contract_vxc_0_serial<'a, T,Q>(mat_a: &mut T, mat_b: &Q, slice_c: &[f64],
 where T: BasicMatrix<'a, f64>,
       Q: BasicMatrix<'a, f64>
 {
-    let mat_a_size = [mat_a.size()[0],mat_a.size()[1]];
+    let chunk_size = mat_a.size()[0];
     match scaling_factor {
-        none =>  {
-            mat_a.data_ref_mut().unwrap().chunks_exact_mut(mat_a_size[0])
-                .zip(mat_b.data_ref().unwrap().chunks_exact(mat_a_size[0]))
+        None =>  {
+            mat_a.data_ref_mut().unwrap().chunks_exact_mut(chunk_size)
+                .zip(mat_b.data_ref().unwrap().chunks_exact(chunk_size))
                 .zip(slice_c.iter())
                 .for_each(|((mat_a,mat_b),slice_c)| {
                     mat_a.iter_mut().zip(mat_b.iter()).for_each(|(mat_a, mat_b)| {
@@ -1202,18 +1212,19 @@ where T: BasicMatrix<'a, f64>,
             });
         },
         Some(s) => {
-            mat_a.data_ref_mut().unwrap().chunks_exact_mut(mat_a_size[0])
-                .zip(mat_b.data_ref().unwrap().chunks_exact(mat_a_size[0]))
+            mat_a.data_ref_mut().unwrap().chunks_exact_mut(chunk_size)
+                .zip(mat_b.data_ref().unwrap().chunks_exact(chunk_size))
                 .zip(slice_c.iter())
                 .for_each(|((mat_a,mat_b),slice_c)| {
                     mat_a.iter_mut().zip(mat_b.iter()).for_each(|(mat_a, mat_b)| {
                         *mat_a += mat_b*slice_c*s
-                });
+                    });
             });
-
         }
     }
 }
+
+
 
 // for c = a*b
 #[inline]
