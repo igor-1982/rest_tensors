@@ -12,7 +12,7 @@ use crate::{basic_check_shape, BasicMatUp, BasicMatrix, MatrixFull, MatrixFullSl
 use super::ParMathMatrix;
 
 
-#[cfg(feature="openblas")]
+#[cfg(not(feature="intel-mkl"))]
 extern "C" {
     pub fn openblas_get_num_threads() -> ::std::os::raw::c_int;
     pub fn openblas_set_num_threads(n: ::std::os::raw::c_int);
@@ -31,7 +31,7 @@ extern "C" {
 
 pub fn omp_get_num_threads_wrapper() -> usize {
     let mut num_threads = 1;
-    #[cfg(feature="openblas")] {
+    #[cfg(not(feature="intel-mkl"))] {
         num_threads = unsafe{omp_get_max_threads()} as usize;
     }
     #[cfg(feature="intel-mkl")] {
@@ -41,7 +41,7 @@ pub fn omp_get_num_threads_wrapper() -> usize {
 }
 pub fn omp_set_num_threads_wrapper(n:usize)  {
     let tmp_n = n as i32;
-    #[cfg(feature="openblas")]
+    #[cfg(not(feature="intel-mkl"))]
     unsafe{
         openblas_set_num_threads(n as ::std::os::raw::c_int);
         goto_set_num_threads(n as ::std::os::raw::c_int);
