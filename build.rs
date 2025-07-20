@@ -45,7 +45,7 @@ fn main() -> std::io::Result<()> {
         } else {"gfortran".to_string()};
         Command::new(fortran_compiler)
             .args(&["-shared", "-fpic", "-O2",&restmatr_file,"-o",&restmatr_libr, "-m64", &mkl_include, &mkl_link, 
-            "-Wl,--no-as-needed", "-lmkl_gf_ilp64", "-lmkl_gnu_thread", "-lmkl_core", "-lgomp", "-lpthread", "-lm", "-ldl"])
+            "-Wl,--no-as-needed", "-lmkl_gf_lp64", "-lmkl_gnu_thread", "-lmkl_core", "-lgomp", "-lpthread", "-lm", "-ldl"])
             .status().unwrap();
         println!("cargo:rustc-link-lib=mkl_rt");
         println!("cargo:rustc-link-search=native={}/lib",&blas_dir.display());
