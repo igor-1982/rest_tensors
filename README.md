@@ -4,10 +4,11 @@
 ### Using rest_tensors
 
 - Several global environment variables should be specified  
- 1) REST_BLAS_DIR:           The path to the openblas library: `libopenblas.so`  
- 2) REST_FORTRAN_COMPILER:   The compiler to build a fortran library for effcient tensor operations:  `restmatr.f90` -> `librestmatr.so`  
- 3) REST_EXT_DIR:            The path to store the fortran library: `librestmatr.so` after compilation 
- 4) LD_LIBRARY_PATH:         attach REST_BLAS_DIR and REST_EXT_DIR to LD_LIBRARY_PATH: `export LD_LIBRARY_PATH="$REST_BLAS_DIR:$REST_EXT_DIR:$LD_LIBRARY_PATH"` 
+ 1) REST_FORTRAN_COMPILER:   The compiler to build a fortran library for effcient tensor operations:  `restmatr.f90` -> `librestmatr.so`  
+ 2) REST_EXT_DIR:            The path to store the fortran library: `librestmatr.so` after compilation 
+ 3) LD_LIBRARY_PATH:         attach REST_BLAS_DIR and REST_EXT_DIR to LD_LIBRARY_PATH: `export LD_LIBRARY_PATH="$REST_BLAS_DIR:$REST_EXT_DIR:$LD_LIBRARY_PATH"` 
+ 4) REST_BLAS_DIR:           The path to the openblas library  for `feature=openblas`
+ 5) MKLROOT:                 The path to the mkl library for `feature=intel-mkl`
 
  - Simply add the following to your Carto.toml file:
 ```ignore

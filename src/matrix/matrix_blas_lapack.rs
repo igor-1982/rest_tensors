@@ -1,4 +1,5 @@
 use std::{iter::Flatten, vec::IntoIter, ops::Range, ptr::addr_of_mut};
+use std::os::raw::c_int;
 
 use blas::{dgemm,dtrmm, dsymm, dsyrk, dgemv};
 use itertools::Itertools;
@@ -9,6 +10,49 @@ use rayon::prelude::*;
 use crate::{basic_check_shape, BasicMatUp, BasicMatrix, MatrixFull, MatrixFullSlice, MatrixFullSliceMut, MatrixFullSliceMut2, MatrixUpperSliceMut, TensorSlice, TensorSliceMut, SAFE_MINIMUM};
 
 use super::ParMathMatrix;
+
+
+#[cfg(feature="openblas")]
+extern "C" {
+    pub fn openblas_get_num_threads() -> ::std::os::raw::c_int;
+    pub fn openblas_set_num_threads(n: ::std::os::raw::c_int);
+    pub fn goto_get_num_threads() -> ::std::os::raw::c_int;
+    pub fn goto_set_num_threads(n: ::std::os::raw::c_int);
+    pub fn omp_get_max_threads() -> ::std::os::raw::c_int;
+    pub fn omp_set_num_threads(n: ::std::os::raw::c_int);
+}
+#[cfg(feature="intel-mkl")]
+extern "C" {
+    pub fn mkl_set_num_threads(n: *const c_int);
+    pub fn mkl_get_max_threads() -> c_int;
+}
+
+
+
+pub fn omp_get_num_threads_wrapper() -> usize {
+    let mut num_threads = 1;
+    #[cfg(feature="openblas")] {
+        num_threads = unsafe{omp_get_max_threads()} as usize;
+    }
+    #[cfg(feature="intel-mkl")] {
+        num_threads = unsafe{mkl_get_max_threads()} as usize;
+    }
+    num_threads
+}
+pub fn omp_set_num_threads_wrapper(n:usize)  {
+    let tmp_n = n as i32;
+    #[cfg(feature="openblas")]
+    unsafe{
+        openblas_set_num_threads(n as ::std::os::raw::c_int);
+        goto_set_num_threads(n as ::std::os::raw::c_int);
+        omp_set_num_threads(n as ::std::os::raw::c_int)
+    }
+    #[cfg(feature="intel-mkl")]
+    unsafe{
+        mkl_set_num_threads(&tmp_n as *const c_int);
+    }
+}
+
 
 
 pub fn general_check_shape<'a, T,Q,P>(matr_a: &'a T, matr_b: &'a Q, opa: char, opb: char) -> bool 
