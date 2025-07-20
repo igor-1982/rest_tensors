@@ -15,7 +15,7 @@ fn main() -> std::io::Result<()> {
 
 
 
-    #[cfg(feature="openblas")] {
+    #[cfg(not(feature="intel-mkl"))] {
         let restmatr_file = format!("src/external_libs/restmatr.f90");
         let restmatr_libr = format!("{}/librestmatr.so",&external_dir.to_str().unwrap());
         let fortran_compiler = if let Ok(fortran_compiler) = env::var("REST_FORTRAN_COMPILER") {
