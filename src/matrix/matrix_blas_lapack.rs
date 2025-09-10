@@ -500,6 +500,7 @@ where T: BasicMatrix<'a, f64>,
 
 }
 
+
 /// # [`_dgees`] computs for an N-by-N real nonsymmetric matrix A, the eigenvalues, the real Schur form T, and optionally, the matrix of Schur vectors Z. This gives the Schur factorization A = Z*T*(T**T)
 /// 
 /// Optionally, it also orders the eigenvalues on the diagonal of the
@@ -578,7 +579,64 @@ where T: BasicMatrix<'a, f64> {
     (matr_a, vs, wr, wi, sdim as usize)
     //MatrixFull::new([10,10],0.0)
 }
-
+pub fn _dgeev<'a, T>(
+    matr: &T, 
+    jobvl: char, 
+    jobvr: char
+) -> (MatrixFull<f64>, Vec<f64>, Vec<f64>, MatrixFull<f64>, MatrixFull<f64>, i32)
+where 
+    T: BasicMatrix<'a, f64> 
+{
+    let matr_size = matr.size();
+    let mut matr_a = unsafe {
+        MatrixFull::from_vec_unchecked(
+            matr_size,
+            matr.data_ref().unwrap().iter().copied().collect()
+        )
+    };
+    
+    let n0 = matr_a.size()[0];
+    let n = n0 as i32;
+    
+    let lda = n;
+    
+    // 根据是否计算左/右特征向量确定矩阵维度
+    let ldvl = if jobvl.to_ascii_uppercase() == 'V' { n } else { 1 };
+    let ldvr = if jobvr.to_ascii_uppercase() == 'V' { n } else { 1 };
+    
+    // 初始化输出数组
+    let mut wr: Vec<f64> = vec![0.0; n0];
+    let mut wi: Vec<f64> = vec![0.0; n0];
+    let mut vl = MatrixFull::new([ldvl as usize, n0], 0.0);
+    let mut vr = MatrixFull::new([ldvr as usize, n0], 0.0);
+    
+    // 工作数组（可以优化大小，这里使用安全值）
+    let lwork = 4 * n;
+    let mut work: Vec<f64> = vec![0.0; lwork as usize];
+    let mut info = 0;
+    
+    // 调用 dgeev
+    unsafe {
+        dgeev(
+            jobvl as u8,
+            jobvr as u8,
+            n,
+            matr_a.data_ref_mut().unwrap(),
+            lda,
+            &mut wr,
+            &mut wi,
+            vl.data_ref_mut().unwrap(),
+            ldvl,
+            vr.data_ref_mut().unwrap(),
+            ldvr,
+            &mut work,
+            lwork,
+            &mut info
+        );
+    }
+    
+    (matr_a, wr, wi, vl, vr, info)
+}
 
 /// # [`_dpotrf`] dpotrf computes the Cholesky factorization of a real symmetric positive definite matrix A  
 /// uplo: char, `U` or `L`  
