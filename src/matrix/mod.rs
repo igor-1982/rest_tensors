@@ -17,6 +17,7 @@ pub mod matrixconst;
 pub mod matrix_blas_lapack;
 pub mod einsum;
 mod matrix_trait;
+pub mod complexmatrixfull;
 
 
 use crate::matrix::matrixfull::*;
@@ -381,7 +382,7 @@ use crate::matrix::matrix_blas_lapack::*;
 ///        assert_eq!(m_item, c_item)
 ///   })
 /// ```
-///   4. `iter_submatrix()` and `iter_submatrix_mut()` provide home-made StepBy iterators in the column-major order for 
+///   4. `get_submatrix()` and `get_submatrix_mut()` provide home-made StepBy iterators in the column-major order for 
 ///     the immutable and mutable elements in the sub-matrix, respectively.
 /// 
 /// ```
@@ -396,11 +397,11 @@ use crate::matrix::matrix_blas_lapack::*;
 ///   //                ----------
 ///   //          |  3 |  6 |  9  | 12 |
 ///   let smatr_a = MatrixFull::from_vec([2,2],vec![4,5,7,8]).unwrap();
-///   matr_a.iter_submatrix(0..2,1..3).zip(smatr_a.iter()).for_each(|(m_item, sm_item)| {
+///   matr_a.get_submatrix(0..2,1..3).zip(smatr_a.iter()).for_each(|(m_item, sm_item)| {
 ///        assert_eq!(m_item, sm_item)
 ///   })
 /// ```
-///   5. Based on `iter_submatrix()` and `iter_submatrix_mut()`, [`MatrixFull`] provides flatten iterators for rows, i.e.
+///   5. Based on `get_submatrix()` and `get_submatrix_mut()`, [`MatrixFull`] provides flatten iterators for rows, i.e.
 ///   `iter_row()`, `iter_row_mut()`, `iter_rows()`, `iter_rows_mut()`
 /// ```
 ///   use rest_tensors::MatrixFull;
