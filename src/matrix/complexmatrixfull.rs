@@ -1,5 +1,4 @@
-//for complex matrixfull only, using Complex
-use num_complex::Complex;
+use num_complex::{Complex, ComplexFloat};
 use crate::matrix::MatrixFull;
 use rayon::prelude::*;
 use num_traits::Zero;
@@ -7,90 +6,43 @@ use std::ffi::c_char;
 use std::ops::Neg;
 use num_traits::Num;
 
-#[derive(Clone,Debug,PartialEq)]
-pub struct ComplexMatrixFull<T> {
-    pub size : [usize;2],
-    pub indicing : [usize;2],
-    pub data : Vec<Complex<T>>,
-}
-
-impl <T: Clone + Copy + Send + Sync + Zero> ComplexMatrixFull<T> {
-    pub fn new(size:[usize;2], new_default: Complex<T>) -> ComplexMatrixFull<T> {
-            let mut indicing = [0usize;2];
-            let mut len = size.iter().zip(indicing.iter_mut()).fold(1usize,|len,(di,ii)| {
-                *ii = len;
-                len * di
-            });
-            ComplexMatrixFull {
-                size,
-                indicing,
-                data: vec![new_default.clone();len]
-            }
-        }
-
-    pub unsafe fn from_vec_unchecked(size: [usize;2], new_vec: Vec<Complex<T>>) -> ComplexMatrixFull<T> {
-        let mut indicing = [0usize;2];
-        let mut len = size.iter().zip(indicing.iter_mut()).fold(1usize,|len,(di,ii)| {
-            *ii = len;
-            len * di
-        });
-        ComplexMatrixFull {
-            size,
-            indicing,
-            data: new_vec
-        }
-    }
-
-    pub fn from_vec(size: [usize;2], new_vec: Vec<Complex<T>>) -> Option<ComplexMatrixFull<T>> {
-        unsafe {
-            let tmp_mat = ComplexMatrixFull::from_vec_unchecked(size,new_vec);
-            let len = tmp_mat.size.iter().product::<usize>();
-            if len > tmp_mat.data.len() {
-                    panic!("Error: inconsistency happens when formating a tensor from a given vector, (length from size, length of new vector) = ({},{})",len,tmp_mat.data.len());
-                    None
-            } else {
-                    if len<tmp_mat.data.len() {println!("Waring: the vector size ({}) is larger for the size of the new tensor ({})", tmp_mat.data.len(), len)};
-                    Some(tmp_mat)
-            }
-        }
-    }
-
-    pub fn from_matrixfull(re_part: &MatrixFull<T>, im_part: &MatrixFull<T>) -> Option<ComplexMatrixFull<T>> {
+impl<T: Clone + Copy + Send + Sync + Zero> MatrixFull<Complex<T>> {
+    pub fn from_matrixfull(re_part: &MatrixFull<T>, im_part: &MatrixFull<T>) -> Option<MatrixFull<Complex<T>>> {
         let re_size = re_part.size;
         let im_size = im_part.size;
         if (re_size[0] != im_size[0]) || (re_size[1] != im_size[1]) {
-            panic!("Error: mismatch between real part and imagic part. Find {:?} and {:?}",re_size,im_size);
+            panic!("Error: mismatch between re part and im part. Find {:?} and {:?}",re_size,im_size);
             None
         } else {
             let mut new_vec: Vec<Complex<T>> = vec![Complex::new(T::zero(),T::zero());re_size[0]*re_size[1]];
             re_part.data.par_iter().zip(im_part.data.par_iter()).zip(new_vec.par_iter_mut()).for_each(|((re, im), comp)| {
                 *comp = Complex::new(re.clone(),im.clone());
             });
-            ComplexMatrixFull::from_vec(re_size,new_vec)
+            MatrixFull::from_vec(re_size,new_vec)
         }
     }
 
-    pub fn from_matrixfull_re(re_part: &MatrixFull<T>) -> Option<ComplexMatrixFull<T>> {
+    pub fn from_matrixfull_re(re_part: &MatrixFull<T>) -> Option<MatrixFull<Complex<T>>> {
         let size = re_part.size;
         let mut new_vec: Vec<Complex<T>> = vec![Complex::new(T::zero(),T::zero());size[0]*size[1]];
         re_part.data.par_iter().zip(new_vec.par_iter_mut()).for_each(|(re,comp)| {
             *comp = Complex::new(re.clone(),T::zero());
         });
-        ComplexMatrixFull::from_vec(size,new_vec)
+        MatrixFull::from_vec(size,new_vec)
     }
 
-    pub fn from_matrixfull_im(im_part: &MatrixFull<T>) -> Option<ComplexMatrixFull<T>> {
+    pub fn from_matrixfull_im(im_part: &MatrixFull<T>) -> Option<MatrixFull<Complex<T>>> {
         let size = im_part.size;
         let mut new_vec: Vec<Complex<T>> = vec![Complex::new(T::zero(),T::zero());size[0]*size[1]];
         im_part.data.par_iter().zip(new_vec.par_iter_mut()).for_each(|(im,comp)| {
             *comp = Complex::new(T::zero(),im.clone());
         });
-        ComplexMatrixFull::from_vec(size,new_vec)
+        MatrixFull::from_vec(size,new_vec)
     }
 }
 
-impl <T: Clone + Copy + Send + Sync + Neg + Num + Neg<Output=T>> ComplexMatrixFull<T> {
-    pub fn hermitian(&self) -> ComplexMatrixFull<T> {
+impl <T: Clone + Copy + Send + Sync + Neg + Num + Neg<Output=T>> MatrixFull<Complex<T>> {
+    pub fn hermitian(&self) -> MatrixFull<Complex<T>> {
         //get hermitian matrix
         let [x_len, y_len] = self.size;
         let herm_data: Vec<_> = (0..x_len).into_par_iter().flat_map(|x| {
@@ -99,13 +51,13 @@ impl <T: Clone + Copy + Send + Sync + Neg + Num + Neg<Output=T>> ComplexMatrixFu
                 self.data[src_index].conj()
             }).collect::<Vec<_>>()}).collect();
 
-        ComplexMatrixFull::from_vec([y_len,x_len],herm_data).unwrap()
+        MatrixFull::from_vec([y_len,x_len],herm_data).unwrap()
     }
 }
 
-impl ComplexMatrixFull<f64> {
+impl MatrixFull<Complex<f64>> {
     //Some LAPACK subroutines
-    pub fn lapack_zgemm(&mut self, a: &ComplexMatrixFull<f64>, b: &ComplexMatrixFull<f64>, opa: char, opb: char, alpha: Complex<f64>, beta: Complex<f64>) {
+    pub fn lapack_zgemm(&mut self, a: &MatrixFull<Complex<f64>>, b: &MatrixFull<Complex<f64>>, opa: char, opb: char, alpha: Complex<f64>, beta: Complex<f64>) {
         //calculate self = alpha * opa(a) * opb(b) + beta * self 
         let m = if opa=='N' {a.size[0]} else {a.size[1]};
         let n = if opb=='N' {b.size[1]} else {b.size[0]};
@@ -132,7 +84,7 @@ impl ComplexMatrixFull<f64> {
         };
     }
 
-    pub fn lapack_zgeev(&mut self, jobvl: char, jobvr: char, w: &mut ComplexMatrixFull<f64>, vl: Option<&mut ComplexMatrixFull<f64>>, vr: Option<&mut ComplexMatrixFull<f64>>) {
+    pub fn lapack_zgeev(&mut self, jobvl: char, jobvr: char, w: &mut MatrixFull<Complex<f64>>, vl: Option<&mut MatrixFull<Complex<f64>>>, vr: Option<&mut MatrixFull<Complex<f64>>>) {
         // The right eigenvector v(j) of A satisfies
         //      A * v(j) = lambda(j) * v(j)
         // where lambda(j) is its eigenvalue.
@@ -178,7 +130,7 @@ impl ComplexMatrixFull<f64> {
         }
     }
 
-    pub fn lapack_zggev(&mut self, jobvl: char, jobvr: char, b: &mut ComplexMatrixFull<f64>, vl: Option<&mut ComplexMatrixFull<f64>>, vr: Option<&mut ComplexMatrixFull<f64>>, alpha: &mut ComplexMatrixFull<f64>, beta: &mut ComplexMatrixFull<f64>) {
+    pub fn lapack_zggev(&mut self, jobvl: char, jobvr: char, b: &mut MatrixFull<Complex<f64>>, vl: Option<&mut MatrixFull<Complex<f64>>>, vr: Option<&mut MatrixFull<Complex<f64>>>, alpha: &mut MatrixFull<Complex<f64>>, beta: &mut MatrixFull<Complex<f64>>) {
         // The right generalized eigenvector v(j) corresponding to the
         // generalized eigenvalue lambda(j) of (A,B) satisfies
         //
@@ -234,7 +186,7 @@ impl ComplexMatrixFull<f64> {
         }
     }
 
-    pub fn lapack_ztrtrs(&mut self, uplo: char, trans: char, diag: char, b: &mut ComplexMatrixFull<f64>) {
+    pub fn lapack_ztrtrs(&mut self, uplo: char, trans: char, diag: char, b: &mut MatrixFull<Complex<f64>>) {
         // ZTRTRS solves a triangular system of the form
         //
         //    A * X = B,  A**T * X = B,  or  A**H * X = B,
@@ -461,42 +413,42 @@ extern "C" {
 
 #[test]
 fn test_complexmatrixfull() {
-    let mut a_real = MatrixFull::from_vec([2,3],vec![1.0,2.0,3.0,4.0,5.0,6.0]).unwrap();
-    let mut a_imagic = MatrixFull::from_vec([2,3],vec![7.0,8.0,9.0,10.0,11.0,12.0]).unwrap();
-    let mut a_complex = ComplexMatrixFull::from_matrixfull(&a_real,&a_imagic).unwrap();
-    let mut herm_a_complex = a_complex.hermitian();
-    println!("re = {:?}\nim = {:?}\n a = {:?}\na^H = {:?}",a_real,a_imagic,a_complex,herm_a_complex);
-    let mut a_re_complex = ComplexMatrixFull::from_matrixfull_re(&a_real).unwrap();
-    let mut a_im_complex = ComplexMatrixFull::from_matrixfull_im(&a_imagic).unwrap();
+    let a_re = MatrixFull::from_vec([2,3],vec![1.0,2.0,3.0,4.0,5.0,6.0]).unwrap();
+    let a_im = MatrixFull::from_vec([2,3],vec![7.0,8.0,9.0,10.0,11.0,12.0]).unwrap();
+    let a_complex = MatrixFull::from_matrixfull(&a_re,&a_im).unwrap();
+    let herm_a_complex = a_complex.hermitian();
+    println!("re = {:?}\nim = {:?}\n a = {:?}\na^H = {:?}",a_re,a_im,a_complex,herm_a_complex);
+    let mut a_re_complex = MatrixFull::from_matrixfull_re(&a_re).unwrap();
+    let mut a_im_complex = MatrixFull::from_matrixfull_im(&a_im).unwrap();
     println!("{:?}{:?}",a_re_complex,a_im_complex);
 
-    let mut b_real = MatrixFull::from_vec([2,2],vec![2.0,3.0,4.0,5.0]).unwrap();
-    let mut b_imagic = MatrixFull::from_vec([2,2],vec![6.0,7.0,8.0,9.0]).unwrap();
-    let mut b_complex = ComplexMatrixFull::from_matrixfull(&b_real,&b_imagic).unwrap();
+    let mut b_re = MatrixFull::from_vec([2,2],vec![2.0,3.0,4.0,5.0]).unwrap();
+    let mut b_im = MatrixFull::from_vec([2,2],vec![6.0,7.0,8.0,9.0]).unwrap();
+    let mut b_complex = MatrixFull::from_matrixfull(&b_re,&b_im).unwrap();
     let b_copy = b_complex.clone();
 
-    let mut a_real = MatrixFull::from_vec([2,2],vec![1.0,2.0,3.0,4.0]).unwrap();
-    let mut a_imagic = MatrixFull::from_vec([2,2],vec![7.0,8.0,9.0,10.0]).unwrap();
-    let mut a_copy = ComplexMatrixFull::from_matrixfull(&a_real,&a_imagic).unwrap();
+    let mut a_re = MatrixFull::from_vec([2,2],vec![1.0,2.0,3.0,4.0]).unwrap();
+    let mut a_im = MatrixFull::from_vec([2,2],vec![7.0,8.0,9.0,10.0]).unwrap();
+    let mut a_copy = MatrixFull::from_matrixfull(&a_re,&a_im).unwrap();
 
     println!("Before zgemm: {:?},{:?}",a_copy,b_copy);
-    let mut c = ComplexMatrixFull::new([2,2],Complex::new(0.0,0.0));
+    let mut c = MatrixFull::new([2,2],Complex::new(0.0,0.0));
     c.lapack_zgemm(&a_copy,&b_copy,'N','N',Complex::new(1.0,0.0),Complex::new(0.0,0.0));
     println!("After zgemm: {:?}",c);
     let mut c_copy = c.clone();
 
-    let mut w = ComplexMatrixFull::new([1,2],Complex::new(0.0,0.0));
+    let mut w = MatrixFull::new([1,2],Complex::new(0.0,0.0));
     let mut vl = None;
-    let mut vr = ComplexMatrixFull::new([2,2],Complex::new(0.0,0.0));
+    let mut vr = MatrixFull::new([2,2],Complex::new(0.0,0.0));
     c.lapack_zgeev('N','V',&mut w, vl, Some(&mut vr));
     println!("After zgeev: {:?}, {:?}",w,vr);
 
-    let mut alpha = ComplexMatrixFull::new([1,2],Complex::new(0.0,0.0));
-    let mut beta = ComplexMatrixFull::new([1,2],Complex::new(0.0,0.0));
+    let mut alpha = MatrixFull::new([1,2],Complex::new(0.0,0.0));
+    let mut beta = MatrixFull::new([1,2],Complex::new(0.0,0.0));
     let mut vl = None;
-    let mut vr = ComplexMatrixFull::new([2,2],Complex::new(0.0,0.0));
-    let mut d = ComplexMatrixFull::from_vec([2,2],vec![Complex::new(2.0,6.0),Complex::new(3.0,7.0),Complex::new(4.0,8.0),Complex::new(5.0,9.0)]).unwrap();
-//    let mut d = ComplexMatrixFull::from_vec([2,2],vec![Complex::new(1.0,0.0),Complex::new(0.0,0.0),Complex::new(0.0,0.0),Complex::new(1.0,0.0)]).unwrap();
+    let mut vr = MatrixFull::new([2,2],Complex::new(0.0,0.0));
+    let mut d = MatrixFull::from_vec([2,2],vec![Complex::new(2.0,6.0),Complex::new(3.0,7.0),Complex::new(4.0,8.0),Complex::new(5.0,9.0)]).unwrap();
+//    let mut d = MatrixFull::from_vec([2,2],vec![Complex::new(1.0,0.0),Complex::new(0.0,0.0),Complex::new(0.0,0.0),Complex::new(1.0,0.0)]).unwrap();
     println!("Before zggev: {:?}, {:?}",c_copy,d);
     c_copy.lapack_zggev('N','V',&mut d, vl, Some(&mut vr), &mut alpha, &mut beta);
     println!("After zggev: {:?}, {:?}, {:?}",alpha,beta,vr);
@@ -507,9 +459,9 @@ fn test_complexmatrixfull() {
     println!("zggev value: {:?}",theta);
 
     //test inverse by cholesky + ztrtrs
-    let mut tmp = ComplexMatrixFull::from_vec([2,2],vec![Complex::new(6.0,6.0),Complex::new(3.0,7.0),Complex::new(4.0,8.0),Complex::new(5.0,9.0)]).unwrap();
+    let mut tmp = MatrixFull::from_vec([2,2],vec![Complex::new(6.0,6.0),Complex::new(3.0,7.0),Complex::new(4.0,8.0),Complex::new(5.0,9.0)]).unwrap();
     let mut herm_tmp = tmp.hermitian();
-    let mut target = ComplexMatrixFull::new([2,2],Complex::new(0.0,0.0));
+    let mut target = MatrixFull::new([2,2],Complex::new(0.0,0.0));
     target.data.iter_mut().zip(tmp.data.iter()).zip(herm_tmp.data.iter()).for_each(|((t,aa),bb)| {
         *t = (*aa + *bb)/2.0;
     });
@@ -518,17 +470,17 @@ fn test_complexmatrixfull() {
     target.lapack_zpotrf('L');
     println!("After: {:?}",target);
 
-    let mut identity = ComplexMatrixFull::from_vec([2,2],vec![Complex::new(1.0,0.0),Complex::new(0.0,0.0),Complex::new(0.0,0.0),Complex::new(1.0,0.0)]).unwrap();
+    let mut identity = MatrixFull::from_vec([2,2],vec![Complex::new(1.0,0.0),Complex::new(0.0,0.0),Complex::new(0.0,0.0),Complex::new(1.0,0.0)]).unwrap();
     target.lapack_ztrtrs('L','N','N',&mut identity);
     println!("After: {:?}",identity);
 
-    let mut inv_target = ComplexMatrixFull::new([2,2],Complex::new(0.0,0.0));
+    let mut inv_target = MatrixFull::new([2,2],Complex::new(0.0,0.0));
     inv_target.lapack_zgemm(&identity,&identity,'C','N',Complex::new(1.0,0.0),Complex::new(0.0,0.0));
     println!("inv = {:?}",inv_target);
 
-    let mut tmp = ComplexMatrixFull::from_vec([2,2],vec![Complex::new(6.0,6.0),Complex::new(3.0,7.0),Complex::new(4.0,8.0),Complex::new(5.0,9.0)]).unwrap();
+    let mut tmp = MatrixFull::from_vec([2,2],vec![Complex::new(6.0,6.0),Complex::new(3.0,7.0),Complex::new(4.0,8.0),Complex::new(5.0,9.0)]).unwrap();
     let mut herm_tmp = tmp.hermitian();
-    let mut target = ComplexMatrixFull::new([2,2],Complex::new(0.0,0.0));
+    let mut target = MatrixFull::new([2,2],Complex::new(0.0,0.0));
     target.data.iter_mut().zip(tmp.data.iter()).zip(herm_tmp.data.iter()).for_each(|((t,aa),bb)| {
         *t = (*aa + *bb)/2.0;
     });
