@@ -997,6 +997,31 @@ impl <'a> MatrixFullSliceMut<'a, f64> {
         }
     }
 
+    pub fn lapack_dgetrf_full(&mut self) -> Option<(MatrixFull<f64>,Vec<i32>)> {
+        if self.size[0]==self.size[1] {
+            let ndim = self.size[0];
+            let n= ndim as i32;
+            let mut a: Vec<f64> = self.data.to_vec().clone();
+            let mut w: Vec<f64> = vec![0.0;ndim];
+            let mut work: Vec<f64> = vec![0.0;4*ndim];
+            let mut ipiv: Vec<i32> = vec![0;ndim];
+            let lwork = 4*n;
+            let mut info1 = 0;
+            unsafe {
+                dgetrf(n,n,&mut a,n, &mut ipiv, &mut info1);
+            }
+            if info1!=0 {
+                panic!("Error happens when LU factorizing the matrix. dgetrf info: {}", info1);
+            }
+            let inv_mat = MatrixFull::from_vec([ndim,ndim], a).unwrap();
+            Some((inv_mat, ipiv))
+        } else {
+            println!("Error: The matrix for inversion should be NxN");
+            None
+        }
+    }
+
+
     pub fn lapack_dgetrf(&mut self) -> Option<MatrixFull<f64>> {
         if self.size[0]==self.size[1] {
             let ndim = self.size[0];
