@@ -1,13 +1,15 @@
 //#![warn(missing_docs)]
-use std::{fmt::Display, collections::binary_heap::Iter, iter::{Filter,Flatten, Map}, convert, slice::{ChunksExact,ChunksExactMut, self}, mem::ManuallyDrop, marker, cell::RefCell, ops::{IndexMut, RangeFull, MulAssign, DivAssign, Div, DerefMut, Deref}, thread::panicking};
+use std::{ops::{MulAssign}};
 use std::ops::{Add, Sub, Mul, AddAssign, SubAssign, Index, Range};
-use libc::{CLOSE_RANGE_CLOEXEC, SYS_userfaultfd};
 use typenum::{U2, Pow};
 use rayon::{prelude::*, collections::btree_map::IterMut, iter::Enumerate};
 use std::vec::IntoIter;
 
 use crate::{index::{TensorIndex, TensorIndexUncheck}, TensorOpt, TensorOptMut, TensorSlice, TensorSliceMut, TensorOptUncheck, TensorSliceUncheck, TensorSliceMutUncheck, TensorOptMutUncheck};
 use crate::matrix;
+
+#[cfg(target_os = "linux")]
+use libc::{CLOSE_RANGE_CLOEXEC, SYS_userfaultfd};
 
 pub mod matrixfull;
 pub mod matrixfullslice;

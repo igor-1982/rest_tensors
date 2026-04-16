@@ -1,7 +1,6 @@
 //#![warn(missing_docs)]
-use std::{fmt::Display, collections::binary_heap::Iter, iter::{Filter,Flatten, Map, StepBy}, convert, slice::{ChunksExact,ChunksExactMut, self}, mem::ManuallyDrop, marker, cell::RefCell, ops::{IndexMut, RangeFull, MulAssign, DivAssign, Div, DerefMut, Deref}, thread::panicking};
+use std::{iter::{StepBy}, slice::{ChunksExact,ChunksExactMut, self}, ops::{IndexMut, RangeFull, MulAssign, DivAssign, Div}};
 use std::ops::{Add, Sub, Mul, AddAssign, SubAssign, Index, Range};
-use libc::{CLOSE_RANGE_CLOEXEC, SYS_userfaultfd};
 //use typenum::{Pow, Zero, U2};
 use rayon::{prelude::*, collections::btree_map::IterMut, iter::Enumerate};
 use std::vec::IntoIter;
@@ -27,6 +26,8 @@ use crate::matrix::submatrixfull::*;
 //mod matrix_trait;
 use crate::matrix::matrix_trait::*;
 
+#[cfg(target_os = "linux")]
+use libc::{CLOSE_RANGE_CLOEXEC, SYS_userfaultfd};
 
 impl <'a, T> BasicMatrix<'a, T> for MatrixFull<T> {
     #[inline]

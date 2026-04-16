@@ -29,10 +29,14 @@ fn main() -> std::io::Result<()> {
         fortran_compiler = "gfortran".to_string();
         println!("No Fortran compiler environment variable set, falling back to default: {}", fortran_compiler);
     }
+    let mut restmatr_lib = "librestmatr.so";
+    #[cfg(target_os = "macos")] {
+        restmatr_lib = "librestmatr.dylib";
+    }
 
     #[cfg(not(feature="intel-mkl"))] {
         let restmatr_file = format!("src/external_libs/restmatr.f90");
-        let restmatr_libr = format!("{}/librestmatr.so",&external_dir.to_str().unwrap());
+        let restmatr_libr = format!("{}/{}",&external_dir.to_str().unwrap(), restmatr_lib);
         let blas_dir = if let Ok(blas_dir) = env::var("REST_EXT_DIR") {
             PathBuf::from(blas_dir)
         } else {PathBuf::from(".".to_string())};
@@ -46,7 +50,7 @@ fn main() -> std::io::Result<()> {
 
     #[cfg(feature="intel-mkl")] {
         let restmatr_file = format!("src/external_libs/restmatr.f90");
-        let restmatr_libr = format!("{}/librestmatr.so",&external_dir.to_str().unwrap());
+        let restmatr_libr = format!("{}/{}", &external_dir.to_str().unwrap(), restmatr_lib);
         let blas_dir = if let Ok(blas_dir) = env::var("MKLROOT") {
             PathBuf::from(blas_dir)
         } else {panic!("MKLROOT not set for feature intel-mkl")};
@@ -67,7 +71,9 @@ fn main() -> std::io::Result<()> {
 
 
     println!("cargo:rerun-if-changed=src/external_libs/restmatr.f90");
-    println!("cargo:rerun-if-changed={}/librestmatr.so", &external_dir.to_str().unwrap());
+    println!("cargo:rerun-if-changed={}/{}", &external_dir.to_str().unwrap(), restmatr_lib);
+    #[cfg(target_os = "macos")]
+    println!("cargo:rustc-link-lib=omp");
 
     Ok(())
 

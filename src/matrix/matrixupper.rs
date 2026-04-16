@@ -1,7 +1,6 @@
 //#![warn(missing_docs)]
-use std::{fmt::Display, collections::binary_heap::Iter, iter::{Filter,Flatten, Map}, convert, slice::{ChunksExact,ChunksExactMut, self}, mem::ManuallyDrop, marker, cell::RefCell, ops::{IndexMut, RangeFull, MulAssign, DivAssign, Div, DerefMut, Deref}, thread::panicking};
+use std::{fmt::Display, slice};
 use std::ops::{Add, Sub, Mul, AddAssign, SubAssign, Index, Range};
-use libc::{glob, SYS_userfaultfd, CLOSE_RANGE_CLOEXEC};
 use typenum::{U2, Pow};
 use rayon::{prelude::*, collections::btree_map::IterMut, iter::Enumerate};
 use std::vec::IntoIter;
@@ -13,6 +12,9 @@ use crate::matrix::matrixfull::*;
 use crate::matrix::matrixfullslice::*;
 
 use super::matrix_trait::IncreaseStepBy;
+
+#[cfg(target_os = "linux")]
+use libc::{glob, SYS_userfaultfd, CLOSE_RANGE_CLOEXEC};
 
 pub struct SubMatrixUpperStepBy<'a, I> {
     pub iter: I,
