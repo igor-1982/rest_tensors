@@ -1,8 +1,4 @@
 //#![warn(missing_docs)]
-use std::{fmt::Display, collections::binary_heap::Iter, iter::{Filter,Flatten, Map}, convert, slice::{ChunksExact,ChunksExactMut, self}, mem::ManuallyDrop, marker, cell::RefCell, ops::{IndexMut, RangeFull, MulAssign, DivAssign, Div, DerefMut, Deref}, thread::panicking};
-use std::ops::{Add, Sub, Mul, AddAssign, SubAssign, Index, Range};
-use libc::{CLOSE_RANGE_CLOEXEC, SYS_userfaultfd};
-use typenum::{U2, Pow};
 use rayon::{prelude::*, collections::btree_map::IterMut, iter::Enumerate};
 use std::vec::IntoIter;
 
@@ -12,6 +8,8 @@ use crate::tensor_basic_operation::*;
 use crate::matrix::matrixfullslice::*;
 use crate::matrix::matrixupper::*;
 //{Indexing,Tensors4D};
+#[cfg(target_os = "linux")]
+use libc::{CLOSE_RANGE_CLOEXEC, SYS_userfaultfd};
 
 pub enum SubMatrixFull<'a,T> {
     Contiguous(MatrixFullSlice<'a, T>),

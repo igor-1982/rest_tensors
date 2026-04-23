@@ -1,8 +1,6 @@
 //#![warn(missing_docs)]
-use std::{cell::RefCell, collections::binary_heap::Iter, convert, fmt::Display, iter::{Filter,Flatten, Map, StepBy}, marker, mem::ManuallyDrop, ops::{Deref, DerefMut, Div, DivAssign, IndexMut, MulAssign, RangeFull}, slice::{self, ChunksExact, ChunksExactMut}, thread::panicking};
+use std::{fmt::Display, iter::{Flatten, StepBy}, slice::{self, ChunksExact, ChunksExactMut}};
 use std::ops::{Add, Sub, Mul, AddAssign, SubAssign, Index, Range};
-use libc::{CLOSE_RANGE_CLOEXEC, SYS_userfaultfd};
-use typenum::{U2, Pow};
 use rayon::{prelude::*, collections::btree_map::IterMut, iter::Enumerate};
 use std::vec::IntoIter;
 
@@ -14,6 +12,8 @@ use crate::matrix::matrixfull::*;
 
 use super::matrix_trait::*;
 
+#[cfg(target_os = "linux")]
+use libc::{CLOSE_RANGE_CLOEXEC, SYS_userfaultfd};
 
 #[derive(Debug,PartialEq)]
 pub struct MatrixFullSliceMut<'a,T> {
