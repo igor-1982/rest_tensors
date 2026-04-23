@@ -3,7 +3,7 @@ use std::os::raw::c_int;
 
 use blas::{dgemm,dtrmm, dsymm, dsyrk, dgemv};
 use itertools::Itertools;
-use lapack::{dgees, dgeev, dgetrf, dgetri, dlamch, dpotrf, dpotri, dspevx, dspgvx, dsyev, dsyevd, dsyevx, dtrtri, Select2F64};
+use lapack::{dgees, dgeev, dgesv, dgetrf, dgetri, dlamch, dpotrf, dpotri, dspevx, dspgvx, dsyev, dsyevd, dsyevx, dtrtri, Select2F64};
 use nalgebra::{matrix, Matrix};
 use rayon::prelude::*;
 
@@ -743,6 +743,62 @@ where T: BasicMatrix<'a, f64>
     }
 }
 
+
+/// # Solve a linear system Ax = b
+///
+/// Given an n×n matrix A and a vector b of length n, solve for x in Ax = b.
+/// Uses the LAPACK subroutine dgesv, which performs LU factorization with partial pivoting.
+///
+/// Returns `Some(x)` on success, or `None` if A is singular.
+///
+/// Example
+/// ```
+///    use rest_tensors::MatrixFull;
+///    use rest_tensors::matrix::matrix_blas_lapack::_dsolve;
+///    // A = | 2.0 | 1.0 |
+///    //     | 5.0 | 3.0 |
+///    let matr_a = MatrixFull::from_vec([2,2], vec![2.0, 5.0, 1.0, 3.0]).unwrap();
+///    // b = [4.0, 7.0]
+///    let b = vec![4.0, 7.0];
+///    let x = _dsolve(&matr_a, &b).unwrap();
+///    // A*x should equal b: [2*1 + 1*2, 5*1 + 3*2] = [4, 7] ✓
+///    assert!((x[0] - 1.0).abs() < 1e-10);
+///    assert!((x[1] - 2.0).abs() < 1e-10);
+/// ```
+pub fn _dsolve<'a, T>(matr_a: &T, b: &[f64]) -> Option<Vec<f64>>
+where T: BasicMatrix<'a, f64>
+{
+    let size = matr_a.size();
+    if size[0] != size[1] {
+        panic!("ERROR in _dsolve: matrix A must be square (n×n), got {:?}×{:?}", size[0], size[1]);
+    }
+    if b.len() != size[0] {
+        panic!("ERROR in _dsolve: vector b length ({}) must equal matrix dimension ({})", b.len(), size[0]);
+    }
+
+    let ndim = size[0];
+    let n = ndim as i32;
+    let nrhs = 1_i32;
+
+    // Copy A and b since dgesv overwrites them
+    let mut a = matr_a.data_ref().unwrap().to_vec();
+    let mut x = b.to_vec();
+    let mut ipiv: Vec<i32> = vec![0; ndim];
+    let mut info = 0;
+
+    unsafe {
+        dgesv(n, nrhs, &mut a, n, &mut ipiv, &mut x, n, &mut info);
+    }
+
+    if info < 0 {
+        panic!("ERROR in _dsolve: the {}-th argument had an illegal value", -info);
+    } else if info > 0 {
+        println!("WARNING in _dsolve: matrix A is singular (U({},{}) = 0), factorization failed", info-1, info-1);
+        return None;
+    }
+
+    Some(x)
+}
 
 pub fn _power<'a, T>(matr_a: &T, p: f64, threshold: f64) -> Option<MatrixFull<f64>> 
 where T: BasicMatrix<'a, f64>
