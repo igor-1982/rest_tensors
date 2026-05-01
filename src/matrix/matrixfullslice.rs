@@ -62,29 +62,29 @@ impl <'a, T: Copy + Clone + Display + Send + Sync> MatrixFullSliceMut<'a, T> {
         &mut self.data[start..end]
     }
     #[inline]
-    pub fn iter_column_mut(&mut self, j: usize) -> std::slice::IterMut<T> {
+    pub fn iter_column_mut(&mut self, j: usize) -> std::slice::IterMut<'_, T> {
         let start = self.size[0]*j;
         let end = start + self.size[0];
         self.data[start..end].iter_mut()
     }
     #[inline]
-    pub fn iter_mut_j(&mut self, j: usize) -> std::slice::IterMut<T> {
+    pub fn iter_mut_j(&mut self, j: usize) -> std::slice::IterMut<'_, T> {
         let start = self.size[0]*j;
         let end = start + self.size[0];
         self.data[start..end].iter_mut()
     }
     #[inline]
-    pub fn par_iter_mut_j(&mut self, j: usize) -> rayon::slice::IterMut<T> {
+    pub fn par_iter_mut_j(&mut self, j: usize) -> rayon::slice::IterMut<'_, T> {
         let start = self.indicing[1]*j;
         let end = start + self.indicing[1];
         self.data[start..end].par_iter_mut()
     }
     #[inline]
-    pub fn iter_columns_full(&self) -> ChunksExact<T>{
+    pub fn iter_columns_full(&self) -> ChunksExact<'_, T>{
         self.data.chunks_exact(self.size[0])
     }
     #[inline]
-    pub fn iter_mut_columns(&mut self,range_column: Range<usize>) -> Option<ChunksExactMut<T>>{
+    pub fn iter_mut_columns(&mut self,range_column: Range<usize>) -> Option<ChunksExactMut<'_, T>>{
         if let Some(n_chunk) = self.size.get(0) {
             Some(self.data[n_chunk*range_column.start..n_chunk*range_column.end].chunks_exact_mut(*n_chunk))
         }  else {
@@ -107,19 +107,19 @@ impl <'a, T: Copy + Clone + Display + Send + Sync> MatrixFullSliceMut<'a, T> {
     }
 
     #[inline]
-    pub fn iter(&self) -> slice::Iter<T> {
+    pub fn iter(&self) -> slice::Iter<'_, T> {
         self.data.iter()
     }
     #[inline]
-    pub fn iter_submatrix(&self, x: Range<usize>, y: Range<usize>) ->  SubMatrixStepBy<slice::Iter<T>>{
+    pub fn iter_submatrix(&self, x: Range<usize>, y: Range<usize>) ->  SubMatrixStepBy<slice::Iter<'_, T>>{
         self.iter().submatrix_step_by(x, y, [self.size[0],self.size[1]])
     }
     #[inline]
-    pub fn iter_matrixupper_submatrix(&self, x: Range<usize>, y: Range<usize>) ->  SubMatrixInUpperStepBy<slice::Iter<T>>{
+    pub fn iter_matrixupper_submatrix(&self, x: Range<usize>, y: Range<usize>) ->  SubMatrixInUpperStepBy<slice::Iter<'_, T>>{
         self.iter().submatrix_in_upper_step_by(x, y, [self.size[0],self.size[1]])
     }
     #[inline]
-    pub fn iter_diagonal(&self) -> Option<StepBy<std::slice::Iter<T>>> {
+    pub fn iter_diagonal(&self) -> Option<StepBy<std::slice::Iter<'_, T>>> {
         //let [x,y] = self.size;
         let x = self.size[0];
         let y = self.size[1];
@@ -130,7 +130,7 @@ impl <'a, T: Copy + Clone + Display + Send + Sync> MatrixFullSliceMut<'a, T> {
         }
     }
     #[inline]
-    pub fn iter_matrixupper(&self) -> Option<MatrixUpperStepBy<std::slice::Iter<T>>> {
+    pub fn iter_matrixupper(&self) -> Option<MatrixUpperStepBy<std::slice::Iter<'_, T>>> {
         //let [x,y] = self.size;
         let x = self.size[0];
         let y = self.size[1];
@@ -142,20 +142,20 @@ impl <'a, T: Copy + Clone + Display + Send + Sync> MatrixFullSliceMut<'a, T> {
     }
 
     #[inline]
-    pub fn iter_mut(&mut self) -> slice::IterMut<T> {
+    pub fn iter_mut(&mut self) -> slice::IterMut<'_, T> {
         self.data.iter_mut()
     }
     #[inline]
-    pub fn iter_submatrix_mut(&mut self, x: Range<usize>, y: Range<usize>) ->  SubMatrixStepBy<slice::IterMut<T>>{
+    pub fn iter_submatrix_mut(&mut self, x: Range<usize>, y: Range<usize>) ->  SubMatrixStepBy<slice::IterMut<'_, T>>{
         let size = [self.size[0],self.size[1]];
         self.iter_mut().submatrix_step_by(x, y, size)
     }
     #[inline]
-    pub fn iter_matrixupper_submatrix_mut(&mut self, x: Range<usize>, y: Range<usize>) ->  SubMatrixInUpperStepBy<slice::IterMut<T>>{
+    pub fn iter_matrixupper_submatrix_mut(&mut self, x: Range<usize>, y: Range<usize>) ->  SubMatrixInUpperStepBy<slice::IterMut<'_, T>>{
         let size = [self.size[0],self.size[1]];
         self.iter_mut().submatrix_in_upper_step_by(x, y, size)
     }
-    pub fn iter_diagonal_mut(&mut self) -> Option<StepBy<std::slice::IterMut<T>>> {
+    pub fn iter_diagonal_mut(&mut self) -> Option<StepBy<std::slice::IterMut<'_, T>>> {
         //let [x,y] = self.size;
         let x = self.size[0];
         let y = self.size[1];
@@ -166,7 +166,7 @@ impl <'a, T: Copy + Clone + Display + Send + Sync> MatrixFullSliceMut<'a, T> {
         }
     }
     #[inline]
-    pub fn iter_matrixupper_mut(& mut self) -> Option<MatrixUpperStepBy<std::slice::IterMut<T>>> {
+    pub fn iter_matrixupper_mut(& mut self) -> Option<MatrixUpperStepBy<std::slice::IterMut<'_, T>>> {
         //let [x,y] = self.size;
         let x = self.size[0];
         let y = self.size[1];
@@ -214,19 +214,19 @@ impl<'a, T> ParMathMatrix<'a, T> for MatrixFullSlice<'a, T> where T: Copy + Clon
 
 impl <'a, T: Copy + Clone + Display + Send + Sync> MatrixFullSlice<'a, T> {
     #[inline]
-    pub fn iter(&self) -> slice::Iter<T> {
+    pub fn iter(&self) -> slice::Iter<'_, T> {
         self.data.iter()
     }
     #[inline]
-    pub fn iter_submatrix(&self, x: Range<usize>, y: Range<usize>) ->  SubMatrixStepBy<slice::Iter<T>>{
+    pub fn iter_submatrix(&self, x: Range<usize>, y: Range<usize>) ->  SubMatrixStepBy<slice::Iter<'_, T>>{
         self.iter().submatrix_step_by(x, y, [self.size[0],self.size[1]])
     }
     #[inline]
-    pub fn iter_matrixupper_submatrix(&self, x: Range<usize>, y: Range<usize>) ->  SubMatrixInUpperStepBy<slice::Iter<T>>{
+    pub fn iter_matrixupper_submatrix(&self, x: Range<usize>, y: Range<usize>) ->  SubMatrixInUpperStepBy<slice::Iter<'_, T>>{
         self.iter().submatrix_in_upper_step_by(x, y, [self.size[0],self.size[1]])
     }
     #[inline]
-    pub fn iter_diagonal(&self) -> Option<StepBy<std::slice::Iter<T>>> {
+    pub fn iter_diagonal(&self) -> Option<StepBy<std::slice::Iter<'_, T>>> {
         //let [x,y] = self.size;
         let x = self.size[0];
         let y = self.size[1];
@@ -237,7 +237,7 @@ impl <'a, T: Copy + Clone + Display + Send + Sync> MatrixFullSlice<'a, T> {
         }
     }
     #[inline]
-    pub fn iter_matrixupper(&self) -> Option<MatrixUpperStepBy<std::slice::Iter<T>>> {
+    pub fn iter_matrixupper(&self) -> Option<MatrixUpperStepBy<std::slice::Iter<'_, T>>> {
         //let [x,y] = self.size;
         let x = self.size[0];
         let y = self.size[1];
@@ -248,7 +248,7 @@ impl <'a, T: Copy + Clone + Display + Send + Sync> MatrixFullSlice<'a, T> {
         }
     }
     #[inline]
-    pub fn iter_matrixupper_shift(&self, shift: usize) -> Option<MatrixUpperStepBy<std::slice::Iter<T>>> {
+    pub fn iter_matrixupper_shift(&self, shift: usize) -> Option<MatrixUpperStepBy<std::slice::Iter<'_, T>>> {
         //let [x,y] = self.size;
         let x = self.size[0];
         let y = self.size[1];
@@ -259,13 +259,13 @@ impl <'a, T: Copy + Clone + Display + Send + Sync> MatrixFullSlice<'a, T> {
         }
     }
     #[inline]
-    pub fn iter_j(&self, j: usize) -> std::slice::Iter<T> {
+    pub fn iter_j(&self, j: usize) -> std::slice::Iter<'_, T> {
         let start = self.size[0]*j;
         let end = start + self.size[0];
         self.data[start..end].iter()
     }
     #[inline]
-    pub fn iter_columns(&self, range_column: Range<usize>) -> Option<ChunksExact<T>>{
+    pub fn iter_columns(&self, range_column: Range<usize>) -> Option<ChunksExact<'_, T>>{
         if let Some(n_chunk) = self.size.get(0) {
             Some(self.data[n_chunk*range_column.start..n_chunk*range_column.end].chunks_exact(*n_chunk))
         }  else {
@@ -273,15 +273,15 @@ impl <'a, T: Copy + Clone + Display + Send + Sync> MatrixFullSlice<'a, T> {
         }
     }
     #[inline]
-    pub fn iter_columns_full(&self) -> ChunksExact<T>{
+    pub fn iter_columns_full(&self) -> ChunksExact<'_, T>{
         self.data.chunks_exact(self.size[0])
     }
     #[inline]
-    pub fn par_iter_columns_full(&self) -> rayon::slice::ChunksExact<T>{
+    pub fn par_iter_columns_full(&self) -> rayon::slice::ChunksExact<'_, T>{
         self.data.par_chunks_exact(self.size[0])
     }
     #[inline]
-    pub fn par_iter_columns(&self, range_column: Range<usize>) -> Option<rayon::slice::ChunksExact<T>>{
+    pub fn par_iter_columns(&self, range_column: Range<usize>) -> Option<rayon::slice::ChunksExact<'_, T>>{
         if let Some(n_chunk) = self.size.get(0) {
             Some(self.data[n_chunk*range_column.start..n_chunk*range_column.end].par_chunks_exact(*n_chunk))
         }  else {

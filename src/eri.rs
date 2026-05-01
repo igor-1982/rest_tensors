@@ -96,7 +96,7 @@ impl <T: Clone + Display + Send + Sync> ERIFull<T> {
 
         }
     }
-    pub fn get_reducing_matrix_mut(&mut self, i_reduced: &[usize;2]) -> MatrixFullSliceMut<T> {
+    pub fn get_reducing_matrix_mut(&mut self, i_reduced: &[usize;2]) -> MatrixFullSliceMut<'_, T> {
         let mut position = [0; 4];
         position[2] = i_reduced[0];
         position[3] = i_reduced[1];
@@ -109,7 +109,7 @@ impl <T: Clone + Display + Send + Sync> ERIFull<T> {
     }
 
     #[inline]
-    pub fn get_reducing_matrix(&self, i_reduced: &[usize;2]) -> MatrixFullSlice<T> {
+    pub fn get_reducing_matrix(&self, i_reduced: &[usize;2]) -> MatrixFullSlice<'_, T> {
         let mut position = [0; 4];
         position[2] = i_reduced[0];
         position[3] = i_reduced[1];
@@ -214,7 +214,7 @@ impl <T: Clone + Display> ERIFold4<T> {
 
         }
     }
-    pub fn get_reducing_matrix_mut(&mut self, i_reduced: usize) -> MatrixUpperSliceMut<T> {
+    pub fn get_reducing_matrix_mut(&mut self, i_reduced: usize) -> MatrixUpperSliceMut<'_, T> {
         let p_start = self.index2d([0,i_reduced]).unwrap();
         let p_length = self.indicing[1];
         MatrixUpperSliceMut {
@@ -224,7 +224,7 @@ impl <T: Clone + Display> ERIFold4<T> {
     }
 
     #[inline]
-    pub fn get_reducing_matrix(&self, i_reduced: usize) -> MatrixUpperSlice<T> {
+    pub fn get_reducing_matrix(&self, i_reduced: usize) -> MatrixUpperSlice<'_, T> {
         let p_start = self.index2d([0,i_reduced]).unwrap();
         let p_length = self.indicing[1];
         MatrixUpperSlice {

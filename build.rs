@@ -29,10 +29,11 @@ fn main() -> std::io::Result<()> {
         fortran_compiler = "gfortran".to_string();
         println!("No Fortran compiler environment variable set, falling back to default: {}", fortran_compiler);
     }
-    let mut restmatr_lib = "librestmatr.so";
-    #[cfg(target_os = "macos")] {
-        restmatr_lib = "librestmatr.dylib";
-    }
+    #[cfg(target_os = "linux")]
+    let restmatr_lib = "librestmatr.so";
+    #[cfg(target_os = "macos")] 
+    let restmatr_lib = "librestmatr.dylib";
+
 
     #[cfg(not(feature="intel-mkl"))] {
         let restmatr_file = format!("src/external_libs/restmatr.f90");
