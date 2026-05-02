@@ -259,11 +259,11 @@ impl <T> MatrixUpper<T> {
 
         }
     }
-    pub fn iter_diagonal(&self) -> IncreaseStepBy<std::slice::Iter<T>> {
+    pub fn iter_diagonal(&self) -> IncreaseStepBy<std::slice::Iter<'_, T>> {
         self.data.iter().matrixupper_step_by_increase(1,1)
     }
 
-    pub fn iter_diagonal_mut(&mut self) -> IncreaseStepBy<std::slice::IterMut<T>> {
+    pub fn iter_diagonal_mut(&mut self) -> IncreaseStepBy<std::slice::IterMut<'_, T>> {
         self.data.iter_mut().matrixupper_step_by_increase(1,1)
     }
 
@@ -281,7 +281,7 @@ impl <T> MatrixUpper<T> {
         &mut self.data[..]
     }
     #[inline]
-    pub fn to_matrixupperslicemut(&mut self) -> MatrixUpperSliceMut<T> {
+    pub fn to_matrixupperslicemut(&mut self) -> MatrixUpperSliceMut<'_, T> {
         MatrixUpperSliceMut {
             size: self.size,
             data: &mut self.data[..],
@@ -581,7 +581,7 @@ impl<'a, T> MatrixUpperSlice<'a, T> {
         }
 
     }
-    pub fn iter_diagonal(&self) -> IncreaseStepBy<std::slice::Iter<T>> {
+    pub fn iter_diagonal(&self) -> IncreaseStepBy<std::slice::Iter<'_, T>> {
         self.data.iter().matrixupper_step_by_increase(1,1)
     }
 }
@@ -628,7 +628,7 @@ pub struct MatrixFullSliceMut2<'a,T> {
 
 impl<'a, T> MatrixFullSliceMut2<'a,T> {
     #[inline]
-    pub fn iter_mut_columns_full(&mut self) -> std::slice::ChunksExactMut<&'a mut T>{
+    pub fn iter_mut_columns_full(&mut self) -> std::slice::ChunksExactMut<'_, &'a mut T>{
         self.data.chunks_exact_mut(self.size[0])
     }
     
@@ -662,10 +662,10 @@ where T: Clone + Copy {
         }
     }
 
-    pub fn iter(&self) -> slice::Iter<T> {
+    pub fn iter(&self) -> slice::Iter<'_, T> {
         self.data.iter()
     }
-    pub fn iter_mut(&mut self) -> slice::IterMut<T> {
+    pub fn iter_mut(&mut self) -> slice::IterMut<'_, T> {
         self.data.iter_mut()
     }
     pub fn iter_submatrix<'a> (&'a self, rows: Range<usize>, columns: Range<usize>, matrixupper_index: &'a MatrixUpper<[usize;2]>) 

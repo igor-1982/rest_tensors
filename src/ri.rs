@@ -68,7 +68,7 @@ impl <T: Clone + Display + Send + Sync> RIFull<T> {
 
         }
     }
-    pub fn get_reducing_matrix_mut(&mut self, i_reduced: usize) -> Option<MatrixFullSliceMut<T>> {
+    pub fn get_reducing_matrix_mut(&mut self, i_reduced: usize) -> Option<MatrixFullSliceMut<'_, T>> {
         let p_length = if let Some(value) = self.indicing.get(2) {value} else {return None};
         let p_start = p_length * i_reduced; 
         Some(MatrixFullSliceMut {
@@ -89,7 +89,7 @@ impl <T: Clone + Display + Send + Sync> RIFull<T> {
     //}
 
     #[inline]
-    pub fn get_reducing_matrix(&self, i_reduced: usize) -> Option<MatrixFullSlice<T>> {
+    pub fn get_reducing_matrix(&self, i_reduced: usize) -> Option<MatrixFullSlice<'_, T>> {
         let p_length = if let Some(value) = self.indicing.get(2) {value} else {return None};
         let p_start = p_length * i_reduced;
         Some(MatrixFullSlice {
@@ -99,7 +99,7 @@ impl <T: Clone + Display + Send + Sync> RIFull<T> {
         )
     }
     #[inline]
-    pub fn get_reducing_matrix_columns(&self, range_columns:Range<usize>, i_reduced: usize) -> Option<SubMatrixFullSlice<T>> {
+    pub fn get_reducing_matrix_columns(&self, range_columns:Range<usize>, i_reduced: usize) -> Option<SubMatrixFullSlice<'_, T>> {
         let z_length = if let Some(value) = self.indicing.get(2) {value} else {return None};
         let y_length = if let Some(value) = self.indicing.get(1) {value} else {return None};
         let start = z_length * i_reduced + y_length* range_columns.start;
@@ -165,19 +165,19 @@ impl <T: Clone + Display + Send + Sync> RIFull<T> {
         tmp_slices.into_iter().flatten()
     }
     #[inline]
-    pub fn iter_slices_x(&self, y: usize, z: usize) -> std::slice::Iter<T> {
+    pub fn iter_slices_x(&self, y: usize, z: usize) -> std::slice::Iter<'_, T> {
         let start = z*self.indicing[2] + y*self.indicing[1];
         let end = start + self.indicing[1];
         self.data[start..end].iter()
     }
     #[inline]
-    pub fn par_iter_slices_x(&self, y: usize, z: usize) -> rayon::slice::Iter<T> {
+    pub fn par_iter_slices_x(&self, y: usize, z: usize) -> rayon::slice::Iter<'_, T> {
         let start = z*self.indicing[2] + y*self.indicing[1];
         let end = start + self.indicing[1];
         self.data[start..end].par_iter()
     }
     #[inline]
-    pub fn iter_mut_auxbas(&mut self, auxbas_range: Range<usize>) -> Option<ChunksExactMut<T>> {
+    pub fn iter_mut_auxbas(&mut self, auxbas_range: Range<usize>) -> Option<ChunksExactMut<'_, T>> {
         if let Some(x) = self.size.get(0) {
             if let Some(y) = self.size.get(1) {
                 let chunk_size = x*y;
@@ -187,7 +187,7 @@ impl <T: Clone + Display + Send + Sync> RIFull<T> {
         } else {None}
     }
     #[inline]
-    pub fn iter_auxbas(&self, auxbas_range: Range<usize>) -> Option<ChunksExact<T>> {
+    pub fn iter_auxbas(&self, auxbas_range: Range<usize>) -> Option<ChunksExact<'_, T>> {
         if let Some(x) = self.size.get(0) {
             if let Some(y) = self.size.get(1) {
                 let chunk_size = x*y;
@@ -197,7 +197,7 @@ impl <T: Clone + Display + Send + Sync> RIFull<T> {
         } else {None}
     }
     #[inline]
-    pub fn par_iter_mut_auxbas(&mut self, auxbas_range: Range<usize>) -> Option<rayon::slice::ChunksExactMut<T>> {
+    pub fn par_iter_mut_auxbas(&mut self, auxbas_range: Range<usize>) -> Option<rayon::slice::ChunksExactMut<'_, T>> {
         if let Some(x) = self.size.get(0) {
             if let Some(y) = self.size.get(1) {
                 let chunk_size = x*y;
@@ -207,7 +207,7 @@ impl <T: Clone + Display + Send + Sync> RIFull<T> {
         } else {None}
     }
     #[inline]
-    pub fn par_iter_auxbas(&self, auxbas_range: Range<usize>) -> Option<rayon::slice::ChunksExact<T>> {
+    pub fn par_iter_auxbas(&self, auxbas_range: Range<usize>) -> Option<rayon::slice::ChunksExact<'_, T>> {
         if let Some(x) = self.size.get(0) {
             if let Some(y) = self.size.get(1) {
                 let chunk_size = x*y;
