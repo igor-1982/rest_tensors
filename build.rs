@@ -72,7 +72,7 @@ fn main() -> std::io::Result<()> {
 
 
     println!("cargo:rerun-if-changed=src/external_libs/restmatr.f90");
-    println!("cargo:rerun-if-changed={}/{}", &external_dir.to_str().unwrap(), restmatr_lib);
+    // println!("cargo:rerun-if-changed={}/{}", &external_dir.to_str().unwrap(), restmatr_lib);
     #[cfg(target_os = "macos")]
     println!("cargo:rustc-link-lib=omp");
 
