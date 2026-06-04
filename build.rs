@@ -29,44 +29,92 @@ fn main() -> std::io::Result<()> {
         fortran_compiler = "gfortran".to_string();
         println!("No Fortran compiler environment variable set, falling back to default: {}", fortran_compiler);
     }
-    #[cfg(target_os = "linux")]
-    let restmatr_lib = "librestmatr.so";
-    #[cfg(target_os = "macos")] 
-    let restmatr_lib = "librestmatr.dylib";
-
+    let cross_win = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default() == "windows";
+    let restmatr_lib;
+    #[cfg(target_os = "linux")] {
+        restmatr_lib = if ! cross_win {
+            "librestmatr.so"
+        } else {
+            "librestmatr.dll"
+        };
+    }
+    #[cfg(target_os = "macos")] {
+        restmatr_lib = "librestmatr.dylib";
+    }
+    #[cfg(target_os = "windows")] {
+        restmatr_lib = "librestmatr.dll";
+    }
+    
+    let restmatr_file = format!("src/external_libs/restmatr.f90");
+    let restmatr_libr = format!("{}/{}",&external_dir.to_str().unwrap(), restmatr_lib);
 
     #[cfg(not(feature="intel-mkl"))] {
-        let restmatr_file = format!("src/external_libs/restmatr.f90");
-        let restmatr_libr = format!("{}/{}",&external_dir.to_str().unwrap(), restmatr_lib);
         let blas_dir = if let Ok(blas_dir) = env::var("REST_EXT_DIR") {
             PathBuf::from(blas_dir)
         } else {PathBuf::from(".".to_string())};
         let restmatr_link = format!("-L{}",&blas_dir.display());
-        Command::new(fortran_compiler)
-            .args(&["-shared", "-fpic", "-O2",&restmatr_file,"-o",&restmatr_libr,&restmatr_link, "-lopenblas"])
-            .status().unwrap();
+        
+        let mut compile_command = Command::new(&fortran_compiler);
+        compile_command.args(&["-shared", "-fpic", "-O2",&restmatr_file,"-o",&restmatr_libr,&restmatr_link, "-lopenblas"]);
+        // for cross win or native win
+        let mut compile_command2 = Command::new(&fortran_compiler);
+        compile_command2.args(&["-shared", "-O2",&restmatr_file,"-o",&restmatr_libr,&restmatr_link, "-lopenblas"]);
+        #[cfg(target_os = "windows")]
+        let compile_result = compile_command2.status();
+        
+        #[cfg(not(target_os = "windows"))]
+        let compile_result = if !cross_win {
+            compile_command.status()
+        } else {
+            compile_command2.status()
+        };
+        
+        compile_result.expect("Failed to compile restmatr");
+        
         println!("cargo:rustc-link-lib=openblas");
         println!("cargo:rustc-link-search=native={}",&blas_dir.display());
     }
 
     #[cfg(feature="intel-mkl")] {
-        let restmatr_file = format!("src/external_libs/restmatr.f90");
-        let restmatr_libr = format!("{}/{}", &external_dir.to_str().unwrap(), restmatr_lib);
         let blas_dir = if let Ok(blas_dir) = env::var("MKLROOT") {
             PathBuf::from(blas_dir)
         } else {panic!("MKLROOT not set for feature intel-mkl")};
         let mkl_link = format!("-L{}/lib", &blas_dir.display());
         let mkl_include = format!("-I{}/include", &blas_dir.display());
-        Command::new(fortran_compiler)
-            .args(&["-shared", "-fpic", "-O2",&restmatr_file,"-o",&restmatr_libr, "-m64", &mkl_include, &mkl_link, 
-            "-Wl,--no-as-needed", "-lmkl_gf_lp64", "-lmkl_gnu_thread", "-lmkl_core", "-lgomp", "-lpthread", "-lm", "-ldl"])
-            .status().unwrap();
+
+        let mut compile_command = Command::new(&fortran_compiler);
+        compile_command.args(&["-shared", "-fpic", "-O2",&restmatr_file,"-o",&restmatr_libr, "-m64", &mkl_include, &mkl_link, 
+            "-Wl,--no-as-needed", "-lmkl_gf_lp64", "-lmkl_gnu_thread", "-lmkl_core", "-lgomp", "-lpthread", "-lm", "-ldl"]);
+        let mut compile_command2 = Command::new(&fortran_compiler);
+        compile_command2.args(&["-shared", "-O2",&restmatr_file,"-o",&restmatr_libr, "-m64", &mkl_include, &mkl_link, 
+            "-lmkl_rt"]);
+        
+        #[cfg(target_os = "windows")]
+        let compile_result = compile_command2.status();
+        
+        #[cfg(not(target_os = "windows"))]
+        let compile_result = if !cross_win {
+            compile_command.status()
+        } else {
+            compile_command2.status()
+        };
+        
+        compile_result.expect("Failed to compile restmatr with MKL");
         println!("cargo:rustc-link-lib=mkl_rt");
         println!("cargo:rustc-link-search=native={}/lib",&blas_dir.display());
     }
 
 
-    println!("cargo:rustc-link-lib=restmatr");
+    #[cfg(not(target_os = "windows"))] {
+        if !cross_win {
+            println!("cargo:rustc-link-lib=restmatr");
+        } else {
+            println!("cargo:rustc-link-arg={}/{}", external_dir.to_str().unwrap(), restmatr_lib);
+            println!("cargo:rustc-link-lib=gomp");
+        }
+    }
+    #[cfg(target_os = "windows")]
+    println!("cargo:rustc-link-arg={}/{}", external_dir.to_str().unwrap(), restmatr_lib);
     println!("cargo:rustc-link-search=native={}",&external_dir.to_str().unwrap());
 
 

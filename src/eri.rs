@@ -1,4 +1,5 @@
 use std::{fmt::Display, collections::binary_heap::Iter, ops::Range, iter::Flatten, vec::IntoIter};
+#[cfg(target_os = "linux")]
 use libc::P_PID;
 use blas::dcopy;
 use rayon::prelude::*;
