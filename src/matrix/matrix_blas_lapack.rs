@@ -906,6 +906,47 @@ where T: BasicMatrix<'a, f64>
     }
 }
 
+/// # Invert a square matrix **in place** (no O(n²) copy)
+///
+/// Performs LAPACK `dgetrf` (LU factorization) followed by `dgetri` (inversion)
+/// directly on the matrix's data vector, eliminating the internal data copy that
+/// [`_dinverse`] makes.
+///
+/// Only `ipiv` (n i32s) and `work` (4n f64s) are allocated as scratch.
+///
+/// Returns `true` on success, `false` on LAPACK failure (singular matrix, etc.).
+///
+/// **Warning**: the input matrix is overwritten with its inverse.
+pub fn _dinverse_inplace(matr_a: &mut MatrixFull<f64>) -> bool {
+    let size = matr_a.size;
+    if size[0] != size[1] {
+        println!("Error: The matrix for in-place inversion should be NxN, got {:?}",
+                 size);
+        return false;
+    }
+    let ndim = size[0];
+    let n = ndim as i32;
+    let mut ipiv: Vec<i32> = vec![0; ndim];
+    let lwork = 4 * n;
+    let mut work: Vec<f64> = vec![0.0; 4 * ndim];
+    let mut info1 = 0;
+    let mut info2 = 0;
+    unsafe {
+        dgetrf(n, n, &mut matr_a.data, n, &mut ipiv, &mut info1);
+        if info1 != 0 {
+            println!("Error in _dinverse_inplace: dgetrf info = {}", info1);
+            return false;
+        }
+        dgetri(n, &mut matr_a.data, n, &mut ipiv,
+               &mut work, lwork, &mut info2);
+    }
+    if info2 != 0 {
+        println!("Error in _dinverse_inplace: dgetri info = {}", info2);
+        return false;
+    }
+    true
+}
+
 
 /// # Solve a linear system Ax = b
 ///
