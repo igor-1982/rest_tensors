@@ -766,7 +766,7 @@ where
     let mut u = vec![0.0; ldu * u_cols];
     let mut vt = vec![0.0; ldvt * n];
 
-    let lwork = 5 * k as i32;
+    let lwork = (3 * k + m.max(n)).max(5 * k) as i32;
     let mut work: Vec<f64> = vec![0.0; lwork as usize];
     let mut info = 0;
 
