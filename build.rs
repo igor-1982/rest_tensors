@@ -117,8 +117,21 @@ fn main() -> std::io::Result<()> {
     println!("cargo:rustc-link-arg={}/{}", external_dir.to_str().unwrap(), restmatr_lib);
     println!("cargo:rustc-link-search=native={}",&external_dir.to_str().unwrap());
 
+/*
+    #[cfg(feature = "scalapack")] {
+    let scalapack_dir = if let Ok(prefix) = env::var("CONDA_PREFIX") {
+        PathBuf::from(prefix)
+    } else {
+        panic!("CONDA_PREFIX not set");
+    };
 
-
+    println!(
+        "cargo:rustc-link-search=native={}/lib",
+        scalapack_dir.display()
+    );
+    println!("cargo:rustc-link-lib=scalapack");
+}
+*/
     println!("cargo:rerun-if-changed=src/external_libs/restmatr.f90");
     // println!("cargo:rerun-if-changed={}/{}", &external_dir.to_str().unwrap(), restmatr_lib);
     #[cfg(target_os = "macos")]
