@@ -432,69 +432,164 @@ where
 ///    let diff = eigenvalues.iter().zip(eigval_benchmark.iter()).fold(0.0,|acc,(a,b)| acc + (a-b).powf(2.0));
 ///    assert!(diff < 10E-7, "eigenvalues: {:?}, {:?}", eigenvalues, eigval_benchmark);
 /// ```
-pub fn _dsyev<'a, T>(matr_a: &T, jobz: char) -> (Option<MatrixFull<f64>>,Vec<f64>,i32) 
-where T: BasicMatrix<'a, f64>
+pub fn _dsyev<'a, T>(matr_a: &T, jobz: char) -> (Option<MatrixFull<f64>>, Vec<f64>, i32)
+where
+    T: BasicMatrix<'a, f64>,
 {
     //let ndim = matr_a.size()[0];
     //let size = [ndim, matr_a.size()[1]];
     let size = matr_a.size();
     let ndim = size[0];
-    if size[0]==size[1] {
-        let n= ndim as i32;
-        let mut a = matr_a.data_ref().unwrap().iter().map(|x| *x).collect::<Vec<f64>>();
-        let mut w: Vec<f64> = vec![0.0;ndim];
-        let mut work: Vec<f64> = vec![0.0;4*ndim];
-        let lwork = 4*n;
+    if size[0] == size[1] {
+        let n = ndim as i32;
+        let mut a = matr_a
+            .data_ref()
+            .unwrap()
+            .iter()
+            .map(|x| *x)
+            .collect::<Vec<f64>>();
+        let mut w: Vec<f64> = vec![0.0; ndim];
+        let mut work: Vec<f64> = vec![0.0; 4 * ndim];
+        let lwork = 4 * n;
         let mut info = 0;
         unsafe {
-            dsyev(jobz.clone() as u8,b'L',n,&mut a, n, &mut w, &mut work, lwork, &mut info);
+            dsyev(
+                jobz.clone() as u8,
+                b'L',
+                n,
+                &mut a,
+                n,
+                &mut w,
+                &mut work,
+                lwork,
+                &mut info,
+            );
         }
-        if info<0 {
-            panic!("Error in _dsyev: the {}-th argument had an illegal value", -info);
-        } else if info>0 {
+        if info < 0 {
+            panic!(
+                "Error in _dsyev: the {}-th argument had an illegal value",
+                -info
+            );
+        } else if info > 0 {
             panic!("Error in _dsyev: the algorithm failed to converge; {}-off-diagonal elements of an intermediate tridiagonal form did not converge to zero", -info);
-
         }
         let eigenvectors = if jobz.eq(&'V') {
-            Some(MatrixFull::from_vec([ndim,ndim], a).unwrap())
-        } else {None};
+            Some(MatrixFull::from_vec([ndim, ndim], a).unwrap())
+        } else {
+            None
+        };
         //let eigenvalues = Tensors::from_vec(String::from("full"),vec![self.size[0]], w);
-        (eigenvectors, w,n)
+        (eigenvectors, w, n)
     } else {
         panic!("Error in _dsyev: the algorithm is only vaild for real symmetric matrices")
     }
 }
 
-pub fn _dsyevd<'a, T>(matr_a: &T, jobz: char) -> (Option<MatrixFull<f64>>,Vec<f64>,i32) 
-where T: BasicMatrix<'a, f64>
+/// Consuming, zero-copy version of [`_dsyev`]: the input matrix buffer is reused
+/// for the eigenvectors (LAPACK dsyev with jobz='V' overwrites the matrix with
+/// the eigenvectors), avoiding the n² copy that `_dsyev` performs internally.
+/// Saves one n×n buffer per call — significant when many calls run concurrently.
+pub fn _dsyev_inplace(
+    matr_a: MatrixFull<f64>,
+    jobz: char,
+) -> (Option<MatrixFull<f64>>, Vec<f64>, i32) {
+    let size = matr_a.size();
+    let ndim = size[0];
+    if size[0] == size[1] {
+        let n = ndim as i32;
+        let mut a = matr_a.data; // take the buffer without copying
+        let mut w: Vec<f64> = vec![0.0; ndim];
+        let mut work: Vec<f64> = vec![0.0; 4 * ndim];
+        let lwork = 4 * n;
+        let mut info = 0;
+        unsafe {
+            dsyev(
+                jobz as u8,
+                b'L',
+                n,
+                &mut a,
+                n,
+                &mut w,
+                &mut work,
+                lwork,
+                &mut info,
+            );
+        }
+        if info < 0 {
+            panic!(
+                "Error in _dsyev_inplace: the {}-th argument had an illegal value",
+                -info
+            );
+        } else if info > 0 {
+            panic!("Error in _dsyev_inplace: the algorithm failed to converge; {}-off-diagonal elements of an intermediate tridiagonal form did not converge to zero", info);
+        }
+        let eigenvectors = if jobz.eq(&'V') {
+            Some(MatrixFull::from_vec([ndim, ndim], a).unwrap())
+        } else {
+            None
+        };
+        (eigenvectors, w, n)
+    } else {
+        panic!("Error in _dsyev_inplace: the algorithm is only vaild for real symmetric matrices")
+    }
+}
+
+pub fn _dsyevd<'a, T>(matr_a: &T, jobz: char) -> (Option<MatrixFull<f64>>, Vec<f64>, i32)
+where
+    T: BasicMatrix<'a, f64>,
 {
     //let ndim = matr_a.size()[0];
     //let size = [ndim, matr_a.size()[1]];
     let size = matr_a.size();
     let ndim = size[0];
-    if size[0]==size[1] {
-        let n= ndim as i32;
-        let mut a = matr_a.data_ref().unwrap().iter().map(|x| *x).collect::<Vec<f64>>();
-        let mut w: Vec<f64> = vec![0.0;ndim];
-        let lwork = if jobz.eq(&'N') {4*n} else {7*n+2*n*n};
-        let mut work: Vec<f64> = vec![0.0;lwork as usize];
-        let liwork = if jobz.eq(&'N') {2} else {4+5*n};
-        let mut iwork: Vec<i32> = vec![0;liwork as usize];
+    if size[0] == size[1] {
+        let n = ndim as i32;
+        let mut a = matr_a
+            .data_ref()
+            .unwrap()
+            .iter()
+            .map(|x| *x)
+            .collect::<Vec<f64>>();
+        let mut w: Vec<f64> = vec![0.0; ndim];
+        let lwork = if jobz.eq(&'N') {
+            4 * n
+        } else {
+            7 * n + 2 * n * n
+        };
+        let mut work: Vec<f64> = vec![0.0; lwork as usize];
+        let liwork = if jobz.eq(&'N') { 2 } else { 4 + 5 * n };
+        let mut iwork: Vec<i32> = vec![0; liwork as usize];
         let mut info = 0;
         unsafe {
-            dsyevd(jobz.clone() as u8,b'L',n,&mut a, n, &mut w, &mut work, lwork, &mut iwork, liwork, &mut info);
+            dsyevd(
+                jobz.clone() as u8,
+                b'L',
+                n,
+                &mut a,
+                n,
+                &mut w,
+                &mut work,
+                lwork,
+                &mut iwork,
+                liwork,
+                &mut info,
+            );
         }
-        if info<0 {
-            panic!("Error in _dsyevd: the {}-th argument had an illegal value", -info);
-        } else if info>0 {
+        if info < 0 {
+            panic!(
+                "Error in _dsyevd: the {}-th argument had an illegal value",
+                -info
+            );
+        } else if info > 0 {
             panic!("Error in _dsyevd: the algorithm failed to converge; {}-off-diagonal elements of an intermediate tridiagonal form did not converge to zero", -info);
-
         }
         let eigenvectors = if jobz.eq(&'V') {
-            Some(MatrixFull::from_vec([ndim,ndim], a).unwrap())
-        } else {None};
+            Some(MatrixFull::from_vec([ndim, ndim], a).unwrap())
+        } else {
+            None
+        };
         //let eigenvalues = Tensors::from_vec(String::from("full"),vec![self.size[0]], w);
-        (eigenvectors, w,n)
+        (eigenvectors, w, n)
     } else {
         panic!("Error in _dsyev: the algorithm is only vaild for real symmetric matrices")
     }
