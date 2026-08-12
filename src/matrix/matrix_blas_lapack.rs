@@ -43,12 +43,10 @@ pub fn omp_set_num_threads_wrapper(n:usize)  {
     let tmp_n = n as i32;
     #[cfg(not(feature="intel-mkl"))]
     unsafe{
-        // [V3 test] call ONLY omp_set_num_threads (thread-local ICV, thread-safe).
-        // openblas_set_num_threads / goto_set_num_threads mutate OpenBLAS global
-        // statics and are suspected non-thread-safe under concurrent calls from
-        // sibling rayon tasks -> rare SCF divergence. OpenBLAS here is built with
-        // OpenMP, so omp_set_num_threads controls its threading.
         omp_set_num_threads(n as ::std::os::raw::c_int)
+        // The following way is not thread-safe due to OpenBLAS calls `adjust_thread_buffers`
+        // openblas_set_num_threads(n as ::std::os::raw::c_int);
+        // goto_set_num_threads(n as ::std::os::raw::c_int);
     }
     #[cfg(feature="intel-mkl")]
     unsafe{
