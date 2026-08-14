@@ -39,21 +39,49 @@ pub fn omp_get_num_threads_wrapper() -> usize {
     }
     num_threads
 }
-pub fn omp_set_num_threads_wrapper(n:usize)  {
-    let tmp_n = n as i32;
+
+/// Set number of threads to control effective thread usage of BLAS.
+///
+/// This function is designed to be thread-local and thread-safe. It is expected to be
+/// called before using BLAS function. In usual cases,
+/// - When inside rayon spawned parallel threads, use `n=1` to avoid thread overscription; 
+/// - When in main thread, use `n=num_threads` to call BLAS in multithread. The `num_thread`
+///   is usually specified by user input card, or obtained by rayon global thread numbers.
+///
+/// # Note
+///
+/// Only OpenBLAS is verified.
+pub fn omp_set_num_threads_wrapper(n: usize) {
     #[cfg(not(feature="intel-mkl"))]
-    unsafe{
-        openblas_set_num_threads(n as ::std::os::raw::c_int);
-        goto_set_num_threads(n as ::std::os::raw::c_int);
+    unsafe {
         omp_set_num_threads(n as ::std::os::raw::c_int)
+        // The following way is not thread-safe due to OpenBLAS calls `adjust_thread_buffers`
+        // openblas_set_num_threads(n as ::std::os::raw::c_int);
+        // goto_set_num_threads(n as ::std::os::raw::c_int);
     }
     #[cfg(feature="intel-mkl")]
-    unsafe{
+    unsafe {
+        let tmp_n = n as i32;
         mkl_set_num_threads(&tmp_n as *const c_int);
     }
 }
 
-
+/// Set number of threads in global/main thread.
+///
+/// This function is designed to be called when building global thread pool.
+/// It is not designed to be called inside parallel (spawned threads from rayon).
+pub fn omp_set_num_threads_global_wrapper(n: usize) {
+    #[cfg(not(feature="intel-mkl"))]
+    unsafe {
+        openblas_set_num_threads(n as ::std::os::raw::c_int);
+        omp_set_num_threads(n as ::std::os::raw::c_int)
+    }
+    #[cfg(feature="intel-mkl")]
+    unsafe {
+        let tmp_n = n as i32;
+        mkl_set_num_threads(&tmp_n as *const c_int);
+    }
+}
 
 pub fn general_check_shape<'a, T,Q,P>(matr_a: &'a T, matr_b: &'a Q, opa: char, opb: char) -> bool 
 where T: BasicMatrix<'a, P>,
