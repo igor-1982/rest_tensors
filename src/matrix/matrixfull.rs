@@ -734,9 +734,11 @@ impl <T: Copy + Clone> MatrixFull<T> {
             panic!("Error in tranforming MatrixFull to RIFull: incompitable size of MatrixFull {} and RIFull {}",ri_size, mat_size);
         }
         RIFull {
-            size: [i,j,k], 
-            indicing: [1,i,j], 
-            data: self.data.clone()
+            size: [i,j,k],
+            indicing: [1,i,j],
+            data: self.data.clone(),
+            dist_axis: 0,
+            local_n2_idx: None,
         }
     }
 }
