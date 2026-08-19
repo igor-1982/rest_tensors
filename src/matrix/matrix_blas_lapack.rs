@@ -1028,7 +1028,7 @@ where T: BasicMatrix<'a, f64>
 /// modified by deltah
 /// used for ISDF
 /// revise in-place instead of clone
-pub fn _qrpinv(matr: &mut MatrixFull<f64>, rcond: Option<f64>) -> Option<MatrixFull<f64>>
+pub fn _qrpinv(matr: &mut MatrixFull<f64>, mut x: Vec<f64>, rcond: Option<f64>) -> Option<MatrixFull<f64>>
 {
     let size = matr.size();
     let n = size[0];
@@ -1091,7 +1091,8 @@ pub fn _qrpinv(matr: &mut MatrixFull<f64>, rcond: Option<f64>) -> Option<MatrixF
         return Some(MatrixFull::new([n, n], 0.0));
     }
 
-    let mut x = vec![0.0f64; n * n];
+    // from outside
+    // let mut x = vec![0.0f64; n * n];
 
     if r == n {
         // === Full-rank case ===
@@ -1133,82 +1134,126 @@ pub fn _qrpinv(matr: &mut MatrixFull<f64>, rcond: Option<f64>) -> Option<MatrixF
             }
         }
     } else {
-        // === Rank-deficient case ===
-        // R11 is r×r upper triangular from a[:r][:r]
-        let mut r11 = vec![0.0f64; r * r];
-        for j in 0..r {
-            for i in 0..=j {
-                r11[i + j * r] = matr.data[i + j * n];
-            }
-        }
-        // R12 is r×(n-r) from a[:r][r:]
-        let mut r12 = vec![0.0f64; r * (n - r)];
-        for j in 0..(n - r) {
-            for i in 0..r {
-                r12[i + j * r] = matr.data[i + (j + r) * n];
-            }
-        }
+    // === Rank-deficient case ===
+    // Directly use x (n×n, already zeroed) to store R11 and R12, no extra allocation.
 
-        // R11^{-1}
-        unsafe {
-            dtrtri(b'U' as u8, b'N' as u8, r as i32, &mut r11, r as i32, &mut info);
-        }
-        if info != 0 {
-            return None;
-        }
-
-        // Solve R11 * Z = R12 → Z = R11^{-1} * R12, overwrites R12
-        unsafe {
-            dtrtrs(b'U' as u8, b'N' as u8, b'N' as u8,
-                r as i32, (n - r) as i32, &r11, r as i32, &mut r12, r as i32, &mut info);
-        }
-        if info != 0 {
-            return None;
-        }
-
-        // Construct X = [R11^{-1}  -Z;  0  0]  (n×n)
-        for j in 0..r {
-            for i in 0..=j {
-                x[i + j * n] = r11[i + j * r];
-            }
-        }
-        for j in 0..(n - r) {
-            for i in 0..r {
-                x[i + (j + r) * n] = -r12[i + j * r];
-            }
-        }
-
-        // C = X^T
-        let mut c = vec![0.0f64; n * n];
-        for j in 0..n {
-            for i in 0..n {
-                c[j + i * n] = x[i + j * n];
-            }
-        }
-
-        // C = Q * C = Q * X^T
-        unsafe {
-            dormqr(b'L' as u8, b'N' as u8, n as i32, n as i32, n as i32,
-                &matr.data, n as i32, &tau, &mut c, n as i32, &mut work, -1, &mut info);
-        }
-        let lwork2 = work[0] as i32;
-        work.resize(lwork2.max(1) as usize, 0.0);
-        unsafe {
-            dormqr(b'L' as u8, b'N' as u8, n as i32, n as i32, n as i32,
-                &matr.data, n as i32, &tau, &mut c, n as i32, &mut work, lwork2, &mut info);
-        }
-        if info != 0 {
-            return None;
-        }
-
-        // pinv = P * C^T = P * X * Q^T
-        for j in 0..n {
-            for i in 0..n {
-                x[i + j * n] = c[j + inv_perm[i] * n];
-            }
+    // 1. Copy R11 (upper triangular part) into x[0..r, 0..r]
+    for j in 0..r {
+        for i in 0..=j {
+            x[i + j * n] = matr.data[i + j * n];
         }
     }
 
+    // 2. Copy R12 into x[0..r, r..n]
+    for j in 0..(n - r) {
+        for i in 0..r {
+            x[i + (j + r) * n] = matr.data[i + (j + r) * n];
+        }
+    }
+
+    // 3. Compute R11^{-1} in-place in the upper-left r×r block of x
+    unsafe {
+        dtrtri(
+            b'U' as u8,
+            b'N' as u8,
+            r as i32,
+            &mut x[..],   // pass whole x as mutable slice; lda = n ensures LAPACK only touches first r columns
+            n as i32,
+            &mut info,
+        );
+    }
+    if info != 0 {
+        return None;
+    }
+
+    // 4. Solve Z = R11^{-1} * R12, overwriting the R12 area in x.
+    //    Split x into two non-overlapping mutable slices to avoid aliasing.
+    let (a_area, b_area) = x.split_at_mut(r * n);
+    // a_area: columns 0..r-1 (lda = n)  -> contains R11^{-1} in upper-left r×r
+    // b_area: columns r..n-1 (lda = n)  -> contains R12 in upper r rows
+
+    unsafe {
+        dtrtrs(
+            b'U' as u8,
+            b'N' as u8,
+            b'N' as u8,
+            r as i32,
+            (n - r) as i32,
+            a_area,          // A = R11^{-1}, read-only (automatic reborrow from &mut [f64] to &[f64])
+            n as i32,
+            b_area,          // B = R12, mutable
+            n as i32,
+            &mut info,
+        );
+    }
+    if info != 0 {
+        return None;
+    }
+
+    // 5. Negate Z (still in b_area, upper r rows)
+    for idx in 0..(r * (n - r)) {
+        b_area[idx] = -b_area[idx];
+    }
+
+    // 6. Build C = X^T, where X = [R11^{-1}  -Z; 0 0], stored in x.
+    let mut c = vec![0.0f64; n * n];
+    for j in 0..n {
+        for i in 0..n {
+            // c[j, i] = x[i, j]  (transpose)
+            c[j + i * n] = x[i + j * n];
+        }
+    }
+
+    // 7. Apply Q to C: C = Q * C = Q * X^T
+    //    Query optimal work size first.
+    unsafe {
+        dormqr(
+            b'L' as u8,
+            b'N' as u8,
+            n as i32,
+            n as i32,
+            n as i32,
+            &matr.data[..],    // Q matrix
+            n as i32,
+            &tau[..],          // scalar factors
+            &mut c[..],        // C
+            n as i32,
+            &mut work[..],     // workspace
+            -1,
+            &mut info,
+        );
+    }
+    let lwork2 = work[0] as i32;
+    work.resize(lwork2.max(1) as usize, 0.0);
+    unsafe {
+        dormqr(
+            b'L' as u8,
+            b'N' as u8,
+            n as i32,
+            n as i32,
+            n as i32,
+            &matr.data[..],
+            n as i32,
+            &tau[..],
+            &mut c[..],
+            n as i32,
+            &mut work[..],
+            lwork2,
+            &mut info,
+        );
+    }
+    if info != 0 {
+        return None;
+    }
+
+    // 8. Apply permutation: pinv = P * C^T = P * X * Q^T
+    //    Write back to x (the final result matrix)
+    for j in 0..n {
+        for i in 0..n {
+            x[i + j * n] = c[j + inv_perm[i] * n];
+        }
+    }
+    }
     Some(unsafe { MatrixFull::from_vec_unchecked([n, n], x) })
 }
 
