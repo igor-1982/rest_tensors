@@ -20,7 +20,11 @@ pub struct RIFull<T> {
     /// Coloum-major 4-D ERI designed for quantum chemistry calculations specifically.
     pub size : [usize;3],
     pub indicing: [usize;3],
-    pub data : Vec<T>
+    pub data : Vec<T>,
+
+    // distribution metadata for 2.5D pt2 (defaults: axis 0, no local index list)
+    pub dist_axis: u8,                        // 0, 1, or 2
+    pub local_n2_idx: Option<Vec<usize>>,     // only meaningful when dist_axis == 2
 }
 
 impl <T: Clone + Display + Send + Sync> RIFull<T> {
@@ -35,11 +39,13 @@ impl <T: Clone + Display + Send + Sync> RIFull<T> {
         RIFull {
             size,
             indicing,
-            data: vec![new_default; len]
+            data: vec![new_default; len],
+            dist_axis: 0,
+            local_n2_idx: None,
         }
     }
     pub fn empty() -> RIFull<T> {
-        RIFull { size: [0,0,0], indicing: [0,0,0], data: Vec::new() }
+        RIFull { size: [0,0,0], indicing: [0,0,0], data: Vec::new(), dist_axis: 0, local_n2_idx: None, }
     }
     pub unsafe fn from_vec_unchecked(size: [usize;3], new_vec: Vec<T>) -> RIFull<T> {
         let mut indicing = [0usize;3];
@@ -51,7 +57,9 @@ impl <T: Clone + Display + Send + Sync> RIFull<T> {
         RIFull {
             size,
             indicing,
-            data: new_vec
+            data: new_vec,
+            dist_axis: 0,
+            local_n2_idx: None,
         }
     }
     pub fn from_vec(size: [usize;3], new_vec: Vec<T>) -> Option<RIFull<T>> {
@@ -99,6 +107,105 @@ impl <T: Clone + Display + Send + Sync> RIFull<T> {
         )
     }
     #[inline]
+    pub fn get_reducing_matrix_global_n2(&self, global_n2: usize) -> Option<MatrixFullSlice<'_, T>> {
+        assert_eq!(self.dist_axis, 2, "This method requires the tensor to be redistributed along n2");
+        let idx_list = self.local_n2_idx
+            .as_ref()
+            .expect("local_n2_idx must be set after redistribution");
+        let pos = idx_list
+            .iter()
+            .position(|&idx| idx == global_n2)
+            .expect("Global n2 index not found locally");
+
+        let p_length = self.size[0] * self.size[1];   // n0_global * n1
+        let p_start = pos * p_length;
+        Some(MatrixFullSlice {
+            size: &self.size[0..2],
+            indicing: &self.indicing[0..2],
+            data : &self.data[p_start..p_start+p_length]}
+        )
+    }
+
+    #[inline]
+    pub fn get_reducing_matrix_global_n2_mut(&mut self, global_n2: usize) -> Option<MatrixFullSlice<'_, T>> {
+        assert_eq!(self.dist_axis, 2, "This method requires the tensor to be redistributed along n2");
+        let idx_list = self.local_n2_idx
+            .as_ref()
+            .expect("local_n2_idx must be set after redistribution");
+        let pos = idx_list
+            .iter()
+            .position(|&idx| idx == global_n2)
+            .expect("Global n2 index not found locally");
+
+        let p_length = self.size[0] * self.size[1];   // n0_global * n1
+        let p_start = pos * p_length;
+        Some(MatrixFullSlice {
+            size: &self.size[0..2],
+            indicing: &self.indicing[0..2],
+            data : &mut self.data[p_start..p_start+p_length]}
+        )
+    }
+
+    #[inline]
+    pub fn get_reducing_block_matrix_global_n2<'a>(&'a self, global_n2_start: usize, global_n2_end: usize, size_buf: &'a mut [usize; 2]) -> Option<MatrixFullSlice<'a, T>> {
+        assert_eq!(self.dist_axis, 2, "This method requires the tensor to be redistributed along n2");
+        let idx_list = self.local_n2_idx
+            .as_ref()
+            .expect("local_n2_idx must be set after redistribution");
+        let pos_start = idx_list
+            .iter()
+            .position(|&idx| idx == global_n2_start)
+            .expect("Global n2 index not found locally");
+        let num_slices = global_n2_end - global_n2_start + 1;
+        for k in 1..num_slices {
+            if idx_list[pos_start + k] != global_n2_start + k {
+                return None;
+            }
+        }
+
+        let n0 = self.size[0];
+        let n1 = self.size[1];
+        let p_length = n0 * n1;
+        let p_start = pos_start * p_length;
+        size_buf[0] = n0;
+        size_buf[1] = n1 * num_slices;
+        Some(MatrixFullSlice {
+            size: &size_buf[..],
+            indicing: &self.indicing[0..2],
+            data: &self.data[p_start..p_start + p_length * num_slices],
+        })
+    }
+
+    #[inline]
+    pub fn get_reducing_block_matrix_global_n2_mut<'a>(&'a mut self, global_n2_start: usize, global_n2_end: usize, size_buf: &'a mut [usize; 2]) -> Option<MatrixFullSlice<'a, T>> {
+        assert_eq!(self.dist_axis, 2, "This method requires the tensor to be redistributed along n2");
+        let idx_list = self.local_n2_idx
+            .as_ref()
+            .expect("local_n2_idx must be set after redistribution");
+        let pos_start = idx_list
+            .iter()
+            .position(|&idx| idx == global_n2_start)
+            .expect("Global n2 index not found locally");
+        let num_slices = global_n2_end - global_n2_start + 1;
+        for k in 1..num_slices {
+            if idx_list[pos_start + k] != global_n2_start + k {
+                return None;
+            }
+        }
+
+        let n0 = self.size[0];
+        let n1 = self.size[1];
+        let p_length = n0 * n1;
+        let p_start = pos_start * p_length;
+        size_buf[0] = n0;
+        size_buf[1] = n1 * num_slices;
+        Some(MatrixFullSlice {
+            size: &size_buf[..],
+            indicing: &self.indicing[0..2],
+            data: &mut self.data[p_start..p_start + p_length * num_slices],
+        })
+    }
+
     pub fn get_reducing_matrix_columns(&self, range_columns:Range<usize>, i_reduced: usize) -> Option<SubMatrixFullSlice<'_, T>> {
         let z_length = if let Some(value) = self.indicing.get(2) {value} else {return None};
         let y_length = if let Some(value) = self.indicing.get(1) {value} else {return None};
