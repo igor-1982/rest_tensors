@@ -1,34 +1,46 @@
 //#![warn(missing_docs)]
-use std::{ops::{MulAssign}};
-use std::ops::{Add, Sub, Mul, AddAssign, SubAssign, Index, Range};
-use typenum::{U2, Pow};
-use rayon::{prelude::*, collections::btree_map::IterMut, iter::Enumerate};
+use rayon::{collections::btree_map::IterMut, iter::Enumerate, prelude::*};
+use std::ops::MulAssign;
+use std::ops::{Add, AddAssign, Index, Mul, Range, Sub, SubAssign};
 use std::vec::IntoIter;
+use typenum::{Pow, U2};
 
-use crate::{index::{TensorIndex, TensorIndexUncheck}, TensorOpt, TensorOptMut, TensorSlice, TensorSliceMut, TensorOptUncheck, TensorSliceUncheck, TensorSliceMutUncheck, TensorOptMutUncheck};
 use crate::matrix;
+use crate::{
+    index::{TensorIndex, TensorIndexUncheck},
+    TensorOpt, TensorOptMut, TensorOptMutUncheck, TensorOptUncheck, TensorSlice, TensorSliceMut,
+    TensorSliceMutUncheck, TensorSliceUncheck,
+};
 
 #[cfg(target_os = "linux")]
-use libc::{CLOSE_RANGE_CLOEXEC, SYS_userfaultfd};
+use libc::{SYS_userfaultfd, CLOSE_RANGE_CLOEXEC};
 
+pub mod complexmatrixfull;
+pub mod einsum;
+pub mod matrix_blas_lapack;
+mod matrix_trait;
+pub mod matrixconst;
 pub mod matrixfull;
 pub mod matrixfullslice;
 pub mod matrixupper;
 pub mod submatrixfull;
-pub mod matrixconst;
-pub mod matrix_blas_lapack;
-pub mod einsum;
-mod matrix_trait;
-pub mod complexmatrixfull;
+
+#[cfg(feature = "scalapack")]
+pub mod matrix_scalapack;
+#[cfg(feature = "scalapack")]
+pub mod distributedmatrixfull;
+#[cfg(feature = "scalapack")]
+use crate::matrix::distributedmatrixfull::*;
+#[cfg(feature = "scalapack")]
+use crate::matrix::matrix_scalapack::*;
 
 
-use crate::matrix::matrixfull::*;
+use crate::matrix::matrix_blas_lapack::*;
 use crate::matrix::matrixconst::*;
+use crate::matrix::matrixfull::*;
 use crate::matrix::matrixfullslice::*;
 use crate::matrix::matrixupper::*;
 use crate::matrix::submatrixfull::*;
-use crate::matrix::matrix_blas_lapack::*;
-
 
 /// **MatrixFull** is a `column-major` 2D array designed for quantum chemistry calculations.
 /// 
