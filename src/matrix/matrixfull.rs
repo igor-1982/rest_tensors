@@ -696,8 +696,29 @@ impl <T: Copy + Clone> MatrixFull<T> {
                 //} else {
                 //    panic!("Error in getting a slice from a matrix in MatrixFull format");
                 //};
-            };
-        };
+            }
+        }
+    }
+
+    #[inline]
+    pub fn fill_lower_part_from_upper_unsafe(&mut self) {
+        let size: [usize; 2] = self.size().try_into().unwrap();
+        if size[0] != size[1] {
+            panic!("This function only works for symmetric matrix");
+        }
+        let n = size[0];
+        let data = &mut self.data;
+        for j in 0..n {
+            let upper_col_start = j;
+            let lower_col_start = j * n;
+            for i in (j + 1)..n {
+                let upper_elem_idx = upper_col_start + i * n;
+                let lower_elem_idx = lower_col_start + i;
+                let value = data[upper_elem_idx].clone();
+                data[lower_elem_idx] = value;
+                //data[lower_elem_idx] = data[upper_elem_idx];
+            }
+        }
     }
     #[inline]
     pub fn to_matrixfullslicemut(&mut self) -> MatrixFullSliceMut<'_, T> {
