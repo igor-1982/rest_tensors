@@ -349,6 +349,50 @@ where T: BasicMatrix<'a, f64>,
     c
 }
 
+/// Solve the triangular system `op(A) · X = B` in place on the right-hand side matrix
+/// `matr_b` (`op(A)` is `A` for `transa = 'N'`, or `A^T` for `'T'`/`'C'`), where
+/// `matr_a` is a square triangular matrix of which only the specified triangle
+/// (`uplo = 'U'`/`'L'`) is read. This is the LAPACK `dtrtrs` driver, i.e. the
+/// solve-only counterpart of `_dgemm` for triangular factors.
+///
+/// Returns `true` on success and `false` if the triangular matrix is singular.
+///
+/// Example: with the upper Cholesky factor `U` of `J = U^T U`, solving
+/// `U^T · X = B` in place (`_dtrtrs(&u, &mut b, 'U', 'T', 'N')`) yields
+/// `X = L^{-1} · B` with `L = U^T`.
+pub fn _dtrtrs<'a, T, Q>(
+    matr_a: &T,
+    matr_b: &mut Q,
+    uplo: char,
+    transa: char,
+    diag: char,
+) -> bool
+where
+    T: BasicMatrix<'a, f64>,
+    Q: BasicMatrix<'a, f64>,
+{
+    let n = matr_a.size()[0];
+    let nrhs = matr_b.size()[1];
+    let lda = n as i32;
+    let ldb = matr_b.size()[0] as i32;
+    let mut info = 0_i32;
+    unsafe {
+        dtrtrs(
+            uplo as u8,
+            transa as u8,
+            diag as u8,
+            n as i32,
+            nrhs as i32,
+            matr_a.data_ref().unwrap(),
+            lda,
+            matr_b.data_ref_mut().unwrap(),
+            ldb,
+            &mut info,
+        );
+    }
+    info == 0
+}
+
 /// # computes all eigenvalues and , optionally, eigenvectors of a real symmetric matrix A  
 ///    jobz: char, 'N' or 'V'  
 ///  = 'N': compute eigenvalues only;  
