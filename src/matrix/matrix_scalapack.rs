@@ -88,6 +88,34 @@ unsafe extern "C" {
         info: *mut i32,
     );
 
+    // -------- distributed Cholesky and triangular solve --------
+    pub fn pdpotrf_(
+        uplo: *const u8,
+        n: *const i32,
+        a: *mut f64,
+        ia: *const i32,
+        ja: *const i32,
+        desca: *const i32,
+        info: *mut i32,
+    );
+
+    pub fn pdtrtrs_(
+        uplo: *const u8,
+        trans: *const u8,
+        diag: *const u8,
+        n: *const i32,
+        nrhs: *const i32,
+        a: *const f64,
+        ia: *const i32,
+        ja: *const i32,
+        desca: *const i32,
+        b: *mut f64,
+        ib: *const i32,
+        jb: *const i32,
+        descb: *const i32,
+        info: *mut i32,
+    );
+
     // -------- BLACS routines --------
     pub fn Cblacs_get(icontxt: i32, what: i32, val: *mut i32);
 
