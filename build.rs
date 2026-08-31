@@ -117,21 +117,19 @@ fn main() -> std::io::Result<()> {
     println!("cargo:rustc-link-arg={}/{}", external_dir.to_str().unwrap(), restmatr_lib);
     println!("cargo:rustc-link-search=native={}",&external_dir.to_str().unwrap());
 
-/*
     #[cfg(feature = "scalapack")] {
-    let scalapack_dir = if let Ok(prefix) = env::var("CONDA_PREFIX") {
-        PathBuf::from(prefix)
-    } else {
-        panic!("CONDA_PREFIX not set");
-    };
-
-    println!(
-        "cargo:rustc-link-search=native={}/lib",
-        scalapack_dir.display()
-    );
+    // `libscalapack.so` is expected in REST_EXT_DIR (already added to the link search
+    // path above; e.g. a symlink to the apt package libscalapack-openmpi-dev), or in
+    // the standard system path. Optionally, a conda environment providing
+    // libscalapack can be selected via CONDA_PREFIX.
+    if let Ok(prefix) = env::var("CONDA_PREFIX") {
+        println!(
+            "cargo:rustc-link-search=native={}/lib",
+            PathBuf::from(&prefix).display()
+        );
+    }
     println!("cargo:rustc-link-lib=scalapack");
 }
-*/
     println!("cargo:rerun-if-changed=src/external_libs/restmatr.f90");
     // println!("cargo:rerun-if-changed={}/{}", &external_dir.to_str().unwrap(), restmatr_lib);
     #[cfg(target_os = "macos")]

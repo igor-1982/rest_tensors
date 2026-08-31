@@ -511,13 +511,90 @@ pub fn pdsygvx(
 
     if info != 0 {
         if info > 0 {
-            panic!("pdsygvx failed to converge, info = {}, ifail = {:?}", info, &ifail[..info as usize]);
+            // Eigenvectors failed to converge (small/ill-conditioned systems, e.g. ECP
+            // molecules, can hit this in the distributed driver while the serial driver
+            // converges fine). Signal failure via m = -info so the caller can fall back.
+            eprintln!("WARNING: pdsygvx failed to converge, info = {}, ifail = {:?}", info, &ifail[..info.min(ifail.len() as i32) as usize]);
+            return (w, -info, nz);
         } else {
             panic!("pdsygvx error, info = {}", info);
         }
     }
 
     (w, m, nz)
+}
+
+/// Distributed Cholesky factorization (`pdpotrf`): overwrites the upper triangle of
+/// the distributed matrix `a` with the factor `U` such that `A = U^T U`.
+///
+/// Returns the LAPACK-style `info` (0 on success).
+#[cfg(feature = "mpi")]
+#[cfg(feature = "scalapack")]
+pub fn pdpotrf(
+    grid: &CblacsGrid,
+    uplo: char,
+    a: &mut DistributedMatrixFull<f64>,
+    ia: i32,
+    ja: i32,
+) -> i32 {
+    let n = a.desc[2];
+    let mut info = 0;
+    unsafe {
+        pdpotrf_(
+            &(uplo as u8),
+            &n,
+            a.data.as_mut_ptr(),
+            &ia,
+            &ja,
+            a.desc.as_ptr(),
+            &mut info,
+        );
+    }
+    info
+}
+
+/// Distributed triangular solve (`pdtrtrs`): solves `op(A) · X = B` in place on the
+/// distributed right-hand side `b`, where `A` is a distributed triangular matrix of
+/// which only the specified triangle (`uplo`) is read, and `op(A)` is `A` for
+/// `trans = 'N'` or `A^T` for `trans = 'T'`/`'C'`.
+///
+/// Returns the LAPACK-style `info` (0 on success).
+#[cfg(feature = "mpi")]
+#[cfg(feature = "scalapack")]
+pub fn pdtrtrs(
+    grid: &CblacsGrid,
+    uplo: char,
+    trans: char,
+    diag: char,
+    a: &DistributedMatrixFull<f64>,
+    ia: i32,
+    ja: i32,
+    b: &mut DistributedMatrixFull<f64>,
+    ib: i32,
+    jb: i32,
+) -> i32 {
+    let n = a.desc[2];
+    let nrhs = b.desc[3];
+    let mut info = 0;
+    unsafe {
+        pdtrtrs_(
+            &(uplo as u8),
+            &(trans as u8),
+            &(diag as u8),
+            &n,
+            &nrhs,
+            a.data.as_ptr(),
+            &ia,
+            &ja,
+            a.desc.as_ptr(),
+            b.data.as_mut_ptr(),
+            &ib,
+            &jb,
+            b.desc.as_ptr(),
+            &mut info,
+        );
+    }
+    info
 }
 
 #[cfg(feature = "mpi")]
@@ -533,8 +610,12 @@ where T: BasicMatUp<'_a, f64>, Q: BasicMatUp<'_a, f64>, {
 
     let n = matr_a.size()[0];
     if matr_b.size()[0] != n {panic!("Size mismatch");}
-    let block_rows = 256;
-    let block_cols = 256;
+    // Adaptive block size: ScaLAPACK requires the block size to be smaller than
+    // the global dimension (and non-zero). 256 is the default for large matrices;
+    // small systems (e.g. forced-on tests with ~50 orbitals) get a smaller block.
+    let nprocs_max = grid.nprow.max(grid.npcol);
+    let block_rows = (256i32).min((n as i32) / (2 * nprocs_max)).max(1);
+    let block_cols = block_rows;
 
     let mut matr_a_full = MatrixFull::new(matr_a.size(), 0.0);
     matr_a_full.iter_matrixupper_mut().unwrap().zip(matr_a.data_ref().unwrap()).for_each(|(to, from)| {
@@ -561,10 +642,17 @@ where T: BasicMatUp<'_a, f64>, Q: BasicMatUp<'_a, f64>, {
             &mut dist_matr_b, 1, 1,
             0.0, 0.0,       // VL, VU (unused)
             0, 0,           // IL, IU (unused)
-            1e-12,          // abstol
-            0.0,            // orfac
+            // abstol ~ sqrt(eps) as recommended by LAPACK; orfac > 0 enables
+            // reorthogonalization of eigenvectors (default 0 means library default)
+            1e-8,           // abstol
+            1e-3,           // orfac
             &mut dist_matr_c, 1, 1,
         );
+
+    if m < 0 {
+        // distributed solve failed (non-convergence); let the caller fall back
+        return None;
+    }
 
 
     let root = 0;
