@@ -599,6 +599,113 @@ pub fn pdtrtrs(
 
 #[cfg(feature = "mpi")]
 #[cfg(feature = "scalapack")]
+pub fn pdsyevd(
+    jobz: char,
+    uplo: char,
+    a: &DistributedMatrixFull<f64>,
+    ia: i32,
+    ja: i32,
+    grid: &CblacsGrid,          // added for constructing Z
+) -> Option<(DistributedMatrixFull<f64>, Vec<f64>)> {
+    let n = a.desc[2];              // global size
+    let block_rows = a.desc[4];     // row block size
+    let block_cols = a.desc[5];     // col block size
+    let irsrc = a.desc[6];          // process row owning first block
+    let icsrc = a.desc[7];          // process col owning first block
+
+    // Create output matrix Z with identical distribution as A
+    let mut z = DistributedMatrixFull::new(
+        grid,
+        n,
+        n,
+        block_rows,
+        block_cols,
+        irsrc,
+        icsrc,
+        0.0,
+    );
+
+    let mut eigenvalues = vec![0.0f64; n as usize];
+
+    // Workspace query
+    let mut info = 0;
+    let mut lwork = -1i32;
+    let mut liwork = -1i32;
+    let mut work = vec![0.0f64; 1];
+    let mut iwork = vec![0i32; 1];
+
+    unsafe {
+        pdsyevd_(
+            &(jobz as u8),
+            &(uplo as u8),
+            &n,
+            a.data.as_ptr() as *mut f64,   // A is not modified by pdsyevd (input only)
+            &ia,
+            &ja,
+            a.desc.as_ptr(),
+            eigenvalues.as_mut_ptr(),
+            z.data.as_mut_ptr(),
+            &ia,
+            &ja,
+            z.desc.as_ptr(),
+            work.as_mut_ptr(),
+            &lwork,
+            iwork.as_mut_ptr(),
+            &liwork,
+            &mut info,
+        );
+    }
+
+    if info != 0 {
+        eprintln!("pdsyevd workspace query failed, info = {}", info);
+        return None;
+    }
+
+    let lwork_opt = work[0] as i32;
+    let liwork_opt = iwork[0] as i32;
+
+    work.resize(lwork_opt as usize, 0.0);
+    iwork.resize(liwork_opt as usize, 0);
+
+    // Actual computation
+    unsafe {
+        pdsyevd_(
+            &(jobz as u8),
+            &(uplo as u8),
+            &n,
+            a.data.as_ptr() as *mut f64,
+            &ia,
+            &ja,
+            a.desc.as_ptr(),
+            eigenvalues.as_mut_ptr(),
+            z.data.as_mut_ptr(),
+            &ia,
+            &ja,
+            z.desc.as_ptr(),
+            work.as_mut_ptr(),
+            &lwork_opt,
+            iwork.as_mut_ptr(),
+            &liwork_opt,
+            &mut info,
+        );
+    }
+
+    if info != 0 {
+        eprintln!("pdsyevd failed, info = {}", info);
+        return None;
+    }
+
+    if jobz == 'V' {
+        Some((z, eigenvalues))
+    } else {
+        // Return an empty matrix for consistency
+        let empty = DistributedMatrixFull::new(grid, n, n, block_rows, block_cols, irsrc, icsrc, 0.0);
+        Some((empty, eigenvalues))
+    }
+}
+
+#[cfg(feature = "mpi")]
+#[cfg(feature = "scalapack")]
 pub fn _hamiltonian_distributed_solver<'_a, T, Q>(
     matr_a: &T,
     matr_b: &Q,
@@ -673,6 +780,189 @@ where T: BasicMatUp<'_a, f64>, Q: BasicMatUp<'_a, f64>, {
     let matr_c_full = MatrixFull::from_vec([n, n], full_c).unwrap();
     Some((matr_c_full, eigenvalues))
 
+}
+
+#[cfg(feature = "mpi")]
+#[cfg(feature = "scalapack")]
+fn _distributed_get_sqrt_and_inv_sqrt(matr_a: &DistributedMatrixFull<f64>, threshold: f64, grid: &CblacsGrid)
+-> Option<(DistributedMatrixFull<f64>, DistributedMatrixFull<f64>, usize)>
+{
+    let n = matr_a.desc[2] as usize;          // global dimension (square)
+    let block_rows = matr_a.desc[4] as i32;   // row block size
+    let block_cols = matr_a.desc[5] as i32;   // col block size
+
+    // 1. Diagonalize the overlap matrix to get eigenvectors and eigenvalues.
+    //    pdsyevd returns eigenvalues in ascending order.
+    let (eigvec, eigenvalues) = pdsyevd('V', 'U', matr_a, 1, 1, grid)?;
+
+    // 2. Count singular eigenvalues (those below threshold).
+    let n_singular = eigenvalues.iter().filter(|&&v| v < threshold).count();
+    let n_non_singular = n - n_singular;
+
+    // 3. Create two matrices to hold scaled eigenvectors.
+    let mut sqrt_eigvec = DistributedMatrixFull::new(
+        grid,
+        n as i32,
+        n as i32,
+        block_rows,
+        block_cols,
+        matr_a.desc[6],   // irsrc
+        matr_a.desc[7],   // icsrc
+        0.0,
+    );
+    let mut inv_sqrt_eigvec = DistributedMatrixFull::new(
+        grid,
+        n as i32,
+        n as i32,
+        block_rows,
+        block_cols,
+        matr_a.desc[6],
+        matr_a.desc[7],
+        0.0,
+    );
+
+    // 4. Scale columns of eigvec and copy into the two matrices.
+    //    For each local column, compute its global column index.
+    let myrow = grid.myrow;
+    let mycol = grid.mycol;
+    let nprow = grid.nprow;
+    let npcol = grid.npcol;
+    let icsrc = matr_a.desc[7];
+
+    let local_rows = eigvec.size()[0];
+    let local_cols = eigvec.size()[1];
+
+    for local_col in 0..local_cols {
+        // Compute global column index for this local column.
+        // Block-cyclic mapping: local_col = local_block * block_cols + offset_in_block
+        let local_block = (local_col / block_cols as usize) as i32;
+        let offset_in_block = (local_col % block_cols as usize) as i32;
+        // Global block index for this local block on this process:
+        // The k-th block for this process (k = local_block) has global block index:
+        //   b = icsrc + ((mycol - icsrc) mod npcol) + local_block * npcol
+        let mycol_mod = (mycol - icsrc).rem_euclid(npcol);
+        let global_block = icsrc + mycol_mod + local_block * npcol;
+        let global_col = (global_block * block_cols + offset_in_block) as usize;
+
+        assert!(global_col < n);
+        let ev = eigenvalues[global_col];
+        let (sqrt_factor, inv_sqrt_factor) = if ev >= threshold {
+            let ev_sqrt = ev.sqrt().sqrt();   // λ^(1/4)
+            (ev_sqrt, 1.0 / ev_sqrt)
+        } else {
+            (0.0, 0.0)   // singular direction: zero out
+        };
+
+        // Scale the entire column (column-major storage)
+        let col_offset = local_col * local_rows;
+        for local_row in 0..local_rows {
+            let val = eigvec.data[col_offset + local_row];
+            sqrt_eigvec.data[col_offset + local_row] = val * sqrt_factor;
+            inv_sqrt_eigvec.data[col_offset + local_row] = val * inv_sqrt_factor;
+        }
+    }
+
+    // 5. Compute final matrices:
+    //    sqrt_mat      = sqrt_eigvec * sqrt_eigvec^T
+    //    inv_sqrt_mat  = inv_sqrt_eigvec * inv_sqrt_eigvec^T
+    let mut sqrt_mat = DistributedMatrixFull::new(
+        grid,
+        n as i32,
+        n as i32,
+        block_rows,
+        block_cols,
+        matr_a.desc[6],
+        matr_a.desc[7],
+        0.0,
+    );
+    let mut inv_sqrt_mat = DistributedMatrixFull::new(
+        grid,
+        n as i32,
+        n as i32,
+        block_rows,
+        block_cols,
+        matr_a.desc[6],
+        matr_a.desc[7],
+        0.0,
+    );
+
+    pdgemm('N', 'T', 1.0, &sqrt_eigvec, 1, 1, &sqrt_eigvec, 1, 1, 0.0, &mut sqrt_mat, 1, 1);
+    pdgemm('N', 'T', 1.0, &inv_sqrt_eigvec, 1, 1, &inv_sqrt_eigvec, 1, 1, 0.0, &mut inv_sqrt_mat, 1, 1);
+
+    Some((sqrt_mat, inv_sqrt_mat, n_non_singular))
+}
+
+#[cfg(feature = "mpi")]
+#[cfg(feature = "scalapack")]
+pub fn _hamiltonian_distributed_solver_inv<'_a, T, Q>(
+    matr_a: &T,
+    matr_b: &Q,
+    num_orb: &mut usize,
+    grid: &CblacsGrid,
+    world: &SimpleCommunicator,
+) -> Option<(MatrixFull<f64>, Vec<f64>)>
+where T: BasicMatUp<'_a, f64>, Q: BasicMatUp<'_a, f64>,
+{
+    let n = matr_a.size()[0];
+    if matr_b.size()[0] != n {panic!("Size mismatch");}
+    // Adaptive block size: ScaLAPACK requires the block size to be smaller than
+    // the global dimension (and non-zero). 256 is the default for large matrices;
+    // small systems (e.g. forced-on tests with ~50 orbitals) get a smaller block.
+    let nprocs_max = grid.nprow.max(grid.npcol);
+    let block_rows = (256i32).min((n as i32) / (2 * nprocs_max)).max(1);
+    let block_cols = block_rows;
+
+    let mut matr_a_full = MatrixFull::new(matr_a.size(), 0.0);
+    matr_a_full.iter_matrixupper_mut().unwrap().zip(matr_a.data_ref().unwrap()).for_each(|(to, from)| {
+        *to = *from;
+    });
+    matr_a_full.fill_lower_part_from_upper_unsafe();
+    let mut matr_b_full = MatrixFull::new(matr_b.size(), 0.0);
+    matr_b_full.iter_matrixupper_mut().unwrap().zip(matr_b.data_ref().unwrap()).for_each(|(to, from)| {
+        *to = *from;
+    });
+    matr_b_full.fill_lower_part_from_upper_unsafe();
+
+    let mut dist_matr_a = DistributedMatrixFull::from_matrixfull(grid, &matr_a_full, block_rows, block_cols, 0, 0);
+    let mut dist_matr_b = DistributedMatrixFull::from_matrixfull(grid, &matr_b_full, block_rows, block_cols, 0, 0);
+
+    let (dist_matr_b_sqrt, dist_matr_b_sqrt_inv, n_singularity) = _distributed_get_sqrt_and_inv_sqrt(&dist_matr_b, 1.0e-10, grid).unwrap();
+
+    if n_singularity < *num_orb {*num_orb = n_singularity};
+
+    let mut dist_matr_tmp = DistributedMatrixFull::new(grid, n as i32, n as i32, block_rows, block_cols, 0, 0, 0.0 as f64);
+    let mut dist_matr_a_transformed = DistributedMatrixFull::new(grid, n as i32, n as i32, block_rows, block_cols, 0, 0, 0.0 as f64);
+
+    pdgemm('N', 'N', 1.0, &dist_matr_a, 1, 1, &dist_matr_b_sqrt_inv, 1, 1, 0.0, &mut dist_matr_tmp, 1, 1);
+    pdgemm('N', 'N', 1.0, &dist_matr_b_sqrt_inv, 1, 1, &dist_matr_tmp, 1, 1, 0.0, &mut dist_matr_a_transformed, 1, 1);
+
+    let (dist_eigenvec, eigenvalues) = pdsyevd('V', 'U', &dist_matr_a_transformed, 1, 1, grid)?;
+
+    let mut dist_final_eigenvec = DistributedMatrixFull::new(grid, n as i32, n as i32, block_rows, block_cols, 0, 0, 0.0 as f64);
+    pdgemm('N', 'N', 1.0, &dist_matr_b_sqrt_inv, 1, 1, &dist_eigenvec, 1, 1, 0.0, &mut dist_final_eigenvec, 1, 1);
+
+    let root = 0;
+    let gathered_msgs_z = dist_final_eigenvec.gather_to_root(root as i32, grid, world);
+    let rank = world.rank();
+    let mut full_c = if rank == root {
+        let matr_c = reconstruct_from_gathered(&gathered_msgs_z, n as i32, n as i32, block_rows, block_cols, grid.nprow, grid.npcol, 0, 0);
+        matr_c.data
+    }
+    else {
+        vec![0.0; n * n]
+    };
+
+    world.process_at_rank(root).broadcast_into(&mut full_c);
+    let matr_c_full = MatrixFull::from_vec([n, n], full_c).unwrap();
+
+    // Extract only the first num_orb columns
+    let mut eigenvector = MatrixFull::new([n, *num_orb], 0.0);
+    for j in 0..*num_orb {
+        for i in 0..n {
+            eigenvector[[i, j]] = matr_c_full[[i, j]];
+        }
+    }
+    Some((eigenvector, eigenvalues))
 }
 
 
@@ -971,7 +1261,7 @@ fn distributed_hamiltonian_solver() {
     */
     let mut num_orb = n; // compute all eigenvectors
 
-    let (eigenvectors, eigenvalues) = _hamiltonian_distributed_solver(&mat_h, &mat_s, &mut num_orb, &grid, &world).unwrap();
+    let (eigenvectors, eigenvalues) = _hamiltonian_distributed_solver_inv(&mat_h, &mat_s, &mut num_orb, &grid, &world).unwrap();
     let mut num_orb_s = n;
     let (eigenvectors_serial, eigenvalues_serial) = _hamiltonian_fast_solver(&mat_h, &mat_s, &mut num_orb_s).unwrap();
     let max_eig = eigenvalues.iter().fold(0.0, |a, &b| f64::max(a, b.abs()));
@@ -1005,4 +1295,103 @@ fn distributed_hamiltonian_solver() {
     assert!(norm_diff < tol * scale,
             "Frobenius norm of difference too large: {} (tolerance: {})",
             norm_diff, tol * scale);
+}
+
+
+#[cfg(feature = "mpi")]
+#[cfg(feature = "scalapack")]
+#[test]
+fn distributed_inv() {
+    let universe = mpi::initialize().unwrap();
+    let world = universe.world();
+    let grid = CblacsGrid::new(world.size() as usize, "R");  // adjust to world size
+
+
+    let n = 512; // matrix dimension
+    let threshold = 1.0e-10;
+
+    // Generate a random symmetric positive semi-definite matrix S = M*M^T on rank 0.
+    let mut s_full_data = vec![0.0f64; n * n];
+    if world.rank() == 0 {
+        let mut rng = rand::thread_rng();
+        let mut m = vec![0.0f64; n * n];
+        for val in m.iter_mut() {
+            *val = rng.gen_range(-2.0..2.0);
+        }
+        let mat_m = MatrixFull::from_vec([n, n], m).unwrap();
+        let mut mat_s = MatrixFull::new([n, n], 0.0);
+        _dgemm_full(&mat_m, 'N', &mat_m, 'T', &mut mat_s, 1.0, 0.0);
+        s_full_data = mat_s.data;
+    }
+
+    // Broadcast the full S matrix data (column-major) to all ranks.
+    world.process_at_rank(0).broadcast_into(&mut s_full_data);
+
+    // Each rank constructs its own MatrixFull for S.
+    let mat_s_full = MatrixFull::from_vec([n, n], s_full_data).unwrap();
+
+    // Distribute S using the same block size as in the real solver.
+    let nprocs_max = grid.nprow.max(grid.npcol);
+    let block_rows = (256i32).min((n as i32) / (2 * nprocs_max)).max(1);
+    let block_cols = block_rows;
+
+    let dist_s = DistributedMatrixFull::from_matrixfull(
+        &grid,
+        &mat_s_full,
+        block_rows,
+        block_cols,
+        0,
+        0,
+    );
+
+    // Compute distributed S^{1/2} and S^{-1/2}.
+    let (dist_sqrt, dist_inv_sqrt, n_non_singular_dist) =
+        _distributed_get_sqrt_and_inv_sqrt(&dist_s, threshold, &grid)
+            .expect("Distributed sqrt/inv_sqrt failed");
+
+    // Compute serial S^{1/2} and S^{-1/2} for comparison (on every rank; cheap for test).
+    let (serial_sqrt, serial_inv_sqrt, n_non_singular_serial) =
+        _get_sqrt_and_inv_sqrt(&mat_s_full, threshold).expect("Serial sqrt/inv_sqrt failed");
+
+    assert_eq!(n_non_singular_dist, n_non_singular_serial,
+               "Number of non-singular directions mismatch");
+
+    // Gather distributed results to root.
+    let gathered_sqrt = dist_sqrt.gather_to_root(0, &grid, &world);
+    let gathered_inv = dist_inv_sqrt.gather_to_root(0, &grid, &world);
+
+    if world.rank() == 0 {
+        // Reconstruct full matrices on root.
+        let full_sqrt = reconstruct_from_gathered(
+            &gathered_sqrt, n as i32, n as i32,
+            block_rows, block_cols, grid.nprow, grid.npcol, 0, 0,
+        );
+        let full_inv = reconstruct_from_gathered(
+            &gathered_inv, n as i32, n as i32,
+            block_rows, block_cols, grid.nprow, grid.npcol, 0, 0,
+        );
+
+        // Compare element-wise with serial results.
+        let tol = 1e-8;
+        for i in 0..n {
+            for j in 0..n {
+                let diff_sqrt = (full_sqrt[[i, j]] - serial_sqrt[[i, j]]).abs();
+                let diff_inv = (full_inv[[i, j]] - serial_inv_sqrt[[i, j]]).abs();
+                assert!(
+                    diff_sqrt < tol,
+                    "sqrt mismatch at ({}, {}): distributed={}, serial={}",
+                    i, j, full_sqrt[[i, j]], serial_sqrt[[i, j]]
+                );
+                assert!(
+                    diff_inv < tol,
+                    "inv_sqrt mismatch at ({}, {}): distributed={}, serial={}",
+                    i, j, full_inv[[i, j]], serial_inv_sqrt[[i, j]]
+                );
+            }
+        }
+    }
+
+    // Ensure all processes finish before MPI finalization.
+    world.barrier();
+
 }
