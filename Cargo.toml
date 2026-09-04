@@ -40,11 +40,11 @@ nalgebra = "0.31.1"
 regex = "0.1.41"
 rand = "0.8.5"
 num-traits = "0.2.15"
-mpi = "0.8"
+mpi = { version = "0.8", optional = true }
 
 [features]
-default = []
+default = ["mpi"]
 intel-mkl = []
 openblas = []
-mpi = []
-scalapack = []
+mpi = ["dep:mpi"]
+scalapack = ["mpi"]
