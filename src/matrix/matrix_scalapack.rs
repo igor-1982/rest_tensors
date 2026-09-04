@@ -88,6 +88,26 @@ unsafe extern "C" {
         info: *mut i32,
     );
 
+    pub fn pdsyevd_(
+        jobz: *const u8,
+        uplo: *const u8,
+        n: *const i32,
+        a: *mut f64,
+        ia: *const i32,
+        ja: *const i32,
+        desca: *const i32,
+        w: *mut f64,
+        z: *mut f64,
+        iz: *const i32,
+        jz: *const i32,
+        descz: *const i32,
+        work: *mut f64,
+        lwork: *const i32,
+        iwork: *mut i32,
+        liwork: *const i32,
+        info: *mut i32,
+    );
+
     // -------- distributed Cholesky and triangular solve --------
     pub fn pdpotrf_(
         uplo: *const u8,
