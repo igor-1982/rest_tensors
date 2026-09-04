@@ -642,10 +642,13 @@ where T: BasicMatUp<'_a, f64>, Q: BasicMatUp<'_a, f64>, {
             &mut dist_matr_b, 1, 1,
             0.0, 0.0,       // VL, VU (unused)
             0, 0,           // IL, IU (unused)
-            // abstol ~ sqrt(eps) as recommended by LAPACK; orfac > 0 enables
-            // reorthogonalization of eigenvectors (default 0 means library default)
+            // abstol ~ sqrt(eps) as recommended by LAPACK. orfac controls the
+            // reorthogonalization threshold for clustered eigenvectors: with the
+            // LAPACK-default 1e-3, pdsygvx repeatedly fails to converge (info > 0)
+            // on ill-conditioned/clustered problems (author-verified on random
+            // 2048x2048 PSD matrices: orfac must be < 1e-8). Use 1e-10.
             1e-8,           // abstol
-            1e-3,           // orfac
+            1e-10,          // orfac
             &mut dist_matr_c, 1, 1,
         );
 
