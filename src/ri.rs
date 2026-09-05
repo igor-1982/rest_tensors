@@ -287,161 +287,256 @@ impl <T: Clone + Display + Send + Sync> RIFull<T> {
     pub fn iter_mut_auxbas(&mut self, auxbas_range: Range<usize>) -> Option<ChunksExactMut<'_, T>> {
         if let Some(x) = self.size.get(0) {
             if let Some(y) = self.size.get(1) {
-                let chunk_size = x*y;
-                Some(self.data[chunk_size*auxbas_range.start..chunk_size*auxbas_range.end]
-                        .chunks_exact_mut(chunk_size))
-            } else {None}
-        } else {None}
+                let chunk_size = x * y;
+                Some(
+                    self.data[chunk_size * auxbas_range.start..chunk_size * auxbas_range.end]
+                        .chunks_exact_mut(chunk_size),
+                )
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
     #[inline]
     pub fn iter_auxbas(&self, auxbas_range: Range<usize>) -> Option<ChunksExact<'_, T>> {
         if let Some(x) = self.size.get(0) {
             if let Some(y) = self.size.get(1) {
-                let chunk_size = x*y;
-                Some(self.data[chunk_size*auxbas_range.start..chunk_size*auxbas_range.end]
-                        .chunks_exact(chunk_size))
-            } else {None}
-        } else {None}
+                let chunk_size = x * y;
+                Some(
+                    self.data[chunk_size * auxbas_range.start..chunk_size * auxbas_range.end]
+                        .chunks_exact(chunk_size),
+                )
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
     #[inline]
-    pub fn par_iter_mut_auxbas(&mut self, auxbas_range: Range<usize>) -> Option<rayon::slice::ChunksExactMut<'_, T>> {
+    pub fn par_iter_mut_auxbas(
+        &mut self,
+        auxbas_range: Range<usize>,
+    ) -> Option<rayon::slice::ChunksExactMut<'_, T>> {
         if let Some(x) = self.size.get(0) {
             if let Some(y) = self.size.get(1) {
-                let chunk_size = x*y;
-                Some(self.data[chunk_size*auxbas_range.start..chunk_size*auxbas_range.end]
-                        .par_chunks_exact_mut(chunk_size))
-            } else {None}
-        } else {None}
+                let chunk_size = x * y;
+                Some(
+                    self.data[chunk_size * auxbas_range.start..chunk_size * auxbas_range.end]
+                        .par_chunks_exact_mut(chunk_size),
+                )
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
     #[inline]
-    pub fn par_iter_auxbas(&self, auxbas_range: Range<usize>) -> Option<rayon::slice::ChunksExact<'_, T>> {
+    pub fn par_iter_auxbas(
+        &self,
+        auxbas_range: Range<usize>,
+    ) -> Option<rayon::slice::ChunksExact<'_, T>> {
         if let Some(x) = self.size.get(0) {
             if let Some(y) = self.size.get(1) {
-                let chunk_size = x*y;
-                Some(self.data[chunk_size*auxbas_range.start..chunk_size*auxbas_range.end]
-                        .par_chunks_exact(chunk_size))
-            } else {None}
-        } else {None}
+                let chunk_size = x * y;
+                Some(
+                    self.data[chunk_size * auxbas_range.start..chunk_size * auxbas_range.end]
+                        .par_chunks_exact(chunk_size),
+                )
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
     #[inline]
-    pub fn check_shape(&self, other:&RIFull<T>) -> bool {
-        self.size.iter().zip(other.size.iter()).fold(true, |check,size| {
-            check && size.0==size.1
-        })
+    pub fn check_shape(&self, other: &RIFull<T>) -> bool {
+        self.size
+            .iter()
+            .zip(other.size.iter())
+            .fold(true, |check, size| check && size.0 == size.1)
     }
     #[inline]
     /// [i,j,k] -> [j,i,k]
-    pub fn transpose_jik(&self) -> RIFull<T> 
-    where T:Clone+Copy
-    {              
+    pub fn transpose_jik(&self) -> RIFull<T>
+    where
+        T: Clone + Copy,
+    {
         let i = self.size[0];
         let j = self.size[1];
         let k = self.size[2];
-        let data_new: Vec<T> = self.data.chunks_exact(i*j)
-                    .map(|v| {let mat = MatrixFull::from_vec([i,j], v.to_vec()).unwrap().transpose();
-                                     mat.data}).flatten().collect();
-        let ri = RIFull::from_vec([j,i,k], data_new).unwrap();
+        let data_new: Vec<T> = self
+            .data
+            .chunks_exact(i * j)
+            .map(|v| {
+                let mat = MatrixFull::from_vec([i, j], v.to_vec())
+                    .unwrap()
+                    .transpose();
+                mat.data
+            })
+            .flatten()
+            .collect();
+        let ri = RIFull::from_vec([j, i, k], data_new).unwrap();
         ri
     }
     #[inline]
     /// [i,j,k] -> [j,k,i]
-    pub fn transpose_jki(&self) -> RIFull<T> 
-    where T:Clone+Copy
-    {              
+    pub fn transpose_jki(&self) -> RIFull<T>
+    where
+        T: Clone + Copy,
+    {
         let i = self.size[0];
         let j = self.size[1];
         let k = self.size[2];
         let mut data = vec![];
         for ii in 0..i {
-            let mut tmp: Vec<T> = self.data.iter().enumerate()
-                .filter(|(idx,v)| ((*idx as isize - ii as isize).abs() as usize )%i == 0 )
-                .map(|(idx, v)| *v).collect();
+            let mut tmp: Vec<T> = self
+                .data
+                .iter()
+                .enumerate()
+                .filter(|(idx, v)| ((*idx as isize - ii as isize).abs() as usize) % i == 0)
+                .map(|(idx, v)| *v)
+                .collect();
             data.append(&mut tmp);
         }
-        let ri = RIFull::from_vec([j,k,i], data).unwrap();
+        let ri = RIFull::from_vec([j, k, i], data).unwrap();
         ri
     }
     #[inline]
     /// [i,j,k] -> [k,j,i]
-    pub fn transpose_kji(&self) -> RIFull<T> 
-    where T:Clone+Copy
-    {              
+    pub fn transpose_kji(&self) -> RIFull<T>
+    where
+        T: Clone + Copy,
+    {
         let i = self.size[0];
         let j = self.size[1];
         let k = self.size[2];
         let mut data = vec![];
         let ri_new = self.transpose_jik();
-        for ij in 0..i*j {
-            let mut tmp: Vec<T> = ri_new.data.iter().enumerate()
-                .filter(|(idx,v)| ((*idx as isize - ij as isize).abs() as usize )%(i*j) == 0 ).map(|(idx, v)| *v).collect();
+        for ij in 0..i * j {
+            let mut tmp: Vec<T> = ri_new
+                .data
+                .iter()
+                .enumerate()
+                .filter(|(idx, v)| ((*idx as isize - ij as isize).abs() as usize) % (i * j) == 0)
+                .map(|(idx, v)| *v)
+                .collect();
             data.append(&mut tmp);
         }
 
-        let ri = RIFull::from_vec([k,j,i], data).unwrap();
+        let ri = RIFull::from_vec([k, j, i], data).unwrap();
         ri
     }
     #[inline]
     /// [i,j,k] -> [i,k,j]
-    pub fn transpose_ikj(&self) -> RIFull<T> 
-    where T:Clone+Copy+Debug
-    {              
+    pub fn transpose_ikj(&self) -> RIFull<T>
+    where
+        T: Clone + Copy + Debug,
+    {
         let i = self.size[0];
         let j = self.size[1];
         let k = self.size[2];
         let mut data = vec![];
         for jj in 0..j {
-            let data_new: Vec<T> = self.data.chunks_exact(i*j)
-            .map(|v| {let mat = MatrixFull::from_vec([i,j], v.to_vec()).unwrap();
-                            mat.iter_column(jj).map(|v| *v).collect_vec()}).flatten().collect();
+            let data_new: Vec<T> = self
+                .data
+                .chunks_exact(i * j)
+                .map(|v| {
+                    let mat = MatrixFull::from_vec([i, j], v.to_vec()).unwrap();
+                    mat.iter_column(jj).map(|v| *v).collect_vec()
+                })
+                .flatten()
+                .collect();
             data.push(data_new)
         }
         let data_new = data.into_iter().flatten().collect();
-        let ri = RIFull::from_vec([i,k,j], data_new).unwrap();
+        let ri = RIFull::from_vec([i, k, j], data_new).unwrap();
         ri
     }
 
     /// Reduce [nao,nao,naux] RIFull to [nao*(nao+1)/2, naux] MatrixFull According to symmetry
-    pub fn rifull_to_matfull_symm(&self) -> MatrixFull<T> 
-    where T:Clone+Copy {
+    pub fn rifull_to_matfull_symm(&self) -> MatrixFull<T>
+    where
+        T: Clone + Copy,
+    {
         let nao = self.size[0];
         let naux = self.size[2];
         //let mut result = MatrixFull::new([nao*(nao+1)/2, naux], 0.0_f64);
-        let mut chunk_by_aux = self.data.chunks_exact(nao*nao);
-        let mut data: Vec<T> = chunk_by_aux.into_iter().map(|chunk| richunk_reduce_by_symm(chunk, nao)).flatten().collect();
-        let result = MatrixFull::from_vec([nao*(nao+1)/2, naux], data).unwrap();
-        result
-    }   
-
-    /// Reduce [i,j,k] RIFull to [i*j, k] MatrixFull
-    pub fn rifull_to_matfull_ij_k(&self) -> MatrixFull<T> 
-    where T:Clone+Copy {
-        let i = self.size[0];
-        let j = self.size[1];
-        let k = self.size[2];
-        let result = MatrixFull::from_vec([i*j, k], self.data.clone()).unwrap();
-        result
-    }   
-    
-     /// [i,j,k] -> [i,j*k]
-    pub fn rifull_to_matfull_i_jk(&self) -> MatrixFull<T> 
-    where T:Clone+Copy {
-        let i = self.size[0];
-        let j = self.size[1];
-        let k = self.size[2];
-        let result = MatrixFull::from_vec([i, j*k], self.data.clone()).unwrap();
+        let mut chunk_by_aux = self.data.chunks_exact(nao * nao);
+        let mut data: Vec<T> = chunk_by_aux
+            .into_iter()
+            .map(|chunk| richunk_reduce_by_symm(chunk, nao))
+            .flatten()
+            .collect();
+        let result = MatrixFull::from_vec([nao * (nao + 1) / 2, naux], data).unwrap();
         result
     }
 
+    /// Reduce [i,j,k] RIFull to [i*j, k] MatrixFull
+    pub fn rifull_to_matfull_ij_k(&self) -> MatrixFull<T>
+    where
+        T: Clone + Copy,
+    {
+        let i = self.size[0];
+        let j = self.size[1];
+        let k = self.size[2];
+        let result = MatrixFull::from_vec([i * j, k], self.data.clone()).unwrap();
+        result
+    }
+
+    /// [i,j,k] -> [i,j*k]
+    pub fn rifull_to_matfull_i_jk(&self) -> MatrixFull<T>
+    where
+        T: Clone + Copy,
+    {
+        let i = self.size[0];
+        let j = self.size[1];
+        let k = self.size[2];
+        let result = MatrixFull::from_vec([i, j * k], self.data.clone()).unwrap();
+        result
+    }
+
+    /// Consuming, zero-copy version of [i,j,k] -> [i*j, k].
+    /// The RIFull data buffer is reused (no clone) since both layouts are
+    /// column-major with the same stride ordering.
+    pub fn into_matfull_ij_k(self) -> MatrixFull<T>
+    where
+        T: Clone + Copy,
+    {
+        let i = self.size[0];
+        let j = self.size[1];
+        let k = self.size[2];
+        MatrixFull::from_vec([i * j, k], self.data).unwrap()
+    }
+
+    /// Consuming, zero-copy version of [i,j,k] -> [i,j*k].
+    /// The RIFull data buffer is reused (no clone) since both layouts are
+    /// column-major with the same stride ordering.
+    pub fn into_matfull_i_jk(self) -> MatrixFull<T>
+    where
+        T: Clone + Copy,
+    {
+        let i = self.size[0];
+        let j = self.size[1];
+        let k = self.size[2];
+        MatrixFull::from_vec([i, j * k], self.data).unwrap()
+    }
 }
 
-fn richunk_reduce_by_symm<T>(chunk: &[T], nao: usize) -> Vec<T> 
-where T: Clone + Copy {
+fn richunk_reduce_by_symm<T>(chunk: &[T], nao: usize) -> Vec<T>
+where
+    T: Clone + Copy,
+{
     //let mut result = vec![0.0_f64; nao*(nao+1)/2];
     let mut result = vec![];
     let mut chunk_by_nao = chunk.chunks_exact(nao);
     for i in 0..nao {
         let chunk = chunk_by_nao.next().unwrap();
-        let slice = &chunk[0..(i+1)];
+        let slice = &chunk[0..(i + 1)];
         result.append(&mut slice.to_vec());
     }
     result

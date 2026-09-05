@@ -17,7 +17,7 @@
 rest_tensors = "*"
  ```
  
- ### Fetures
+ ### Features
 
  * [`MatrixFull`](MatrixFull): the `column-major` rank-2 tensor, i.e. `matrix`, which is used for the molecular geometries, 
                 orbital coefficients, density matrix, and most of intermediate data for REST.  
