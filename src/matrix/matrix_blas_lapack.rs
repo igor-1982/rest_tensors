@@ -1182,7 +1182,8 @@ where T: BasicMatrix<'a, f64>
 ///
 /// This is ~4-5x faster than the SVD-based pseudoinverse for large matrices.
 ///
-/// `matr`: square matrix (M×M)
+/// `matr`: square matrix (M×M), destroyed in-place (overwritten by QR factors)
+/// `x`: caller-provided n×n output buffer (e.g. `vec![0.0; n*n]`), overwritten with A^+
 /// `rcond`: relative threshold for rank determination. Use `None` for f64::EPSILON.
 ///
 /// Returns `Some(A^+)` (M×M), or `None` on failure.
@@ -1191,15 +1192,16 @@ where T: BasicMatrix<'a, f64>
 /// ```
 ///    use rest_tensors::{MatrixFull};
 ///    use rest_tensors::matrix::matrix_blas_lapack::_qrpinv;
-///    let matr_a = MatrixFull::from_vec([3,3], vec![
+///    let mut matr_a = MatrixFull::from_vec([3,3], vec![
 ///        1.0, 0.0, 2.0,
 ///        0.0, 3.0, 0.0,
 ///        2.0, 0.0, 1.0,
 ///    ]).unwrap();
-///    let a_pinv = _qrpinv(&matr_a, None).unwrap();
+///    let matr_orig = matr_a.clone();
+///    let a_pinv = _qrpinv(&mut matr_a, vec![0.0f64; 9], None).unwrap();
 ///    let mut identity_approx = MatrixFull::new([3,3], 0.0);
 ///    crate::matrix::matrix_blas_lapack::_dgemm_full(
-///        &a_pinv, 'N', &matr_a, 'N', &mut identity_approx, 1.0, 0.0);
+///        &a_pinv, 'N', &matr_orig, 'N', &mut identity_approx, 1.0, 0.0);
 ///    let diff = (identity_approx[[0,0]] - 1.0).abs()
 ///             + (identity_approx[[1,1]] - 1.0).abs()
 ///             + (identity_approx[[2,2]] - 1.0).abs();
