@@ -553,6 +553,174 @@ pub fn pdpotrf(
     info
 }
 
+/// Distributed LU factorization (`pdgetrf`): in-place `A = P·L·U` (partial pivoting)
+/// on the block-cyclic distributed matrix `a`.
+///
+/// `ipiv` must hold at least `pdgetrf_ipiv_len` entries. Returns LAPACK-style `info`
+/// (0 on success; > 0 means U(i,i) is exactly zero — singular matrix).
+#[cfg(feature = "mpi")]
+#[cfg(feature = "scalapack")]
+pub fn pdgetrf(
+    grid: &CblacsGrid,
+    a: &mut DistributedMatrixFull<f64>,
+    ia: i32,
+    ja: i32,
+    ipiv: &mut [i32],
+) -> i32 {
+    let m = a.desc[2];
+    let n = a.desc[3];
+    let mut info = 0;
+    unsafe {
+        pdgetrf_(
+            &m,
+            &n,
+            a.data.as_mut_ptr(),
+            &ia,
+            &ja,
+            a.desc.as_ptr(),
+            ipiv.as_mut_ptr(),
+            &mut info,
+        );
+    }
+    info
+}
+
+/// Minimal `ipiv` length for `pdgetrf` on `a` with global row count `m_global` and
+/// row blocksize `mb` (ScaLAPACK doc: numroc(m, mb, iarow, 0, nprow) + mb; ia = 1 ⇒ iarow = 0).
+#[cfg(feature = "mpi")]
+#[cfg(feature = "scalapack")]
+pub fn pdgetrf_ipiv_len(grid: &CblacsGrid, m_global: i32, mb: i32) -> usize {
+    let nloc = unsafe {
+        numroc_(&m_global, &mb, &grid.myrow, &0i32, &grid.nprow)
+    };
+    (nloc + mb) as usize
+}
+
+/// Local extent of a block-cyclic dimension for an *arbitrary* grid coordinate
+/// (`iproc` over `nprocs`, blocksize `nb`, src 0) — e.g. the row count of the
+/// band owned by BLACS row `i` before assembly.
+#[cfg(feature = "mpi")]
+#[cfg(feature = "scalapack")]
+pub fn pd_numroc_iproc(n_global: i32, nb: i32, iproc: i32, nprocs: i32) -> usize {
+    unsafe { numroc_(&n_global, &nb, &iproc, &0i32, &nprocs) as usize }
+}
+
+/// Number of rows of a block-cyclic (mb × nb, src 0) matrix stored locally on this grid rank.
+#[cfg(feature = "mpi")]
+#[cfg(feature = "scalapack")]
+pub fn pd_numroc(grid: &CblacsGrid, n_global: i32, nb: i32, dim: i32) -> usize {
+    let (iproc, nprocs) = if dim == 0 { (grid.myrow, grid.nprow) } else { (grid.mycol, grid.npcol) };
+    unsafe { numroc_(&n_global, &nb, &iproc, &0i32, &nprocs) as usize }
+}
+
+/// Sum of ln|U(i,i)| over the local diagonal of a matrix already factorized by `pdgetrf`.
+/// Global element (r, r) is stored locally iff the local (row, col) pair maps to the
+/// same global index; U diagonal lives in `a` (L has unit diagonal, so det = Π U_ii).
+/// Returns the LOCAL sum of ln|U_ii| — the caller must all-reduce across the grid.
+#[cfg(feature = "mpi")]
+#[cfg(feature = "scalapack")]
+pub fn pdgetrf_local_lnabsdet(
+    grid: &CblacsGrid,
+    a: &DistributedMatrixFull<f64>,
+    mb: i32,
+    nb: i32,
+) -> f64 {
+    let m_global = a.desc[2] as usize;
+    let local_rows = a.size()[0];
+    let local_cols = a.size()[1];
+    let mut ln_det = 0.0_f64;
+    for ir in 0..local_rows {
+        let bi = (ir as i32) / mb;
+        let off = (ir as i32) % mb;
+        let g_row = (bi * grid.nprow + grid.myrow) * mb + off;
+        if g_row >= m_global as i32 {
+            continue;
+        }
+        // diagonal element (g_row, g_row): its local column
+        let bj = g_row / nb;
+        let c_off = g_row % nb;
+        // local column index of global column g_row on this rank's mycol
+        // cyclic: block bj belongs to mycol iff (bj % npcol) == mycol
+        if (bj % grid.npcol) != grid.mycol {
+            continue;
+        }
+        let ic = (bj / grid.npcol) * nb + c_off;
+        if ic >= local_cols as i32 {
+            continue;
+        }
+        ln_det += a.data[(ir as usize) + (ic as usize) * local_rows].abs().ln();
+    }
+    ln_det
+}
+
+/// Trace of a block-cyclic distributed matrix (sum of local diagonal elements).
+#[cfg(feature = "mpi")]
+#[cfg(feature = "scalapack")]
+pub fn pd_trace_local(
+    grid: &CblacsGrid,
+    a: &DistributedMatrixFull<f64>,
+    mb: i32,
+    nb: i32,
+) -> f64 {
+    let m_global = a.desc[2] as usize;
+    let local_rows = a.size()[0];
+    let local_cols = a.size()[1];
+    let mut tr = 0.0_f64;
+    for ir in 0..local_rows {
+        let bi = (ir as i32) / mb;
+        let off = (ir as i32) % mb;
+        let g_row = (bi * grid.nprow + grid.myrow) * mb + off;
+        if g_row >= m_global as i32 {
+            continue;
+        }
+        let bj = g_row / nb;
+        if (bj % grid.npcol) != grid.mycol {
+            continue;
+        }
+        let c_off = g_row % nb;
+        let ic = (bj / grid.npcol) * nb + c_off;
+        if ic >= local_cols as i32 {
+            continue;
+        }
+        tr += a.data[(ir as usize) + (ic as usize) * local_rows];
+    }
+    tr
+}
+
+/// In-place integrand preparation on the local block-cyclic slice: replicates the
+/// serial `evaluate_rpa_integrand` step `diag -= 1.0; *= -1.0` — i.e. off-diagonal
+/// elements are negated and diagonal elements become `-(a_ii - 1)`. Purely local.
+#[cfg(feature = "mpi")]
+#[cfg(feature = "scalapack")]
+pub fn pd_neg_shift_local(
+    grid: &CblacsGrid,
+    a: &mut DistributedMatrixFull<f64>,
+    mb: i32,
+    nb: i32,
+) {
+    let m_global = a.desc[2] as usize;
+    let local_rows = a.size()[0];
+    let local_cols = a.size()[1];
+    for ir in 0..local_rows {
+        let bi = (ir as i32) / mb;
+        let off = (ir as i32) % mb;
+        let g_row = (bi * grid.nprow + grid.myrow) * mb + off;
+        let is_diag_row = g_row < m_global as i32;
+        for ic in 0..local_cols {
+            let bj = (ic as i32) / nb;
+            let c_off = (ic as i32) % nb;
+            let g_col = (bj * grid.npcol + grid.mycol) * nb + c_off;
+            let is_diag = is_diag_row && (g_row == g_col);
+            let v = &mut a.data[(ir as usize) + (ic as usize) * local_rows];
+            if is_diag {
+                *v = -(*v - 1.0);
+            } else {
+                *v = -*v;
+            }
+        }
+    }
+}
+
 /// Distributed triangular solve (`pdtrtrs`): solves `op(A) · X = B` in place on the
 /// distributed right-hand side `b`, where `A` is a distributed triangular matrix of
 /// which only the specified triangle (`uplo`) is read, and `op(A)` is `A` for

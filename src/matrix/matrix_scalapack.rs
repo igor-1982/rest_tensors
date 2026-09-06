@@ -119,6 +119,18 @@ unsafe extern "C" {
         info: *mut i32,
     );
 
+    // -------- distributed LU factorization (pdgetrf) --------
+    pub fn pdgetrf_(
+        m: *const i32,
+        n: *const i32,
+        a: *mut f64,
+        ia: *const i32,
+        ja: *const i32,
+        desca: *const i32,
+        ipiv: *mut i32,
+        info: *mut i32,
+    );
+
     pub fn pdtrtrs_(
         uplo: *const u8,
         trans: *const u8,
