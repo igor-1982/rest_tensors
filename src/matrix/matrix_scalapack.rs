@@ -131,6 +131,21 @@ unsafe extern "C" {
         info: *mut i32,
     );
 
+    // -------- distributed LU inverse (pdgetri, follows pdgetrf) --------
+    pub fn pdgetri_(
+        n: *const i32,
+        a: *mut f64,
+        ia: *const i32,
+        ja: *const i32,
+        desca: *const i32,
+        ipiv: *const i32,
+        work: *mut f64,
+        lwork: *const i32,
+        iwork: *mut i32,
+        liwork: *const i32,
+        info: *mut i32,
+    );
+
     pub fn pdtrtrs_(
         uplo: *const u8,
         trans: *const u8,

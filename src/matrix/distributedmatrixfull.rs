@@ -585,6 +585,72 @@ pub fn pdgetrf(
     info
 }
 
+/// Distributed LU inverse (`pdgetri`): computes A⁻¹ in place from the LU factorization
+/// produced by `pdgetrf`. The `ipiv` and workspace sizes follow ScaLAPACK docs:
+/// `ipiv` same length as for `pdgetrf`; `work ≥ max(1, lwork)` with `lwork` from query;
+/// `iwork ≥ max(1, liwork)`.
+///
+/// Returns LAPACK-style `info` (0 on success).
+#[cfg(feature = "mpi")]
+#[cfg(feature = "scalapack")]
+pub fn pdgetri(
+    grid: &CblacsGrid,
+    a: &mut DistributedMatrixFull<f64>,
+    ia: i32,
+    ja: i32,
+    ipiv: &mut [i32],
+) -> i32 {
+    let n = a.desc[2]; // global order (square)
+    let mut info = 0;
+
+    // Workspace query
+    let mut lwork = -1_i32;
+    let mut liwork = -1_i32;
+    let mut work = vec![0.0_f64; 1];
+    let mut iwork = vec![0_i32; 1];
+    unsafe {
+        pdgetri_(
+            &n,
+            a.data.as_mut_ptr(),
+            &ia,
+            &ja,
+            a.desc.as_ptr(),
+            ipiv.as_mut_ptr(),
+            work.as_mut_ptr(),
+            &lwork,
+            iwork.as_mut_ptr(),
+            &liwork,
+            &mut info,
+        );
+    }
+    if info != 0 {
+        eprintln!("pdgetri workspace query failed, info = {}", info);
+        return info;
+    }
+    let lwork_opt = work[0] as i32;
+    let liwork_opt = iwork[0] as i32;
+    work.resize(lwork_opt.max(1) as usize, 0.0);
+    iwork.resize(liwork_opt.max(1) as usize, 0);
+
+    // Actual inverse
+    unsafe {
+        pdgetri_(
+            &n,
+            a.data.as_mut_ptr(),
+            &ia,
+            &ja,
+            a.desc.as_ptr(),
+            ipiv.as_mut_ptr(),
+            work.as_mut_ptr(),
+            &lwork_opt,
+            iwork.as_mut_ptr(),
+            &liwork_opt,
+            &mut info,
+        );
+    }
+    info
+}
+
 /// Minimal `ipiv` length for `pdgetrf` on `a` with global row count `m_global` and
 /// row blocksize `mb` (ScaLAPACK doc: numroc(m, mb, iarow, 0, nprow) + mb; ia = 1 ⇒ iarow = 0).
 #[cfg(feature = "mpi")]
