@@ -297,9 +297,172 @@ impl MatrixFull<Complex<f64>> {
             println!("Warning: ZGETRI returns INFO: {:?}",info);
         }
     }
+
+    pub fn lapack_zheev(&mut self, jobz: char, uplo: char, w: &mut [f64]) {
+        if self.size[0] != self.size[1] {
+            println!("Warning: ZHEEV computes N-by-N matrix, found {:?}",self.size);
+        }
+        let n = self.size[0];
+        let lda = n.max(1);
+        // Workspace query: call with LWORK=-1 to get optimal LWORK
+        let mut wkopt = Complex::new(0.0, 0.0);
+        let lwork_query: i32 = -1;
+        let mut rwork = vec![0.0;(3 * n).max(1)];
+        let mut info: i32 = 0;
+        unsafe {
+            zheev_(
+                &(jobz as i8) as *const c_char,
+                &(uplo as i8) as *const c_char,
+                &(n as i32) as *const i32,
+                self.data.as_mut_ptr(),
+                &(lda as i32) as *const i32,
+                w.as_mut_ptr(),
+                &mut wkopt as *mut Complex<f64>,
+                &lwork_query as *const i32,
+                rwork.as_mut_ptr(),
+                &mut info as *mut i32,
+                );
+        }
+        let lwork = (wkopt.re as i32).max((2 * n as i32) - 1).max(1);
+        let mut work = vec![Complex::new(0.0,0.0); lwork as usize];
+        info = 0;
+        unsafe {
+            zheev_(
+                &(jobz as i8) as *const c_char,
+                &(uplo as i8) as *const c_char,
+                &(n as i32) as *const i32,
+                self.data.as_mut_ptr(),
+                &(lda as i32) as *const i32,
+                w.as_mut_ptr(),
+                work.as_mut_ptr(),
+                &(lwork as i32) as *const i32,
+                rwork.as_mut_ptr(),
+                &mut info as *mut i32,
+                );
+        }
+        if info != 0 {
+            println!("Warning: ZHEEV returns INFO: {:?}",info);
+        }
+    }
+
+    pub fn lapack_zheevd(&mut self, jobz: char, uplo: char, w: &mut [f64]) {
+        if self.size[0] != self.size[1] {
+            println!("Warning: ZHEEVD computes N-by-N matrix, found {:?}",self.size);
+        }
+        let n = self.size[0];
+        let lda = n.max(1);
+        // Workspace query: LWORK=-1, LRWORK=-1, LIWORK=-1
+        let mut wkopt = Complex::new(0.0, 0.0);
+        let mut rwopt = 0.0f64;
+        let mut iwopt: i32 = 0;
+        let lwork_query: i32 = -1;
+        let lrwork_query: i32 = -1;
+        let liwork_query: i32 = -1;
+        let mut info: i32 = 0;
+        unsafe {
+            zheevd_(
+                &(jobz as i8) as *const c_char,
+                &(uplo as i8) as *const c_char,
+                &(n as i32) as *const i32,
+                self.data.as_mut_ptr(),
+                &(lda as i32) as *const i32,
+                w.as_mut_ptr(),
+                &mut wkopt as *mut Complex<f64>,
+                &lwork_query as *const i32,
+                &mut rwopt as *mut f64,
+                &lrwork_query as *const i32,
+                &mut iwopt as *mut i32,
+                &liwork_query as *const i32,
+                &mut info as *mut i32,
+            );
+        }
+        let lwork = (wkopt.re as i32).max(1);
+        let lrwork = (rwopt as i32).max(1);
+        let liwork = (iwopt as i32).max(1);
+        let mut work = vec![Complex::new(0.0,0.0); lwork as usize];
+        let mut rwork = vec![0.0; lrwork as usize];
+        let mut iwork = vec![0i32; liwork as usize];
+        info = 0;
+        unsafe {
+            zheevd_(
+                &(jobz as i8) as *const c_char,
+                &(uplo as i8) as *const c_char,
+                &(n as i32) as *const i32,
+                self.data.as_mut_ptr(),
+                &(lda as i32) as *const i32,
+                w.as_mut_ptr(),
+                work.as_mut_ptr(),
+                &(lwork as i32) as *const i32,
+                rwork.as_mut_ptr(),
+                &(lrwork as i32) as *const i32,
+                iwork.as_mut_ptr(),
+                &(liwork as i32) as *const i32,
+                &mut info as *mut i32,
+            );
+        }
+        if info != 0 {
+            println!("Warning: ZHEEVD returns INFO: {:?}",info);
+        }
+    }
+
+    pub fn lapack_zhegv(&mut self, itype: i32, jobz: char, uplo: char, b: &mut MatrixFull<Complex<f64>>, w: &mut [f64]) {
+        if self.size[0] != self.size[1] || b.size[0] != b.size[1] || self.size[0] != b.size[0] {
+            panic!("lapack_zhegv: A/B dimensions mismatch: A={:?}, B={:?}", self.size, b.size);
+        }
+        let n = self.size[0] as i32;
+        let lda = self.size[0] as i32;
+        let ldb = b.size[0] as i32;
+
+        // workspace query: LWORK=-1
+        let mut work_query = vec![Complex::new(0.0, 0.0); 1];
+        let mut rwork_query = vec![0.0f64; 1];
+        let lwork_q: i32 = -1;
+        let mut info: i32 = 0;
+        unsafe {
+            zhegv_(
+                &itype as *const i32,
+                &(jobz as i8) as *const c_char,
+                &(uplo as i8) as *const c_char,
+                &n as *const i32,
+                self.data.as_mut_ptr(),
+                &lda as *const i32,
+                b.data.as_mut_ptr(),
+                &ldb as *const i32,
+                w.as_mut_ptr(),
+                work_query.as_mut_ptr(),
+                &lwork_q as *const i32,
+                rwork_query.as_mut_ptr(),
+                &mut info as *mut i32,
+            );
+        }
+        if info != 0 { panic!("ZHEGV workspace query failed, info={}", info); }
+        let lwork = (work_query[0].re as i32).max(1);
+        let lrwork = ((3 * n - 2).max(1)) as usize;
+        let mut work = vec![Complex::new(0.0, 0.0); lwork as usize];
+        let mut rwork = vec![0.0f64; lrwork];
+        info = 0;
+        unsafe {
+            zhegv_(
+                &itype as *const i32,
+                &(jobz as i8) as *const c_char,
+                &(uplo as i8) as *const c_char,
+                &n as *const i32,
+                self.data.as_mut_ptr(),
+                &lda as *const i32,
+                b.data.as_mut_ptr(),
+                &ldb as *const i32,
+                w.as_mut_ptr(),
+                work.as_mut_ptr(),
+                &lwork as *const i32,
+                rwork.as_mut_ptr(),
+                &mut info as *mut i32,
+            );
+        }
+        if info != 0 { panic!("ZHEGV failed, info={}", info); }
+    }
 }
 
-#[link(name="lapack")]
+#[link(name="openblas")]
 extern "C" {
     fn zgemm_(
         transa: *const c_char,
@@ -318,7 +481,7 @@ extern "C" {
     );
 }
 
-#[link(name="lapack")]
+#[link(name="openblas")]
 extern "C" {
     fn zgeev_(
         jobvl: *const c_char,
@@ -338,7 +501,7 @@ extern "C" {
         );
 }
 
-#[link(name="lapack")]
+#[link(name="openblas")]
 extern "C" {
     fn zggev_(
         jobvl: *const c_char,
@@ -361,7 +524,7 @@ extern "C" {
         );
 }
 
-#[link(name="lapack")]
+#[link(name="openblas")]
 extern "C" {
     fn zpotrf_(
         uplo: *const c_char,
@@ -371,7 +534,7 @@ extern "C" {
         info: *mut i32);
 }
 
-#[link(name="lapack")]
+#[link(name="openblas")]
 extern "C" {
     fn ztrtrs_(
         uplo: *const c_char,
@@ -386,7 +549,7 @@ extern "C" {
         info: *mut i32);
 }
 
-#[link(name="lapack")]
+#[link(name="openblas")]
 extern "C" {
     fn zgetrf_(
         m: *const i32,
@@ -398,7 +561,7 @@ extern "C" {
         );
 }
 
-#[link(name="lapack")]
+#[link(name="openblas")]
 extern "C" {
     fn zgetri_(
         n: *const i32,
@@ -409,6 +572,60 @@ extern "C" {
         lwork: *const i32,
         info: *mut i32,
         );
+}
+
+#[link(name="openblas")]
+extern "C" {
+    fn zheev_(
+        jobz: *const c_char,
+        uplo: *const c_char,
+        n: *const i32,
+        a: *mut Complex<f64>,
+        lda: *const i32,
+        w: *mut f64,
+        work: *mut Complex<f64>,
+        lwork: *const i32,
+        rwork: *mut f64,
+        info: *mut i32,
+    );
+}
+
+#[link(name="openblas")]
+extern "C" {
+    fn zheevd_(
+        jobz: *const c_char,
+        uplo: *const c_char,
+        n: *const i32,
+        a: *mut Complex<f64>,
+        lda: *const i32,
+        w: *mut f64,
+        work: *mut Complex<f64>,
+        lwork: *const i32,
+        rwork: *mut f64,
+        lrwork: *const i32,
+        iwork: *mut i32,
+        liwork: *const i32,
+        info: *mut i32,
+    );
+}
+
+#[link(name="openblas")]
+extern "C" {
+    fn zhegv_(
+        itype: *const i32,
+        jobz: *const c_char,
+        uplo: *const c_char,
+        n: *const i32,
+        a: *mut Complex<f64>,
+        lda: *const i32,
+        b: *mut Complex<f64>,
+        ldb: *const i32,
+        w: *mut f64,
+        work: *mut Complex<f64>,
+        lwork: *const i32,
+        rwork: *mut f64,
+        info: *mut i32,
+    );
 }
 
 #[test]
@@ -487,4 +704,60 @@ fn test_complexmatrixfull() {
     let mut ipiv = target.lapack_zgetrf();
     target.lapack_zgetri(&ipiv);
     println!("inv = {:?}",target);
+}
+
+#[test]
+fn test_zheev_zhegv() {
+    // Build a 3x3 Hermitian matrix:
+    // H = [[  2,    1+i,    0  ],
+    //      [1-i,     3,   2+2i ],
+    //      [  0,  2-2i,    4  ]]
+    let re = MatrixFull::from_vec([3,3], vec![
+        2.0, 1.0, 0.0,
+        1.0, 3.0, 2.0,
+        0.0, 2.0, 4.0,
+    ]).unwrap();
+    let im = MatrixFull::from_vec([3,3], vec![
+        0.0,  1.0,  0.0,
+       -1.0,  0.0,  2.0,
+        0.0, -2.0,  0.0,
+    ]).unwrap();
+    let mut h = MatrixFull::from_matrixfull(&re, &im).unwrap();
+    let h_copy = h.clone();
+
+    // Test zheev
+    let mut w = vec![0.0; 3];
+    h.lapack_zheev('V', 'U', &mut w);
+    println!("zheev eigenvalues: {:?}", w);
+
+    // Verify: H * V = V * diag(λ)
+    let mut hv = MatrixFull::new([3, 3], Complex::new(0.0, 0.0));
+    hv.lapack_zgemm(&h_copy, &h, 'N', 'N',
+        Complex::new(1.0, 0.0), Complex::new(0.0, 0.0));
+    for j in 0..3 {
+        let lambda = Complex::new(w[j], 0.0);
+        for i in 0..3 {
+            let diff = (hv[(i, j)] - h[(i, j)] * lambda).norm();
+            assert!(diff < 1e-10, "Eigenpair check failed at ({}, {}): diff = {}", i, j, diff);
+        }
+    }
+    println!("zheev: all eigenpair checks passed");
+
+    // Test zhegv: A*x = λ*B*x with B = I, should give same eigenvalues as zheev
+    let mut a = h_copy.clone();
+    let mut b = MatrixFull::from_vec([3, 3], vec![
+        Complex::new(1.0, 0.0), Complex::new(0.0, 0.0), Complex::new(0.0, 0.0),
+        Complex::new(0.0, 0.0), Complex::new(1.0, 0.0), Complex::new(0.0, 0.0),
+        Complex::new(0.0, 0.0), Complex::new(0.0, 0.0), Complex::new(1.0, 0.0),
+    ]).unwrap();
+    let mut w2 = vec![0.0; 3];
+    a.lapack_zhegv(1, 'V', 'U', &mut b, &mut w2);
+    println!("zhegv eigenvalues: {:?}", w2);
+
+    // Compare with zheev results
+    for i in 0..3 {
+        assert!((w[i] - w2[i]).abs() < 1e-10,
+            "zhegv vs zheev eigenvalue mismatch at {}: {} vs {}", i, w[i], w2[i]);
+    }
+    println!("zhegv: all checks passed");
 }
