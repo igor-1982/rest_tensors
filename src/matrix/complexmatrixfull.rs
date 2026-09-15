@@ -458,7 +458,9 @@ impl MatrixFull<Complex<f64>> {
                 &mut info as *mut i32,
             );
         }
-        if info != 0 { panic!("ZHEGV failed, info={}", info); }
+        if info != 0 {
+            println!("Warning: ZHEGV returns INFO: {:?}",info);
+        }
     }
 }
 
