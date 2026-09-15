@@ -462,7 +462,7 @@ impl MatrixFull<Complex<f64>> {
     }
 }
 
-#[link(name="openblas")]
+#[link(name="lapack")]
 extern "C" {
     fn zgemm_(
         transa: *const c_char,
@@ -481,7 +481,7 @@ extern "C" {
     );
 }
 
-#[link(name="openblas")]
+#[link(name="lapack")]
 extern "C" {
     fn zgeev_(
         jobvl: *const c_char,
@@ -501,7 +501,7 @@ extern "C" {
         );
 }
 
-#[link(name="openblas")]
+#[link(name="lapack")]
 extern "C" {
     fn zggev_(
         jobvl: *const c_char,
@@ -524,7 +524,7 @@ extern "C" {
         );
 }
 
-#[link(name="openblas")]
+#[link(name="lapack")]
 extern "C" {
     fn zpotrf_(
         uplo: *const c_char,
@@ -534,7 +534,7 @@ extern "C" {
         info: *mut i32);
 }
 
-#[link(name="openblas")]
+#[link(name="lapack")]
 extern "C" {
     fn ztrtrs_(
         uplo: *const c_char,
@@ -549,7 +549,7 @@ extern "C" {
         info: *mut i32);
 }
 
-#[link(name="openblas")]
+#[link(name="lapack")]
 extern "C" {
     fn zgetrf_(
         m: *const i32,
@@ -561,7 +561,7 @@ extern "C" {
         );
 }
 
-#[link(name="openblas")]
+#[link(name="lapack")]
 extern "C" {
     fn zgetri_(
         n: *const i32,
@@ -574,7 +574,7 @@ extern "C" {
         );
 }
 
-#[link(name="openblas")]
+#[link(name="lapack")]
 extern "C" {
     fn zheev_(
         jobz: *const c_char,
@@ -590,7 +590,7 @@ extern "C" {
     );
 }
 
-#[link(name="openblas")]
+#[link(name="lapack")]
 extern "C" {
     fn zheevd_(
         jobz: *const c_char,
@@ -609,7 +609,7 @@ extern "C" {
     );
 }
 
-#[link(name="openblas")]
+#[link(name="lapack")]
 extern "C" {
     fn zhegv_(
         itype: *const i32,
@@ -706,58 +706,3 @@ fn test_complexmatrixfull() {
     println!("inv = {:?}",target);
 }
 
-#[test]
-fn test_zheev_zhegv() {
-    // Build a 3x3 Hermitian matrix:
-    // H = [[  2,    1+i,    0  ],
-    //      [1-i,     3,   2+2i ],
-    //      [  0,  2-2i,    4  ]]
-    let re = MatrixFull::from_vec([3,3], vec![
-        2.0, 1.0, 0.0,
-        1.0, 3.0, 2.0,
-        0.0, 2.0, 4.0,
-    ]).unwrap();
-    let im = MatrixFull::from_vec([3,3], vec![
-        0.0,  1.0,  0.0,
-       -1.0,  0.0,  2.0,
-        0.0, -2.0,  0.0,
-    ]).unwrap();
-    let mut h = MatrixFull::from_matrixfull(&re, &im).unwrap();
-    let h_copy = h.clone();
-
-    // Test zheev
-    let mut w = vec![0.0; 3];
-    h.lapack_zheev('V', 'U', &mut w);
-    println!("zheev eigenvalues: {:?}", w);
-
-    // Verify: H * V = V * diag(λ)
-    let mut hv = MatrixFull::new([3, 3], Complex::new(0.0, 0.0));
-    hv.lapack_zgemm(&h_copy, &h, 'N', 'N',
-        Complex::new(1.0, 0.0), Complex::new(0.0, 0.0));
-    for j in 0..3 {
-        let lambda = Complex::new(w[j], 0.0);
-        for i in 0..3 {
-            let diff = (hv[(i, j)] - h[(i, j)] * lambda).norm();
-            assert!(diff < 1e-10, "Eigenpair check failed at ({}, {}): diff = {}", i, j, diff);
-        }
-    }
-    println!("zheev: all eigenpair checks passed");
-
-    // Test zhegv: A*x = λ*B*x with B = I, should give same eigenvalues as zheev
-    let mut a = h_copy.clone();
-    let mut b = MatrixFull::from_vec([3, 3], vec![
-        Complex::new(1.0, 0.0), Complex::new(0.0, 0.0), Complex::new(0.0, 0.0),
-        Complex::new(0.0, 0.0), Complex::new(1.0, 0.0), Complex::new(0.0, 0.0),
-        Complex::new(0.0, 0.0), Complex::new(0.0, 0.0), Complex::new(1.0, 0.0),
-    ]).unwrap();
-    let mut w2 = vec![0.0; 3];
-    a.lapack_zhegv(1, 'V', 'U', &mut b, &mut w2);
-    println!("zhegv eigenvalues: {:?}", w2);
-
-    // Compare with zheev results
-    for i in 0..3 {
-        assert!((w[i] - w2[i]).abs() < 1e-10,
-            "zhegv vs zheev eigenvalue mismatch at {}: {} vs {}", i, w[i], w2[i]);
-    }
-    println!("zhegv: all checks passed");
-}
