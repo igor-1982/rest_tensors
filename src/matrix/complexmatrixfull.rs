@@ -93,7 +93,7 @@ impl MatrixFull<Complex<f64>> {
         //
         // if jobvl/jobvr = 'N', vl/vr could be None as it's not referenced in LAPACK
         if self.size[0] != self.size[1] {
-            println!("Warning: ZGEEV computes N-by-N matrix, found {:?}",self.size);
+            panic!("Error in ZGEEV: expects a square (N-by-N) matrix, found {:?}", self.size);
         }
         let n = self.size[0];
         let mut info = 0;
@@ -126,7 +126,9 @@ impl MatrixFull<Complex<f64>> {
                 )
         }
         if info != 0 {
-            println!("Warning: ZGEEV returns INFO: {:?}",info);
+            panic!("Error in ZGEEV: info = {} ({})", info,
+                if info < 0 { "an argument had an illegal value" }
+                else { "algorithm failed to converge or factorization failed" });
         }
     }
 
@@ -182,7 +184,9 @@ impl MatrixFull<Complex<f64>> {
                 )
         }
         if info != 0 {
-            println!("Warning: ZGGEV returns INFO: {:?}",info);
+            panic!("Error in ZGGEV: info = {} ({})", info,
+                if info < 0 { "an argument had an illegal value" }
+                else { "algorithm failed to converge or factorization failed" });
         }
     }
 
@@ -193,7 +197,7 @@ impl MatrixFull<Complex<f64>> {
         //
         // where A is a triangular matrix of order N, and B is an N-by-NRHS matrix.
         if self.size[0] != self.size[1] {
-            println!("Warning: ZTRTRS should apply for N-by-N matrix, found {:?}",self.size);
+            panic!("Error in ZTRTRS: expects a square (N-by-N) matrix, found {:?}", self.size);
         }
         let n = self.size[1];
         let nrhs = b.size[1];
@@ -214,7 +218,9 @@ impl MatrixFull<Complex<f64>> {
             )
         }
         if info != 0 {
-            println!("Warning: ZTRTRS returns INFO: {:?}",info);
+            panic!("Error in ZTRTRS: info = {} ({})", info,
+                if info < 0 { "an argument had an illegal value" }
+                else { "algorithm failed to converge or factorization failed" });
         }
     }
     
@@ -242,7 +248,9 @@ impl MatrixFull<Complex<f64>> {
                 )
         }
         if info != 0 {
-            println!("Warning: ZPOTRF returns INFO: {:?}",info);
+            panic!("Error in ZPOTRF: info = {} ({})", info,
+                if info < 0 { "an argument had an illegal value" }
+                else { "algorithm failed to converge or factorization failed" });
         }
     }
 
@@ -269,7 +277,9 @@ impl MatrixFull<Complex<f64>> {
                 );
         }
         if info != 0 {
-            println!("Warning: ZGETRF returns INFO: {:?}",info);
+            panic!("Error in ZGETRF: info = {} ({})", info,
+                if info < 0 { "an argument had an illegal value" }
+                else { "algorithm failed to converge or factorization failed" });
         }
         ipiv
     }
@@ -294,7 +304,180 @@ impl MatrixFull<Complex<f64>> {
                 );
         }
         if info != 0 {
-            println!("Warning: ZGETRI returns INFO: {:?}",info);
+            panic!("Error in ZGETRI: info = {} ({})", info,
+                if info < 0 { "an argument had an illegal value" }
+                else { "algorithm failed to converge or factorization failed" });
+        }
+    }
+
+    pub fn lapack_zheev(&mut self, jobz: char, uplo: char, w: &mut [f64]) {
+        if self.size[0] != self.size[1] {
+            panic!("Error in ZHEEV: expects a square (N-by-N) matrix, found {:?}", self.size);
+        }
+        let n = self.size[0];
+        let lda = n.max(1);
+        // Workspace query: call with LWORK=-1 to get optimal LWORK
+        let mut wkopt = Complex::new(0.0, 0.0);
+        let lwork_query: i32 = -1;
+        let mut rwork = vec![0.0;(3 * n).max(1)];
+        let mut info: i32 = 0;
+        unsafe {
+            zheev_(
+                &(jobz as i8) as *const c_char,
+                &(uplo as i8) as *const c_char,
+                &(n as i32) as *const i32,
+                self.data.as_mut_ptr(),
+                &(lda as i32) as *const i32,
+                w.as_mut_ptr(),
+                &mut wkopt as *mut Complex<f64>,
+                &lwork_query as *const i32,
+                rwork.as_mut_ptr(),
+                &mut info as *mut i32,
+                );
+        }
+        let lwork = (wkopt.re as i32).max((2 * n as i32) - 1).max(1);
+        let mut work = vec![Complex::new(0.0,0.0); lwork as usize];
+        info = 0;
+        unsafe {
+            zheev_(
+                &(jobz as i8) as *const c_char,
+                &(uplo as i8) as *const c_char,
+                &(n as i32) as *const i32,
+                self.data.as_mut_ptr(),
+                &(lda as i32) as *const i32,
+                w.as_mut_ptr(),
+                work.as_mut_ptr(),
+                &(lwork as i32) as *const i32,
+                rwork.as_mut_ptr(),
+                &mut info as *mut i32,
+                );
+        }
+        if info != 0 {
+            panic!("Error in ZHEEV: info = {} ({})", info,
+                if info < 0 { "an argument had an illegal value" }
+                else { "algorithm failed to converge or factorization failed" });
+        }
+    }
+
+    pub fn lapack_zheevd(&mut self, jobz: char, uplo: char, w: &mut [f64]) {
+        if self.size[0] != self.size[1] {
+            panic!("Error in ZHEEVD: expects a square (N-by-N) matrix, found {:?}", self.size);
+        }
+        let n = self.size[0];
+        let lda = n.max(1);
+        // Workspace query: LWORK=-1, LRWORK=-1, LIWORK=-1
+        let mut wkopt = Complex::new(0.0, 0.0);
+        let mut rwopt = 0.0f64;
+        let mut iwopt: i32 = 0;
+        let lwork_query: i32 = -1;
+        let lrwork_query: i32 = -1;
+        let liwork_query: i32 = -1;
+        let mut info: i32 = 0;
+        unsafe {
+            zheevd_(
+                &(jobz as i8) as *const c_char,
+                &(uplo as i8) as *const c_char,
+                &(n as i32) as *const i32,
+                self.data.as_mut_ptr(),
+                &(lda as i32) as *const i32,
+                w.as_mut_ptr(),
+                &mut wkopt as *mut Complex<f64>,
+                &lwork_query as *const i32,
+                &mut rwopt as *mut f64,
+                &lrwork_query as *const i32,
+                &mut iwopt as *mut i32,
+                &liwork_query as *const i32,
+                &mut info as *mut i32,
+            );
+        }
+        let lwork = (wkopt.re as i32).max(1);
+        let lrwork = (rwopt as i32).max(1);
+        let liwork = (iwopt as i32).max(1);
+        let mut work = vec![Complex::new(0.0,0.0); lwork as usize];
+        let mut rwork = vec![0.0; lrwork as usize];
+        let mut iwork = vec![0i32; liwork as usize];
+        info = 0;
+        unsafe {
+            zheevd_(
+                &(jobz as i8) as *const c_char,
+                &(uplo as i8) as *const c_char,
+                &(n as i32) as *const i32,
+                self.data.as_mut_ptr(),
+                &(lda as i32) as *const i32,
+                w.as_mut_ptr(),
+                work.as_mut_ptr(),
+                &(lwork as i32) as *const i32,
+                rwork.as_mut_ptr(),
+                &(lrwork as i32) as *const i32,
+                iwork.as_mut_ptr(),
+                &(liwork as i32) as *const i32,
+                &mut info as *mut i32,
+            );
+        }
+        if info != 0 {
+            panic!("Error in ZHEEVD: info = {} ({})", info,
+                if info < 0 { "an argument had an illegal value" }
+                else { "algorithm failed to converge or factorization failed" });
+        }
+    }
+
+    pub fn lapack_zhegv(&mut self, itype: i32, jobz: char, uplo: char, b: &mut MatrixFull<Complex<f64>>, w: &mut [f64]) {
+        if self.size[0] != self.size[1] || b.size[0] != b.size[1] || self.size[0] != b.size[0] {
+            panic!("lapack_zhegv: A/B dimensions mismatch: A={:?}, B={:?}", self.size, b.size);
+        }
+        let n = self.size[0] as i32;
+        let lda = self.size[0] as i32;
+        let ldb = b.size[0] as i32;
+
+        // workspace query: LWORK=-1
+        let mut work_query = vec![Complex::new(0.0, 0.0); 1];
+        let mut rwork_query = vec![0.0f64; 1];
+        let lwork_q: i32 = -1;
+        let mut info: i32 = 0;
+        unsafe {
+            zhegv_(
+                &itype as *const i32,
+                &(jobz as i8) as *const c_char,
+                &(uplo as i8) as *const c_char,
+                &n as *const i32,
+                self.data.as_mut_ptr(),
+                &lda as *const i32,
+                b.data.as_mut_ptr(),
+                &ldb as *const i32,
+                w.as_mut_ptr(),
+                work_query.as_mut_ptr(),
+                &lwork_q as *const i32,
+                rwork_query.as_mut_ptr(),
+                &mut info as *mut i32,
+            );
+        }
+        if info != 0 { panic!("ZHEGV workspace query failed, info={}", info); }
+        let lwork = (work_query[0].re as i32).max(1);
+        let lrwork = ((3 * n - 2).max(1)) as usize;
+        let mut work = vec![Complex::new(0.0, 0.0); lwork as usize];
+        let mut rwork = vec![0.0f64; lrwork];
+        info = 0;
+        unsafe {
+            zhegv_(
+                &itype as *const i32,
+                &(jobz as i8) as *const c_char,
+                &(uplo as i8) as *const c_char,
+                &n as *const i32,
+                self.data.as_mut_ptr(),
+                &lda as *const i32,
+                b.data.as_mut_ptr(),
+                &ldb as *const i32,
+                w.as_mut_ptr(),
+                work.as_mut_ptr(),
+                &lwork as *const i32,
+                rwork.as_mut_ptr(),
+                &mut info as *mut i32,
+            );
+        }
+        if info != 0 {
+            panic!("Error in ZHEGV: info = {} ({})", info,
+                if info < 0 { "an argument had an illegal value" }
+                else { "algorithm failed to converge or factorization failed" });
         }
     }
 }
@@ -411,6 +594,60 @@ extern "C" {
         );
 }
 
+#[link(name="lapack")]
+extern "C" {
+    fn zheev_(
+        jobz: *const c_char,
+        uplo: *const c_char,
+        n: *const i32,
+        a: *mut Complex<f64>,
+        lda: *const i32,
+        w: *mut f64,
+        work: *mut Complex<f64>,
+        lwork: *const i32,
+        rwork: *mut f64,
+        info: *mut i32,
+    );
+}
+
+#[link(name="lapack")]
+extern "C" {
+    fn zheevd_(
+        jobz: *const c_char,
+        uplo: *const c_char,
+        n: *const i32,
+        a: *mut Complex<f64>,
+        lda: *const i32,
+        w: *mut f64,
+        work: *mut Complex<f64>,
+        lwork: *const i32,
+        rwork: *mut f64,
+        lrwork: *const i32,
+        iwork: *mut i32,
+        liwork: *const i32,
+        info: *mut i32,
+    );
+}
+
+#[link(name="lapack")]
+extern "C" {
+    fn zhegv_(
+        itype: *const i32,
+        jobz: *const c_char,
+        uplo: *const c_char,
+        n: *const i32,
+        a: *mut Complex<f64>,
+        lda: *const i32,
+        b: *mut Complex<f64>,
+        ldb: *const i32,
+        w: *mut f64,
+        work: *mut Complex<f64>,
+        lwork: *const i32,
+        rwork: *mut f64,
+        info: *mut i32,
+    );
+}
+
 #[test]
 fn test_complexmatrixfull() {
     let a_re = MatrixFull::from_vec([2,3],vec![1.0,2.0,3.0,4.0,5.0,6.0]).unwrap();
@@ -488,3 +725,4 @@ fn test_complexmatrixfull() {
     target.lapack_zgetri(&ipiv);
     println!("inv = {:?}",target);
 }
+
