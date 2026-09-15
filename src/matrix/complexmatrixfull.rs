@@ -93,7 +93,7 @@ impl MatrixFull<Complex<f64>> {
         //
         // if jobvl/jobvr = 'N', vl/vr could be None as it's not referenced in LAPACK
         if self.size[0] != self.size[1] {
-            println!("Warning: ZGEEV computes N-by-N matrix, found {:?}",self.size);
+            panic!("Error in ZGEEV: expects a square (N-by-N) matrix, found {:?}", self.size);
         }
         let n = self.size[0];
         let mut info = 0;
@@ -126,7 +126,9 @@ impl MatrixFull<Complex<f64>> {
                 )
         }
         if info != 0 {
-            println!("Warning: ZGEEV returns INFO: {:?}",info);
+            panic!("Error in ZGEEV: info = {} ({})", info,
+                if info < 0 { "an argument had an illegal value" }
+                else { "algorithm failed to converge or factorization failed" });
         }
     }
 
@@ -182,7 +184,9 @@ impl MatrixFull<Complex<f64>> {
                 )
         }
         if info != 0 {
-            println!("Warning: ZGGEV returns INFO: {:?}",info);
+            panic!("Error in ZGGEV: info = {} ({})", info,
+                if info < 0 { "an argument had an illegal value" }
+                else { "algorithm failed to converge or factorization failed" });
         }
     }
 
@@ -193,7 +197,7 @@ impl MatrixFull<Complex<f64>> {
         //
         // where A is a triangular matrix of order N, and B is an N-by-NRHS matrix.
         if self.size[0] != self.size[1] {
-            println!("Warning: ZTRTRS should apply for N-by-N matrix, found {:?}",self.size);
+            panic!("Error in ZTRTRS: expects a square (N-by-N) matrix, found {:?}", self.size);
         }
         let n = self.size[1];
         let nrhs = b.size[1];
@@ -214,7 +218,9 @@ impl MatrixFull<Complex<f64>> {
             )
         }
         if info != 0 {
-            println!("Warning: ZTRTRS returns INFO: {:?}",info);
+            panic!("Error in ZTRTRS: info = {} ({})", info,
+                if info < 0 { "an argument had an illegal value" }
+                else { "algorithm failed to converge or factorization failed" });
         }
     }
     
@@ -242,7 +248,9 @@ impl MatrixFull<Complex<f64>> {
                 )
         }
         if info != 0 {
-            println!("Warning: ZPOTRF returns INFO: {:?}",info);
+            panic!("Error in ZPOTRF: info = {} ({})", info,
+                if info < 0 { "an argument had an illegal value" }
+                else { "algorithm failed to converge or factorization failed" });
         }
     }
 
@@ -269,7 +277,9 @@ impl MatrixFull<Complex<f64>> {
                 );
         }
         if info != 0 {
-            println!("Warning: ZGETRF returns INFO: {:?}",info);
+            panic!("Error in ZGETRF: info = {} ({})", info,
+                if info < 0 { "an argument had an illegal value" }
+                else { "algorithm failed to converge or factorization failed" });
         }
         ipiv
     }
@@ -294,13 +304,15 @@ impl MatrixFull<Complex<f64>> {
                 );
         }
         if info != 0 {
-            println!("Warning: ZGETRI returns INFO: {:?}",info);
+            panic!("Error in ZGETRI: info = {} ({})", info,
+                if info < 0 { "an argument had an illegal value" }
+                else { "algorithm failed to converge or factorization failed" });
         }
     }
 
     pub fn lapack_zheev(&mut self, jobz: char, uplo: char, w: &mut [f64]) {
         if self.size[0] != self.size[1] {
-            println!("Warning: ZHEEV computes N-by-N matrix, found {:?}",self.size);
+            panic!("Error in ZHEEV: expects a square (N-by-N) matrix, found {:?}", self.size);
         }
         let n = self.size[0];
         let lda = n.max(1);
@@ -341,13 +353,15 @@ impl MatrixFull<Complex<f64>> {
                 );
         }
         if info != 0 {
-            println!("Warning: ZHEEV returns INFO: {:?}",info);
+            panic!("Error in ZHEEV: info = {} ({})", info,
+                if info < 0 { "an argument had an illegal value" }
+                else { "algorithm failed to converge or factorization failed" });
         }
     }
 
     pub fn lapack_zheevd(&mut self, jobz: char, uplo: char, w: &mut [f64]) {
         if self.size[0] != self.size[1] {
-            println!("Warning: ZHEEVD computes N-by-N matrix, found {:?}",self.size);
+            panic!("Error in ZHEEVD: expects a square (N-by-N) matrix, found {:?}", self.size);
         }
         let n = self.size[0];
         let lda = n.max(1);
@@ -401,7 +415,9 @@ impl MatrixFull<Complex<f64>> {
             );
         }
         if info != 0 {
-            println!("Warning: ZHEEVD returns INFO: {:?}",info);
+            panic!("Error in ZHEEVD: info = {} ({})", info,
+                if info < 0 { "an argument had an illegal value" }
+                else { "algorithm failed to converge or factorization failed" });
         }
     }
 
@@ -459,7 +475,9 @@ impl MatrixFull<Complex<f64>> {
             );
         }
         if info != 0 {
-            println!("Warning: ZHEGV returns INFO: {:?}",info);
+            panic!("Error in ZHEGV: info = {} ({})", info,
+                if info < 0 { "an argument had an illegal value" }
+                else { "algorithm failed to converge or factorization failed" });
         }
     }
 }
