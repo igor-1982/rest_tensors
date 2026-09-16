@@ -73,8 +73,11 @@ pub fn omp_set_num_threads_wrapper(n: usize) {
 pub fn omp_set_num_threads_global_wrapper(n: usize) {
     #[cfg(not(feature="intel-mkl"))]
     unsafe {
-        openblas_set_num_threads(n as ::std::os::raw::c_int);
         omp_set_num_threads(n as ::std::os::raw::c_int)
+        // Due to OpenBLAS v0.3.34 threading update, we will just call omp_set_num_threads.
+        // OpenBLAS v0.3.34 will behave use value set from `openblas_set_num_threads`
+        // globally for all threads, which causes deadlock or oversubscription when inside rayon.
+        // openblas_set_num_threads(n as ::std::os::raw::c_int);
     }
     #[cfg(feature="intel-mkl")]
     unsafe {
