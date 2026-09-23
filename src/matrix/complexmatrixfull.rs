@@ -67,8 +67,8 @@ impl MatrixFull<Complex<f64>> {
         let ldc = m.max(1);
         unsafe {
             zgemm_(
-            &(opa as i8) as *const c_char,
-            &(opb as i8) as *const c_char,
+            &(opa as c_char) as *const c_char,
+            &(opb as c_char) as *const c_char,
             &(m as i32) as *const i32,
             &(n as i32) as *const i32,
             &(k as i32) as *const i32,
@@ -109,8 +109,8 @@ impl MatrixFull<Complex<f64>> {
         };
         unsafe {
             zgeev_(
-                &(jobvl as i8) as *const c_char,
-                &(jobvr as i8) as *const c_char,
+                &(jobvl as c_char) as *const c_char,
+                &(jobvr as c_char) as *const c_char,
                 &(n as i32) as *const i32,
                 self.data.as_mut_ptr(),
                 &(n as i32) as *const i32,
@@ -164,8 +164,8 @@ impl MatrixFull<Complex<f64>> {
         };
         unsafe {
             zggev_(
-                &(jobvl as i8) as *const c_char,
-                &(jobvr as i8) as *const c_char,
+                &(jobvl as c_char) as *const c_char,
+                &(jobvr as c_char) as *const c_char,
                 &(n as i32) as *const i32,
                 self.data.as_mut_ptr(),
                 &(lda as i32) as *const i32,
@@ -205,9 +205,9 @@ impl MatrixFull<Complex<f64>> {
         let mut info = 0;
         unsafe {
             ztrtrs_(
-                &(uplo as i8) as *const c_char,
-                &(trans as i8) as *const c_char,
-                &(diag as i8) as *const c_char,
+                &(uplo as c_char) as *const c_char,
+                &(trans as c_char) as *const c_char,
+                &(diag as c_char) as *const c_char,
                 &(n as i32) as *const i32,
                 &(nrhs as i32) as *const i32,
                 self.data.as_mut_ptr(),
@@ -240,7 +240,7 @@ impl MatrixFull<Complex<f64>> {
         let mut info = 0;
         unsafe {
             zpotrf_(
-                &(uplo as i8) as *const c_char,
+                &(uplo as c_char) as *const c_char,
                 &(n as i32) as *const i32,
                 self.data.as_mut_ptr(),
                 &(lda as i32) as *const i32,
@@ -323,8 +323,8 @@ impl MatrixFull<Complex<f64>> {
         let mut info: i32 = 0;
         unsafe {
             zheev_(
-                &(jobz as i8) as *const c_char,
-                &(uplo as i8) as *const c_char,
+                &(jobz as c_char) as *const c_char,
+                &(uplo as c_char) as *const c_char,
                 &(n as i32) as *const i32,
                 self.data.as_mut_ptr(),
                 &(lda as i32) as *const i32,
@@ -340,8 +340,8 @@ impl MatrixFull<Complex<f64>> {
         info = 0;
         unsafe {
             zheev_(
-                &(jobz as i8) as *const c_char,
-                &(uplo as i8) as *const c_char,
+                &(jobz as c_char) as *const c_char,
+                &(uplo as c_char) as *const c_char,
                 &(n as i32) as *const i32,
                 self.data.as_mut_ptr(),
                 &(lda as i32) as *const i32,
@@ -375,8 +375,8 @@ impl MatrixFull<Complex<f64>> {
         let mut info: i32 = 0;
         unsafe {
             zheevd_(
-                &(jobz as i8) as *const c_char,
-                &(uplo as i8) as *const c_char,
+                &(jobz as c_char) as *const c_char,
+                &(uplo as c_char) as *const c_char,
                 &(n as i32) as *const i32,
                 self.data.as_mut_ptr(),
                 &(lda as i32) as *const i32,
@@ -399,8 +399,8 @@ impl MatrixFull<Complex<f64>> {
         info = 0;
         unsafe {
             zheevd_(
-                &(jobz as i8) as *const c_char,
-                &(uplo as i8) as *const c_char,
+                &(jobz as c_char) as *const c_char,
+                &(uplo as c_char) as *const c_char,
                 &(n as i32) as *const i32,
                 self.data.as_mut_ptr(),
                 &(lda as i32) as *const i32,
@@ -437,8 +437,8 @@ impl MatrixFull<Complex<f64>> {
         unsafe {
             zhegv_(
                 &itype as *const i32,
-                &(jobz as i8) as *const c_char,
-                &(uplo as i8) as *const c_char,
+                &(jobz as c_char) as *const c_char,
+                &(uplo as c_char) as *const c_char,
                 &n as *const i32,
                 self.data.as_mut_ptr(),
                 &lda as *const i32,
@@ -460,8 +460,8 @@ impl MatrixFull<Complex<f64>> {
         unsafe {
             zhegv_(
                 &itype as *const i32,
-                &(jobz as i8) as *const c_char,
-                &(uplo as i8) as *const c_char,
+                &(jobz as c_char) as *const c_char,
+                &(uplo as c_char) as *const c_char,
                 &n as *const i32,
                 self.data.as_mut_ptr(),
                 &lda as *const i32,
