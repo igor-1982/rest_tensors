@@ -34,6 +34,14 @@ use crate::matrix::distributedmatrixfull::*;
 #[cfg(feature = "scalapack")]
 use crate::matrix::matrix_scalapack::*;
 
+#[cfg(feature = "pexsi")]
+pub mod matrix_pexsi;
+#[cfg(feature = "pexsi")]
+use crate::matrix::matrix_pexsi::*;
+#[cfg(feature = "pexsi")]
+pub mod distsparsematrixfull;
+#[cfg(feature = "pexsi")]
+use crate::matrix::distsparsematrixfull::*;
 
 use crate::matrix::matrix_blas_lapack::*;
 use crate::matrix::matrixconst::*;
