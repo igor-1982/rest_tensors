@@ -167,18 +167,6 @@ fn build_pexsi() {
         .map(PathBuf::from)
         .expect("REST_EXT_DIR must be set when the `pexsi` feature is enabled");
 
-    // Header: prefer $PEXSI_DIR/include, fall back to the view's include/.
-    let header = match env::var("PEXSI_DIR") {
-        Ok(p) => PathBuf::from(p).join("include").join("c_pexsi_interface.h"),
-        Err(_) => view.join("include").join("c_pexsi_interface.h"),
-    };
-    if !header.is_file() {
-        panic!(
-            "PEXSI header not found at {:?}.  Set PEXSI_DIR or make sure \
-             $REST_EXT_DIR/include/c_pexsi_interface.h exists.",
-            header
-        );
-    }
 
     // ---- link search paths --------------------------------------------
     let mut dirs: Vec<PathBuf> = Vec::new();
@@ -227,31 +215,4 @@ fn build_pexsi() {
         println!("cargo:rustc-link-lib=dylib={}", l);
     }
 
-    // ---- bindgen -------------------------------------------------------
-    let mut b = bindgen::Builder::default()
-        .header(header.to_string_lossy())
-        .allowlist_function("PPEXSI.*")
-        .allowlist_type("PPEXSI.*")
-        .allowlist_var("PPEXSI.*")
-        .allowlist_type("MPI_.*")
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()));
-
-    for name in ["PEXSI_DIR", "SUPERLU_DIST_DIR", "PARMETIS_DIR", "MPI_DIR"] {
-        if let Ok(p) = env::var(name) {
-            let inc = PathBuf::from(p).join("include");
-            if inc.is_dir() {
-                b = b.clang_arg(format!("-I{}", inc.display()));
-            }
-        }
-    }
-    let view_inc = view.join("include");
-    if view_inc.is_dir() {
-        b = b.clang_arg(format!("-I{}", view_inc.display()));
-    }
-
-    let out = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR is always set by cargo"));
-    b.generate()
-        .expect("bindgen failed on c_pexsi_interface.h")
-        .write_to_file(out.join("pexsi_bindings.rs"))
-        .expect("failed to write pexsi_bindings.rs");
 }

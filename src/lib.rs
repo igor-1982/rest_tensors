@@ -82,9 +82,6 @@ pub use crate::matrix::submatrixfull::*;
 pub use crate::ri::*;
 pub use crate::davidson::*;
 
-#[cfg(feature = "pexsi")]
-pub mod pexsi;
-
 #[derive(Clone,Debug,PartialEq)]
 pub struct Tensors4D<T, D> {
     /// Coloum-major Tensors with the rank of 4 at most,

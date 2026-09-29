@@ -9,7 +9,6 @@ license = "MIT OR Apache-2.0"
 #build = "build.rs"
 [build-dependencies]
 dunce = "1.0.0"
-bindgen = "0.72"
 
 [lib]
 bench = true

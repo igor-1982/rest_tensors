@@ -1,3 +1,4 @@
 *.so
 .DS_Store
 **/.DS_Store
+logPEXSI*
