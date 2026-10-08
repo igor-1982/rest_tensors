@@ -50,6 +50,3 @@ mpi = ["dep:mpi"]
 scalapack = ["mpi"]
 pexsi     = ["mpi"]
 
-[[example]]
-name = "pexsi_smoke"
-required-features = ["pexsi"]
