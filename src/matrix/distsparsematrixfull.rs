@@ -604,6 +604,12 @@ fn pexsi_banded_workmatrix_multirank() {
 
     let n = 2048usize;
     let bandwidth = 16usize;  
+    // Constraint (1): nrows must be a multiple of the process grid size.
+    // 2048 = 2^11, so this test only runs at power-of-2 mpisize.
+    if !(n % npcol as usize == 0) {
+        println!("skipping: mpisize={npcol} does not divide {}", n);
+        return;
+    }
 
     let mut h_dense = MatrixFull::new([n, n], 0.0);
     let mut s_dense = MatrixFull::new([n, n], 0.0);
