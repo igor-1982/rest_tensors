@@ -131,6 +131,7 @@ use std::sync::Arc;
 use crate::matrix::{
     BasicMatrix, BasicMatrixOpt, MatFormat, MathMatrix, MatrixFull, ParMathMatrix,
 };
+use crate::matrix::matrix_blas_lapack::{_dgemm_full, _dinverse};
 use crate::matrix::matrixupper::*;
 use crate::matrix::matrix_pexsi::*;
 
@@ -305,6 +306,79 @@ impl SparsePattern {
                 nzval.push(mat.data[r + c * (c + 1) / 2]);
             }
         }
+    }
+}
+
+impl SparsePattern {
+    /// Maximum absolute difference between two dense reconstructions,
+    /// restricted to entries that lie inside this pattern.
+    ///
+    /// `a_pexsi_dense` is the dense reconstruction of the selected inverse
+    /// returned by SelInv; `a_ref_dense` is the exact inverse from LAPACK.
+    /// Off-pattern entries are ignored: SelInv does not compute them, so
+    /// comparing them would test the pattern, not the solver.
+    ///
+    /// Returns `(max_abs_diff, (i, j))`.
+    pub fn max_on_pattern_diff(
+        &self,
+        a_pexsi_dense: &MatrixFull<f64>,
+        a_ref_dense:   &MatrixFull<f64>,
+    ) -> (f64, (usize, usize)) {
+        let [n, m] = self.global_size;
+        assert_eq!(n, m, "pattern must be square");
+        assert_eq!(a_pexsi_dense.size(), [n, n]);
+        assert_eq!(a_ref_dense.size(),   [n, n]);
+
+        let mut worst   = 0.0_f64;
+        let mut worst_ij = (0usize, 0usize);
+
+        // global_colptr / global_rowind use PEXSI's 1-based convention.
+        for j in 0..n {
+            let col_lo = (self.global_colptr[j]     - 1) as usize;
+            let col_hi = (self.global_colptr[j + 1] - 1) as usize;
+            for k in col_lo..col_hi {
+                let i = (self.global_rowind[k] - 1) as usize;
+                let diff = (a_pexsi_dense[[i, j]] - a_ref_dense[[i, j]]).abs();
+                if diff > worst {
+                    worst = diff;
+                    worst_ij = (i, j);
+                }
+            }
+        }
+        (worst, worst_ij)
+    }
+
+    /// Maximum magnitude of the reference inverse outside this pattern.
+    /// A diagnostic for pattern adequacy: if this is much smaller than the
+    /// on-pattern magnitude, the pattern captures the physics and SelInv's
+    /// truncation error is negligible.
+    pub fn max_off_pattern_abs(
+        &self,
+        a_ref_dense: &MatrixFull<f64>,
+    ) -> f64 {
+        let [n, m] = self.global_size;
+        assert_eq!(n, m, "pattern must be square");
+        assert_eq!(a_ref_dense.size(), [n, n]);
+
+        let mut worst = 0.0_f64;
+
+        for j in 0..n {
+            let col_lo = (self.global_colptr[j]     - 1) as usize;
+            let col_hi = (self.global_colptr[j + 1] - 1) as usize;
+
+            // Collect row indices of this column's on-pattern entries.
+            // Linear scan is fine here: the test is one-shot, not hot.
+            for i in 0..n {
+                let on_pattern = self.global_rowind[col_lo..col_hi]
+                    .iter()
+                    .any(|&r| (r - 1) as usize == i);
+                if !on_pattern {
+                    let v = a_ref_dense[[i, j]].abs();
+                    if v > worst { worst = v; }
+                }
+            }
+        }
+        worst
     }
 }
 
@@ -594,90 +668,6 @@ fn pexsi_manual_selinv_2048_multirank() {
     }
 }
 
-#[test]
-#[cfg(all(feature = "pexsi", feature = "mpi"))]
-fn pexsi_banded_workmatrix_multirank() {
-    let universe = mpi::initialize().unwrap();
-    let world = universe.world();
-    let npcol = world.size() as i32;
-    let mycol = world.rank() as i32;
-
-    let n = 2048usize;
-    let bandwidth = 16usize;  
-    // Constraint (1): nrows must be a multiple of the process grid size.
-    // 2048 = 2^11, so this test only runs at power-of-2 mpisize.
-    if !(n % npcol as usize == 0) {
-        println!("skipping: mpisize={npcol} does not divide {}", n);
-        return;
-    }
-
-    let mut h_dense = MatrixFull::new([n, n], 0.0);
-    let mut s_dense = MatrixFull::new([n, n], 0.0);
-
-    for i in 0..n {
-        // On-site energies, spread over a realistic Fock-matrix range
-        h_dense[[i, i]] = (i as f64 - n as f64 / 2.0) * 0.5;
-        s_dense[[i, i]] = 1.0;
-
-        // Off-diagonal: Gaussian-like decay with distance
-        for d in 1..=bandwidth {
-            if i + d >= n { break; }
-            let decay = (-(d as f64).powi(2) / 50.0).exp();
-            let h_val = decay * 0.1;
-            let s_val = decay * 0.05;
-            h_dense[[i, i + d]] = h_val;
-            h_dense[[i + d, i]] = h_val;
-            s_dense[[i, i + d]] = s_val;
-            s_dense[[i + d, i]] = s_val;
-        }
-    }
-
-    let pattern = Arc::new(SparsePattern::from_matrixfull(&s_dense, 1e-12, npcol, mycol));
-    let mut h_nz = Vec::new();
-    pattern.fill_from_matrixfull(&h_dense, &mut h_nz);
-    let mut s_nz = Vec::new();
-    pattern.fill_from_matrixfull(&s_dense, &mut s_nz);
-    let h_sp = DistSparseMatrixFull { pattern: pattern.clone(), nzval: h_nz };
-    let s_sp = DistSparseMatrixFull { pattern: pattern.clone(), nzval: s_nz };
-
-    if mycol == 0 {
-        println!(
-            "npcol={} n={} bandwidth={} nnz_local_rank0={} nnz_global={}",
-            npcol, n, bandwidth, h_sp.nnz_local(), pattern.global_nnz
-        );
-    }
-
-    let mut opts = PPEXSIOptions::defaults();
-    opts.verbosity   = 1;
-    opts.symmetric   = 1;
-    opts.solver      = 0;      // SuperLU_DIST
-    opts.ordering    = 2;      
-    opts.method      = 2;
-    opts.nPoints     = 1;
-    opts.numPole     = 40;
-    opts.temperature = 1.0e-2;
-    opts.deltaE      = 600.0;  // > spectral radius (~512)
-    opts.gap         = 0.0;
-    opts.matrixType  = 0;
-    opts.npSymbFact  = 1;
-
-    let mut plan = PexsiPlan::new(world.as_raw(), 1, npcol, mycol)
-        .expect("PEXSIPlanInitialize");
-    pexsi_load_hs(&mut plan, &opts, &h_sp, &s_sp)
-        .expect("LoadRealHSMatrix");
-    pexsi_symbolic_factorize(&plan, &opts)
-        .expect("SymbolicFactorize");
-
-    let mut ainv_nz = vec![0.0_f64; h_sp.nnz_local()];
-    pexsi_selinv_real_symmetric(&plan, &opts, &h_sp, &mut ainv_nz)
-        .expect("SelInvRealSymmetric");
-
-    if mycol == 0 {
-        println!("npcol={} -> SelInv SUCCESS", npcol);
-    }
-}
-
-
 // ---------------------------------------------------------------------------
 // Test: FFI binding correctness (mirrors the standalone smoke test)
 //
@@ -782,4 +772,417 @@ mod ffi_smoke {
         assert!(worst < 1e-10, "SelInv mismatch, worst |err| = {worst:.3e}");
         println!("\npexsi FFI smoke test PASSED  (worst |err| = {worst:.3e})");
     }
+}
+
+#[test]
+#[cfg(all(feature = "pexsi", feature = "mpi"))]
+fn pexsi_oneshot_1crn_selinv() {
+    use std::fs::File;
+    use std::io::{BufRead, BufReader};
+    use std::sync::Arc;
+    use std::time::Instant;
+
+    let universe = mpi::initialize().unwrap();
+    let world = universe.world();
+    let rank = world.rank();
+    let npcol = world.size() as i32;
+    let mycol = rank;
+
+    // --------------------------------------------------------------
+    // 1. Load the two packed-upper dumps from REST.
+    // --------------------------------------------------------------
+    let (nbas_h, h_packed) = read_packed_upper("/root/REST/hcore.upper.txt").unwrap();
+    let (nbas_s, s_packed) = read_packed_upper("/root/REST/ovlp.upper.txt").unwrap();
+    assert_eq!(nbas_h, nbas_s);
+    let nbas = nbas_h;
+    if rank == 0 {
+        println!("nbas = {nbas}  ntri = {}", h_packed.len());
+    }
+
+    // --------------------------------------------------------------
+    // 2. Padding to a multiple of npcol (constraint 1).
+    //    H_pad = c*I with c above the H_core spectrum, S_pad = I.
+    // --------------------------------------------------------------
+    let n_pad = ((nbas + npcol as usize - 1) / npcol as usize) * npcol as usize;
+    if rank == 0 {
+        println!(
+            "n_pad = {n_pad}  (nbas % npcol = {}, nadd = {})",
+            nbas % npcol as usize,
+            n_pad - nbas,
+        );
+    }
+
+    // --------------------------------------------------------------
+    // 3. Expand packed upper triangle into a full symmetric MatrixFull.
+    //    (For a real SCF, H and S already live in MatrixUpper; this is
+    //    test-only convenience.)
+    // --------------------------------------------------------------
+    let mut h_full = MatrixFull::new([n_pad, n_pad], 0.0);
+    let mut s_full = MatrixFull::new([n_pad, n_pad], 0.0);
+    let mut idx = 0;
+    for j in 0..nbas {
+        for i in 0..=j {
+            let vh = h_packed[idx];
+            let vs = s_packed[idx];
+            h_full[[i, j]] = vh; h_full[[j, i]] = vh;
+            s_full[[i, j]] = vs; s_full[[j, i]] = vs;
+            idx += 1;
+        }
+    }
+
+    
+    // --------------------------------------------------------------
+    // 4. Diagonal shift so H is safely invertible. H_core itself may
+    //    have near-zero eigenvalues; a constant shift on the diagonal
+    //    does not change the pattern.
+    // --------------------------------------------------------------
+    
+    let shift = 0.5;
+    for i in 0..nbas {
+        h_full[[i, i]] += shift;
+    }
+    let h_max = (0..nbas).map(|i| h_full[[i, i]])
+        .fold(f64::NEG_INFINITY, f64::max);
+    let c_pad = h_max + 100.0;
+    for i in nbas..n_pad {
+        h_full[[i, i]] = c_pad;
+        s_full[[i, i]] = 1.0;
+    }
+
+    // --------------------------------------------------------------
+    // 5. Build the sparse pattern (union of H and S, which for 6-31G
+    //    is just H's pattern since S ⊆ H structurally).
+    // --------------------------------------------------------------
+    let eps = 1e-12;
+    let pattern = Arc::new(
+        SparsePattern::from_matrixfull(&s_full, eps, npcol, mycol),
+    );
+    let mut h_nz = Vec::new();
+    pattern.fill_from_matrixfull(&h_full, &mut h_nz);
+    let mut s_nz = Vec::new();
+    pattern.fill_from_matrixfull(&s_full, &mut s_nz);
+    let h_sp = DistSparseMatrixFull { pattern: pattern.clone(), nzval: h_nz.clone() };
+    let s_sp = DistSparseMatrixFull { pattern: pattern.clone(), nzval: s_nz };
+    if rank == 0 {
+        println!(
+            "nnz_global = {}  nnz_local(rank 0) = {}",
+            pattern.global_nnz,
+            pattern.nnz_local(),
+        );
+    }
+
+    // --------------------------------------------------------------
+    // 6. Options. Moussa method (method = 2) uses real-axis poles; the
+    //    real-symmetric SelInv is the matching primitive.
+    // --------------------------------------------------------------
+    let mut opts = PPEXSIOptions::defaults();
+    opts.verbosity    = 1;
+    opts.symmetric    = 0;
+    opts.solver       = 0;      // SuperLU_DIST
+    opts.ordering     = 2;      // MMD
+    opts.method       = 2;      // Moussa
+    //opts.nPoints      = 1;
+    opts.numPole      = 60;
+    opts.temperature  = 1.0e-3;
+    opts.deltaE       = 600.0;  // >> spectral radius of H_core
+    opts.gap          = 0.0;
+    opts.matrixType   = 0;
+    opts.npSymbFact   = 1;
+
+    // --------------------------------------------------------------
+    // 7. Plan, load, symbolic factorize.
+    // --------------------------------------------------------------
+    let t0 = Instant::now();
+    let mut plan = PexsiPlan::new(world.as_raw(), 1, npcol, mycol)
+        .expect("PPEXSIPlanInitialize");
+    pexsi_load_hs(&mut plan, &opts, &h_sp, &s_sp)
+        .expect("LoadRealHSMatrix");
+    pexsi_symbolic_factorize(&plan, &opts)
+        .expect("SymbolicFactorize");
+    if rank == 0 {
+        println!("Load + SymbolicFactorize: {:?}", t0.elapsed());
+    }
+
+    // --------------------------------------------------------------
+    // 8. SelInv of H_shifted on the pattern. This is the primitive
+    //    that the pole expansion will call once per pole.
+    // --------------------------------------------------------------
+    let mut ainv_nz = vec![0.0_f64; h_sp.nnz_local()];
+    let t1 = Instant::now();
+    pexsi_selinv_real_symmetric(&plan, &opts, &h_sp, &mut ainv_nz)
+        .expect("SelInvRealSymmetric");
+    if rank == 0 {
+        println!("SelInv: {:?}", t1.elapsed());
+    }
+
+    // --------------------------------------------------------------
+    // 9. Diagnostics. Local trace of A^{-1}, min/max diagonal, count
+    //    of non-finite entries. All computed from the pattern only,
+    //    so this is O(nnz_local) and no dense work is involved.
+    // --------------------------------------------------------------
+    let (start, end) = pattern.col_range;
+    let mut local_trace = 0.0_f64;
+    let mut local_min   = f64::INFINITY;
+    let mut local_max   = f64::NEG_INFINITY;
+    let mut local_nan   = 0usize;
+    for (local_j, j) in (start..end).enumerate() {
+        let lo = (pattern.local_colptr[local_j]     - 1) as usize;
+        let hi = (pattern.local_colptr[local_j + 1] - 1) as usize;
+        for k in lo..hi {
+            let i1 = pattern.local_rowind[k] as usize;
+            let i  = i1 - 1;
+            let v  = ainv_nz[k];
+            if !v.is_finite() { local_nan += 1; continue; }
+            if i == j {
+                local_trace += v;
+                local_min   = local_min.min(v);
+                local_max   = local_max.max(v);
+            }
+        }
+    }
+
+    use mpi::collective::SystemOperation;
+    let mut out_f = [0.0_f64; 1];
+    world.all_reduce_into(&[local_trace], &mut out_f, SystemOperation::sum());
+    let global_trace = out_f[0];
+    let mut out_u = [0usize; 1];
+    world.all_reduce_into(&[local_nan], &mut out_u, SystemOperation::sum());
+    let global_nan = out_u[0];
+
+    if rank == 0 {
+        println!("Tr(A^-1)          = {:.6e}", global_trace);
+        println!(
+            "diag(A^-1) rank 0 = [{:.6e}, {:.6e}]",
+            local_min, local_max,
+        );
+        println!("non-finite entries = {}", global_nan);
+    }
+
+    assert_eq!(global_nan, 0, "SelInv produced non-finite values");
+    assert!(global_trace.is_finite(), "Tr(A^-1) not finite");
+
+    if rank == 0 {
+        // Frobenius norms of A and A⁻¹ (on-pattern)
+        let mut norm_a = 0.0_f64;
+        let mut norm_inv = 0.0_f64;
+        for (local_j, j) in (start..end).enumerate() {
+            let lo = (pattern.local_colptr[local_j]     - 1) as usize;
+            let hi = (pattern.local_colptr[local_j + 1] - 1) as usize;
+            for k in lo..hi {
+                norm_a   += h_nz[k].powi(2);
+                norm_inv += ainv_nz[k].powi(2);
+            }
+        }
+        println!("‖A‖_F = {:.3e}  ‖A⁻¹‖_F = {:.3e}  cond ≈ {:.3e}",
+                 norm_a.sqrt(), norm_inv.sqrt(), (norm_a * norm_inv).sqrt());
+    }
+    
+    // ---- correctness check: (A * A^{-1})_{ij} = δ_ij on the pattern ----
+    // Gather both A (values on the pattern) and A^{-1}, then do the dense
+    // product on rank 0. For npcol > 1 this is the only place the test
+    // needs the full matrices, and it is a one-shot cost.
+    let inv_sp = DistSparseMatrixFull {
+        pattern: pattern.clone(),
+        nzval:   ainv_nz.clone(),
+    };
+    let a_gathered   = h_sp.gather_to_root(0, &world);
+    let inv_gathered = inv_sp.gather_to_root(0, &world);
+
+    if rank == 0 {
+        let a_dense   = reconstruct_from_gathered(&a_gathered,   &pattern);
+        let inv_dense = reconstruct_from_gathered(&inv_gathered, &pattern);
+
+        let ainv_exact = _dinverse(&a_dense)
+                .expect("LAPACK dgetrf/dgetri failed on the test matrix");
+
+        // 1. Accuracy of SelInv on the pattern, versus the exact inverse.
+        let (worst, worst_ij) =
+            pattern.max_on_pattern_diff(&inv_dense, &ainv_exact);
+    
+        println!(
+            "max |A^-1_PEXSI - A^-1_LAPACK| on pattern = {:.3e} at {:?}",
+            worst, worst_ij,
+        );
+    
+        // Tolerance rationale:
+        //   - SuperLU_DIST uses static pivoting, so the accuracy floor is a
+        //     few times the condition number times machine epsilon.
+        //   - For the 1CRN H_core, cond ~ 2.5e6, so eps_ref ~ 5e-10.
+        //   - 1e-8 gives a healthy margin while still failing loudly on any
+        //     genuine FFI or indexing bug.
+        assert!(
+            worst < 1.0e-8,
+            "SelInv on-pattern accuracy failed: {:.3e} at {:?}",
+            worst, worst_ij,
+        );
+
+        // 2. Pattern adequacy: how much of the exact inverse lies outside.
+        //    This is diagnostic, not a correctness condition. A large value
+        //    here means the pattern is too sparse for this particular matrix
+        //    (e.g. an ungapped H_core); it does not imply PEXSI is wrong.
+        let off = pattern.max_off_pattern_abs(&ainv_exact);
+        println!("max |A^-1_LAPACK| off pattern         = {:.3e}", off);
+    }
+    
+    drop(plan);
+}
+
+#[test]
+#[cfg(all(feature = "pexsi", feature = "mpi"))]
+fn pexsi_banded_workmatrix_multirank() {
+    let universe = mpi::initialize().unwrap();
+    let world = universe.world();
+    let npcol = world.size() as i32;
+    let mycol = world.rank() as i32;
+
+    let n = 2048usize;
+    let bandwidth = 32usize;  
+    // Constraint (1): nrows must be a multiple of the process grid size.
+    // 2048 = 2^11, so this test only runs at power-of-2 mpisize.
+    if !(n % npcol as usize == 0) {
+        println!("skipping: mpisize={npcol} does not divide {}", n);
+        return;
+    }
+
+    let mut h_dense = MatrixFull::new([n, n], 0.0);
+    let mut s_dense = MatrixFull::new([n, n], 0.0);
+
+    for i in 0..n {
+        // Shift by 0.5 so no diagonal entry is exactly zero (matrix nonsingular)
+        h_dense[[i, i]] = (i as f64 - n as f64 / 2.0 + 0.5) * 0.5;
+        s_dense[[i, i]] = 1.0;
+    
+        for d in 1..=bandwidth {
+            if i + d >= n { break; }
+            let decay = (-(d as f64).powi(2) / 50.0).exp();
+            let h_val = decay * 0.1;
+            let s_val = decay * 0.05;
+            h_dense[[i, i + d]] = h_val;
+            h_dense[[i + d, i]] = h_val;
+            s_dense[[i, i + d]] = s_val;
+            s_dense[[i + d, i]] = s_val;
+        }
+    }
+
+    let pattern = Arc::new(SparsePattern::from_matrixfull(&s_dense, 1e-12, npcol, mycol));
+    let mut h_nz = Vec::new();
+    pattern.fill_from_matrixfull(&h_dense, &mut h_nz);
+    let mut s_nz = Vec::new();
+    pattern.fill_from_matrixfull(&s_dense, &mut s_nz);
+    let h_sp = DistSparseMatrixFull { pattern: pattern.clone(), nzval: h_nz };
+    let s_sp = DistSparseMatrixFull { pattern: pattern.clone(), nzval: s_nz };
+
+    if mycol == 0 {
+        println!(
+            "npcol={} n={} bandwidth={} nnz_local_rank0={} nnz_global={}",
+            npcol, n, bandwidth, h_sp.nnz_local(), pattern.global_nnz
+        );
+    }
+
+    let mut opts = PPEXSIOptions::defaults();
+    opts.verbosity   = 1;
+    opts.symmetric   = 1;
+    opts.solver      = 0;      // SuperLU_DIST
+    opts.ordering    = 2;      
+    opts.method      = 2;
+    //opts.nPoints     = 1;
+    opts.numPole     = 60;
+    opts.temperature = 1.0e-2;
+    opts.deltaE      = 600.0;  // > spectral radius (~512)
+    opts.gap         = 0.0;
+    opts.matrixType  = 0;
+    opts.npSymbFact  = 1;
+
+    let mut plan = PexsiPlan::new(world.as_raw(), 1, npcol, mycol)
+        .expect("PEXSIPlanInitialize");
+    pexsi_load_hs(&mut plan, &opts, &h_sp, &s_sp)
+        .expect("LoadRealHSMatrix");
+    pexsi_symbolic_factorize(&plan, &opts)
+        .expect("SymbolicFactorize");
+
+    let mut ainv_nz = vec![0.0_f64; h_sp.nnz_local()];
+    pexsi_selinv_real_symmetric(&plan, &opts, &h_sp, &mut ainv_nz)
+        .expect("SelInvRealSymmetric");
+
+    if mycol == 0 {
+        println!("npcol={} -> SelInv SUCCESS", npcol);
+    }
+    
+    let inv_sp = DistSparseMatrixFull {
+        pattern: pattern.clone(),
+        nzval:   ainv_nz.clone(),
+    };
+    let a_gathered   = h_sp.gather_to_root(0, &world);
+    let inv_gathered = inv_sp.gather_to_root(0, &world);
+    
+    if mycol == 0 {
+        let a_dense   = reconstruct_from_gathered(&a_gathered,   &pattern);
+        let inv_dense = reconstruct_from_gathered(&inv_gathered, &pattern);
+        let mut dmin = f64::INFINITY;
+        let mut dmax = 0.0_f64;
+        for i in 0..n {
+            let d = inv_dense[[i, i]].abs();
+            if d < dmin { dmin = d; }
+            if d > dmax { dmax = d; }
+        }
+        println!("diag(A⁻¹): min={:.3e} max={:.3e}", dmin, dmax);
+        assert!(dmax < 1e6, "diag(A⁻¹) has magnitude {:.3e}, matrix likely singular", dmax);
+
+        // r = A * A^{-1}  (dense n x n)
+        let mut r = MatrixFull::new([n, n], 0.0);
+        _dgemm_full(&a_dense, 'N', &inv_dense, 'N', &mut r, 1.0, 0.0);
+
+        // For every (i, j) in the pattern, compare r[i, j] to δ_ij.
+        // Off-pattern entries of the true A^{-1} are unknown to SelInv,
+        // so we only check entries on the pattern.
+        let (start, end) = pattern.col_range;  // rank 0 owns all columns when npcol == 1
+        // Only check on-pattern entries (|i - j| <= bandwidth)
+        let mut worst = 0.0_f64;
+        let mut worst_ij = (0, 0);
+        for j in 0..n {
+            let i_lo = j.saturating_sub(bandwidth);
+            let i_hi = (j + bandwidth + 1).min(n);
+            for i in i_lo..i_hi {
+                let expected = if i == j { 1.0 } else { 0.0 };
+                let err = (r[[i, j]] - expected).abs();
+                if err > worst { worst = err; worst_ij = (i, j); }
+            }
+        }
+        println!("max |A·A⁻¹ - I| on pattern (band) = {:.3e} at {:?}", worst, worst_ij);
+        assert!(worst < 1.0e-6, "SelInv on-pattern residual too large: {:.3e}", worst);
+        
+    }
+    
+}
+
+
+/// Read REST's packed-upper-triangle dump.
+///
+/// Header: `# <name> nbas=<N> ntri=<M>`, then `M` values, one per line,
+/// column-major upper triangle: position `j*(j+1)/2 + i` holds `M[i, j]`.
+fn read_packed_upper(path: &str) -> anyhow::Result<(usize, Vec<f64>)> {
+    use std::sync::Arc;
+    use std::fs::File;
+    use std::io::{BufRead, BufReader, Write};
+    let f = File::open(path)?;
+    let mut r = BufReader::new(f);
+    let mut header = String::new();
+    r.read_line(&mut header)?;
+    let mut nbas = 0usize;
+    let mut ntri = 0usize;
+    for tok in header.split_whitespace() {
+        if let Some(v) = tok.strip_prefix("nbas=") { nbas = v.parse()?; }
+        else if let Some(v) = tok.strip_prefix("ntri=") { ntri = v.parse()?; }
+    }
+    anyhow::ensure!(nbas > 0 && ntri > 0, "bad header: {header:?}");
+    let mut data = Vec::with_capacity(ntri);
+    for line in r.lines() {
+        let line = line?;
+        let s = line.trim();
+        if s.is_empty() { continue; }
+        data.push(s.parse::<f64>()?);
+    }
+    anyhow::ensure!(data.len() == ntri,
+        "expected {} values, got {}", ntri, data.len());
+    Ok((nbas, data))
 }
