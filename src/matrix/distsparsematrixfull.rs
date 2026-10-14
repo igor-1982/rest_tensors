@@ -791,8 +791,8 @@ fn pexsi_oneshot_1crn_selinv() {
     // --------------------------------------------------------------
     // 1. Load the two packed-upper dumps from REST.
     // --------------------------------------------------------------
-    let (nbas_h, h_packed) = read_packed_upper("/root/REST/hcore.upper.txt").unwrap();
-    let (nbas_s, s_packed) = read_packed_upper("/root/REST/ovlp.upper.txt").unwrap();
+    let (nbas_h, h_packed) = read_packed_upper("/root/REST/fock_h2o_20.upper.txt").unwrap();
+    let (nbas_s, s_packed) = read_packed_upper("/root/REST/ovlp_h2o_20.upper.txt").unwrap();
     assert_eq!(nbas_h, nbas_s);
     let nbas = nbas_h;
     if rank == 0 {
@@ -1185,4 +1185,213 @@ fn read_packed_upper(path: &str) -> anyhow::Result<(usize, Vec<f64>)> {
     anyhow::ensure!(data.len() == ntri,
         "expected {} values, got {}", ntri, data.len());
     Ok((nbas, data))
+}
+
+
+#[test]
+#[cfg(all(feature = "pexsi", feature = "mpi"))]
+fn pexsi_solve_h20() {
+    use std::fs::File;
+    use std::io::{BufRead, BufReader};
+    use std::sync::Arc;
+    use std::time::Instant;
+
+    let universe = mpi::initialize().unwrap();
+    let world = universe.world();
+    let rank = world.rank();
+    let npcol = world.size() as i32;
+    let mycol = rank;
+
+    // --------------------------------------------------------------
+    // 1. Load the two packed-upper dumps from REST.
+    // --------------------------------------------------------------
+    let (nbas_h, h_packed) = read_packed_upper("/root/REST/fock_h2o_20.upper.txt").unwrap();
+    let (nbas_s, s_packed) = read_packed_upper("/root/REST/ovlp_h2o_20.upper.txt").unwrap();
+    assert_eq!(nbas_h, nbas_s);
+    let nbas = nbas_h;
+    if rank == 0 {
+        println!("nbas = {nbas}  ntri = {}", h_packed.len());
+    }
+
+    // --------------------------------------------------------------
+    // 2. Padding to a multiple of npcol (constraint 1).
+    //    H_pad = c*I with c above the H_core spectrum, S_pad = I.
+    // --------------------------------------------------------------
+    let n_pad = ((nbas + npcol as usize - 1) / npcol as usize) * npcol as usize;
+    if rank == 0 {
+        println!(
+            "n_pad = {n_pad}  (nbas % npcol = {}, nadd = {})",
+            nbas % npcol as usize,
+            n_pad - nbas,
+        );
+    }
+
+    // --------------------------------------------------------------
+    // 3. Expand packed upper triangle into a full symmetric MatrixFull.
+    //    (For a real SCF, H and S already live in MatrixUpper; this is
+    //    test-only convenience.)
+    // --------------------------------------------------------------
+    let mut h_full = MatrixFull::new([n_pad, n_pad], 0.0);
+    let mut s_full = MatrixFull::new([n_pad, n_pad], 0.0);
+    let mut idx = 0;
+    for j in 0..nbas {
+        for i in 0..=j {
+            let vh = h_packed[idx];
+            let vs = s_packed[idx];
+            h_full[[i, j]] = vh; h_full[[j, i]] = vh;
+            s_full[[i, j]] = vs; s_full[[j, i]] = vs;
+            idx += 1;
+        }
+    }
+    
+    let h_max = (0..nbas).map(|i| h_full[[i, i]])
+        .fold(f64::NEG_INFINITY, f64::max);
+    let c_pad = h_max + 100.0;
+    for i in nbas..n_pad {
+        h_full[[i, i]] = c_pad;
+        s_full[[i, i]] = 1.0;
+    }
+
+    // --------------------------------------------------------------
+    // 5. Build the sparse pattern (union of H and S, which for 6-31G
+    //    is just H's pattern since S ⊆ H structurally).
+    // --------------------------------------------------------------
+    let eps = 1e-12;
+    let pattern = Arc::new(
+        SparsePattern::from_matrixfull(&s_full, eps, npcol, mycol),
+    );
+    let mut h_nz = Vec::new();
+    pattern.fill_from_matrixfull(&h_full, &mut h_nz);
+    let mut s_nz = Vec::new();
+    pattern.fill_from_matrixfull(&s_full, &mut s_nz);
+    let h_sp = DistSparseMatrixFull { pattern: pattern.clone(), nzval: h_nz };
+    let s_sp = DistSparseMatrixFull { pattern: pattern.clone(), nzval: s_nz };
+    if rank == 0 {
+        println!(
+            "nnz_global = {}  nnz_local(rank 0) = {}",
+            pattern.global_nnz,
+            pattern.nnz_local(),
+        );
+    }
+
+    let mut opts = PPEXSIOptions::defaults();
+
+    opts.verbosity                  = 2;       // see PEXSI's own log
+    opts.symmetric                  = 1;
+    opts.solver                     = 0;       // SuperLU_DIST
+    opts.ordering                   = 2;       // MMD, avoids ParMETIS small-graph issues
+    opts.method                     = 2;       // Moussa (real-axis poles)
+    opts.nPoints                    = 1;       // MUST divide mpisize; 1 for the first test
+    opts.numPole                    = 60;      // gap/range ratio is small at T=1e-2
+    opts.temperature                = 1.0e-2;  // 0.27 eV, well below the 0.4 Ha gap
+    opts.deltaE                     = 25.0;    // > spectral radius (~22 Ha)
+    opts.gap                        = 0.0;     // let PEXSI estimate
+    opts.matrixType                 = 0;
+    opts.npSymbFact                 = 1;
+    opts.isSymbolicFactorize        = 1;       // we call SymbolicFactorize explicitly
+    
+    // DFTDriver2-specific
+    opts.isInertiaCount             = 1;       // needed for the first invocation
+    opts.maxPEXSIIter               = 20;      // generous; actual iterations should be 3-5
+    opts.muMin0                     = -1.0;    // below HOMO
+    opts.muMax0                     =  0.5;    // above LUMO
+    opts.mu0                        = -0.2;    // near expected μ
+    opts.muInertiaTolerance         = 1.0e-3;  // clamped to 4·temperature = 0.04
+    opts.muInertiaExpansion         = 1.0;
+    opts.muPEXSISafeGuard           = 1.0e-2;
+    opts.numElectronPEXSITolerance  = 1.0e-6;
+    
+    let mut plan = PexsiPlan::new(world.as_raw(), 1, npcol, mycol)
+        .expect("PEXSIPlanInitialize");
+    pexsi_load_hs(&mut plan, &opts, &h_sp, &s_sp)
+        .expect("LoadRealHSMatrix");
+    //pexsi_symbolic_factorize(&plan, &opts)
+    //    .expect("SymbolicFactorize");
+
+
+    // 4. Solve and retrieve.
+    let num_electrons = 200.0;
+    println!("opts.nPoints        = {}", opts.nPoints);
+    println!("opts.isInertiaCount = {}", opts.isInertiaCount);
+    println!("opts.muMin0         = {}", opts.muMin0);
+    println!("opts.muMax0         = {}", opts.muMax0);
+    println!("opts.mu0            = {}", opts.mu0);
+    println!("opts.deltaE         = {}", opts.deltaE);
+    println!("opts.temperature    = {}", opts.temperature);
+    let res = pexsi_dft_driver2(&plan, &mut opts, num_electrons).expect("DFTDriver2");
+    let mu = res.mu;
+    println!("mu = {mu:.6e}  (raw return from PEXSI)");
+    /* 
+    let mut dm_nz = vec![0.0_f64; h_sp.nnz_local()];
+    let _band_energy = pexsi_retrieve_dm(&plan, &mut dm_nz).expect("RetrieveRealDM");
+    
+    
+    
+    let mu      = res.mu;
+    let ne      = res.num_electrons;
+    
+    // 1. Electron count: Tr[DM · S] must equal numElectronExact
+    let tr_ds = trace_ds(&dm_nz, &s_sp.nzval, &pattern, &world);
+    println!("Tr[DM·S] = {:.8}, target N_e = {:.8}, err = {:.3e}",
+             tr_ds, num_electrons, (tr_ds - num_electrons).abs());
+    assert!((tr_ds - num_electrons).abs() < 1.0e-4,
+            "electron count off by {:.3e}", (tr_ds - num_electrons).abs());
+    
+    // 2. PEXSI's own report should agree
+    println!("DFTDriver2 reported N_e = {:.8}, mu = {:+.6e}", ne, mu);
+    assert!((ne - num_electrons).abs() < 1.0e-4,
+            "driver's own electron count off");
+    
+    // 3. mu must lie in a physically sensible range
+    //    For (H2O)20 RHF/cc-pVDZ: HOMO ~ -0.5, LUMO ~ -0.1
+    //    Newton convergence typically gives mu within [-0.5, -0.1]
+    assert!(mu > -1.0 && mu < 0.5,
+            "mu = {mu:.6e} outside physical bracket [-1.0, 0.5]");
+            */
+    
+}
+
+/// Compute `Tr[D · S]` where `D` and `S` share the same `SparsePattern`.
+///
+/// Both matrices are symmetric and stored on the same pattern, so
+///   `Tr[D·S] = Σ_{ij} D_ij · S_ji = Σ_{ij} D_ij · S_ij`
+/// and the local sum over pattern nonzeros is each rank's partial
+/// contribution. An MPI allreduce completes the trace.
+///
+/// Off-pattern entries of D and S are treated as zero (they are not
+/// stored). For PEXSI's density matrix, this is the convention that
+/// defines the truncated electron count.
+///
+/// `d_nzval` and `s_nzval` must both have length `pattern.nnz_local()`.
+/// `_pattern` is accepted only to document the shared-pattern invariant;
+/// it is not read.
+#[cfg(feature = "mpi")]
+pub fn trace_ds<T>(
+    d_nzval: &[f64],
+    s_nzval: &[T],
+    _pattern: &SparsePattern,
+    world: &SimpleCommunicator,
+) -> f64
+where
+    T: Copy + Into<f64> + Send,
+{
+    assert_eq!(
+        d_nzval.len(),
+        s_nzval.len(),
+        "trace_ds: D and S must share the same local pattern length \
+         (got {} vs {})",
+        d_nzval.len(),
+        s_nzval.len(),
+    );
+
+    let local_sum: f64 = d_nzval
+        .iter()
+        .zip(s_nzval.iter())
+        .map(|(d, s)| d * (*s).into())
+        .sum();
+
+    use mpi::collective::SystemOperation;
+    let mut out = [0.0_f64; 1];
+    world.all_reduce_into(&[local_sum], &mut out, SystemOperation::sum());
+    out[0]
 }
