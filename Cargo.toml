@@ -46,5 +46,12 @@ mpi = { version = "0.8", optional = true }
 default = ["mpi"]
 intel-mkl = []
 openblas = []
+# Selects the threading backend of the BLAS thread-count wrapper:
+# - off (default): OpenMP-built OpenBLAS -> `omp_set_num_threads` (per-thread ICV,
+#   the only correct semantics when called from rayon workers);
+# - on: pthread-built OpenBLAS -> `openblas_set_num_threads` (atomic global; the
+#   OpenMP API would be a no-op on a pthread build, and the OpenBLAS API is not
+#   thread-safe on an OpenMP build).
+openblas-pthread = []
 mpi = ["dep:mpi"]
 scalapack = ["mpi"]

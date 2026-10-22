@@ -24,6 +24,7 @@ extern "C" {
 #[cfg(feature="intel-mkl")]
 extern "C" {
     pub fn mkl_set_num_threads(n: *const c_int);
+    pub fn mkl_set_num_threads_local(n: c_int) -> c_int;
     pub fn mkl_get_max_threads() -> c_int;
 }
 
@@ -54,15 +55,26 @@ pub fn omp_get_num_threads_wrapper() -> usize {
 pub fn omp_set_num_threads_wrapper(n: usize) {
     #[cfg(not(feature="intel-mkl"))]
     unsafe {
-        omp_set_num_threads(n as ::std::os::raw::c_int)
-        // The following way is not thread-safe due to OpenBLAS calls `adjust_thread_buffers`
-        // openblas_set_num_threads(n as ::std::os::raw::c_int);
-        // goto_set_num_threads(n as ::std::os::raw::c_int);
+        // OpenMP-built OpenBLAS (default): `omp_set_num_threads` writes the calling
+        // thread's ICV only, which is exactly right inside rayon workers (n=1) and
+        // on the main thread (n=default). Do NOT use openblas_set_num_threads here:
+        // on an OpenMP build it is a process-global setting, and pinning it to 1
+        // from a rayon worker serializes every later BLAS call (measured: the RI-K
+        // build went 15s -> 321s per SCF iteration on ts2).
+        #[cfg(not(feature = "openblas-pthread"))]
+        omp_set_num_threads(n as ::std::os::raw::c_int);
+        // pthread-built OpenBLAS: the OpenMP API is a no-op, use the atomic global.
+        #[cfg(feature = "openblas-pthread")]
+        openblas_set_num_threads(n as ::std::os::raw::c_int);
     }
     #[cfg(feature="intel-mkl")]
     unsafe {
-        let tmp_n = n as i32;
-        mkl_set_num_threads(&tmp_n as *const c_int);
+        // mkl_set_num_threads() is a GLOBAL (process-wide) setting and takes a
+        // global lock; calling it from every rayon worker races with the restore
+        // calls and can force MKL to reconfigure its thread pool. The thread-local
+        // variant matches omp_set_num_threads() semantics: it overrides the thread
+        // count for the calling thread only. n=0 would clear the override.
+        mkl_set_num_threads_local(n as i32);
     }
 }
 
@@ -73,11 +85,10 @@ pub fn omp_set_num_threads_wrapper(n: usize) {
 pub fn omp_set_num_threads_global_wrapper(n: usize) {
     #[cfg(not(feature="intel-mkl"))]
     unsafe {
-        omp_set_num_threads(n as ::std::os::raw::c_int)
-        // Due to OpenBLAS v0.3.34 threading update, we will just call omp_set_num_threads.
-        // OpenBLAS v0.3.34 will behave use value set from `openblas_set_num_threads`
-        // globally for all threads, which causes deadlock or oversubscription when inside rayon.
-        // openblas_set_num_threads(n as ::std::os::raw::c_int);
+        #[cfg(not(feature = "openblas-pthread"))]
+        omp_set_num_threads(n as ::std::os::raw::c_int);
+        #[cfg(feature = "openblas-pthread")]
+        openblas_set_num_threads(n as ::std::os::raw::c_int);
     }
     #[cfg(feature="intel-mkl")]
     unsafe {
