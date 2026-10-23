@@ -136,10 +136,14 @@ unsafe extern "C" {
 pub struct PexsiPlan {
     raw: PPEXSIPlanRaw,
     // Backing storage for the current H/S load. PEXSI v2.0.0's
-        // LoadRealHSMatrix retains the colptr/rowind pointers until the
-        // plan is finalized, so they must outlive the call.
+    // LoadRealHSMatrix does NOT copy these arrays: on the root rank it
+    // wraps the caller's pointers as views (NumVec(..., owndata_ = false)).
+    // They must all stay alive until PPEXSIPlanFinalize, or the inertia
+    // counting / Fermi operator will read freed memory (SIGSEGV).
     _colptr: Vec<c_int>,
     _rowind: Vec<c_int>,
+    _hnzval: Vec<f64>,
+    _snzval: Vec<f64>,
 }
 
 impl PexsiPlan {
@@ -167,6 +171,8 @@ impl PexsiPlan {
             raw: raw, 
             _colptr: Vec::new(), 
             _rowind: Vec::new(), 
+            _hnzval: Vec::new(),
+            _snzval: Vec::new(),
         })
     }
 
@@ -224,16 +230,18 @@ where
         return Err("pexsi_load_hs: nnz exceeds c_int".into());
     }
 
-    // Refill the plan-owned buffers in place.
+    // Refill the plan-owned buffers in place. PEXSI v2.0.0 wraps these
+    // pointers (owndata_ = false) rather than copying, so the colptr,
+    // rowind AND the H/S values must all live on `plan` for the lifetime
+    // of the handle.
     plan._colptr.clear();
     plan._colptr.extend(h.pattern.local_colptr.iter().map(|&v| v as c_int));
     plan._rowind.clear();
     plan._rowind.extend(h.pattern.local_rowind.iter().map(|&v| v as c_int));
-    // H and S values are copied by PEXSI during this call, so local
-    // Vecs are fine here — but the colptr/rowind must remain valid
-    // for the lifetime of the plan, which is why they live on `plan`.
-    let mut hvals: Vec<f64> = h.nzval.iter().map(|&v| v.into()).collect();
-    let mut svals: Vec<f64> = s.nzval.iter().map(|&v| v.into()).collect();
+    plan._hnzval.clear();
+    plan._hnzval.extend(h.nzval.iter().map(|&v| v.into()));
+    plan._snzval.clear();
+    plan._snzval.extend(s.nzval.iter().map(|&v| v.into()));
 
     let mut info: c_int = 0;
     unsafe {
@@ -246,9 +254,9 @@ where
             ncol_local,
             plan._colptr.as_mut_ptr(),
             plan._rowind.as_mut_ptr(),
-            hvals.as_mut_ptr(),
+            plan._hnzval.as_mut_ptr(),
             0,                 // isSIdentity = 0: S is provided explicitly
-            svals.as_mut_ptr(),
+            plan._snzval.as_mut_ptr(),
             &mut info,
         );
     }
