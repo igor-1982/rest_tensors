@@ -1,5 +1,4 @@
 // rest_tensors/src/matrix/distsparsematrixfull.rs
-// //! # `distsparsematrixfull.rs` — Distributed sparse matrix for PEXSI
 //!
 //! Provides [`SparsePattern`] (immutable CSC structure + 1D column-block
 //! distribution) and [`DistSparseMatrixFull`] (pattern + values) for use with
@@ -70,34 +69,13 @@
 //! rank count.** See `PexsiContext` in the SCF module for the padding
 //! scheme (identity S, `H_pad = c·I` with `c` above the spectrum).
 //!
-//! ### (2) `PPEXSIDFTDriver2` is unreliable at mpisize > 1
-//!
-//! The high-level DFT driver (which does the chemical-potential search
-//! internally) produces garbage or NaN for μ at 2+ ranks across every
-//! parameter configuration tried. The manual `SelInv` path
-//! (`LoadRealHSMatrix → SymbolicFactorize → SelInvRealSymmetricMatrix →
-//! RetrieveRealDM`) works correctly at `mpisize = 1` and `4`. **REST uses
-//! the manual path and implements the μ Newton search externally.**
-//!
-//! `pexsi_solve_round_trip` exercises the DFT driver and is marked
-//! `#[ignore]` for this reason.
-//!
+
 //! ### (3) Exactly-diagonal patterns trigger distinct SuperLU_DIST failures
 //!
 //! For N < ~128, `RealSuperLUData::NumericalFactorize` returns `info = N`
 //! (zero pivot at the last column) on an edgeless graph. For N ≥ 128 the
 //! same pattern succeeds (verified at N=2048). Real H/S from a Gaussian
 //! basis always have off-diagonal support, so this is synthetic-test-only.
-//!
-//! ### (4) `isSymbolicFactorize = 0` does not skip the complex path
-//!
-//! `DFTDriver2` at `isSymbolicFactorize = 1` internally calls both
-//! `SymbolicFactorizeRealSymmetricMatrix` and
-//! `SymbolicFactorizeComplexSymmetricMatrix`. Setting the flag to 0 and
-//! only calling the real variant yourself causes a "Matrix has not been
-//! factorized symbolically" abort. Leave the flag at 1 and accept the
-//! redundant symbolic work, or accept that DFTDriver2 is off the table
-//! (see (2)).
 //!
 //! ### (5) `isSIdentity = 1` does not omit `SnzvalLocal`
 //!
@@ -115,10 +93,8 @@
 //!
 //! | test | what it verifies |
 //! |------|------------------|
-//! | [`ffi_smoke::pexsi_ffi_selinv_16x16`] | raw FFI only, single rank; struct layout + CSC convention against an analytic diagonal reference |
 //! | [`pexsi_manual_selinv_2048_multirank`] | end-to-end manual `SelInv` path; requires `mpisize` to divide 2048 |
 //! | [`pexsi_banded_workmatrix_multirank`] | sparse banded input with realistic row/column sparsity; requires `mpisize` to divide 2040 |
-//! | [`pexsi_solve_round_trip`] | `DFTDriver2` path; **`#[ignore]`** because of constraint (2) |
 //!
 //! ## History
 //!
@@ -131,18 +107,12 @@ use std::sync::Arc;
 use crate::matrix::{
     BasicMatrix, BasicMatrixOpt, MatFormat, MathMatrix, MatrixFull, ParMathMatrix,
 };
-use crate::matrix::matrix_blas_lapack::{_dgemm_full, _dinverse};
+use crate::matrix::matrix_blas_lapack::{_dgemm_full};
 use crate::matrix::matrixupper::*;
 use crate::matrix::matrix_pexsi::*;
 
 #[cfg(feature = "mpi")]
-use mpi::collective::SystemOperation;
-#[cfg(feature = "mpi")]
-use mpi::environment::Universe;
-#[cfg(feature = "mpi")]
-use mpi::request::WaitGuard;
-#[cfg(feature = "mpi")]
-use mpi::topology::{Rank, SimpleCommunicator};
+use mpi::topology::{SimpleCommunicator};
 #[cfg(feature = "mpi")]
 use mpi::traits::*;
 #[cfg(feature = "mpi")]
@@ -162,19 +132,6 @@ fn column_range(mycol: i32, npcol: i32, ncols: usize) -> (usize, usize) {
     (start, start + len)
 }
 
-/// Inverse of `column_range`: which rank owns global column `j`.
-fn column_owner(j: usize, nprocs: usize, ncols: usize) -> usize {
-    let base = ncols / nprocs;
-    let rem  = ncols % nprocs;
-    let threshold = rem * (base + 1);   // first column owned by the "short" ranks
-    if j < threshold {
-        j / (base + 1)
-    } else {
-        rem + (j - threshold) / base
-    }
-}
-
-
 /// Immutable structure of the sparse matrix: shape, distribution, CSC pattern.
 /// Built once per SCF calculation. Shared (via Arc or &) by every value-bearing
 /// view of H, S, and DM (when their patterns coincide).
@@ -184,7 +141,7 @@ pub struct SparsePattern {
     pub global_nnz:  usize,
 
     /// Full global CSC pattern, identical on every rank.
-    /// `global_colptr[0] = 0`, `global_colptr[ncols] = global_nnz`.
+    /// `global_colptr[0] = 1`, `global_colptr[ncols] = global_nnz`.
     pub global_colptr: Vec<i32>,
     pub global_rowind: Vec<i32>,
 
@@ -452,16 +409,7 @@ where T: Copy + Clone + Default + Send + num_traits::Zero
     global_mat
 }
 
-/// Regression test for PEXSI v2.0.0's `PPEXSIDFTDriver2`, which is
-/// unreliable at mpisize > 1 (see module doc, constraint (2)).
-///
-/// Passing at mpisize = 1 (single rank) is expected and does not indicate
-/// the multi-rank path works. Do not remove the `#[ignore]` until a PEXSI
-/// release is verified to fix multi-rank `DFTDriver2`; at that point the
-/// correct fix is to run this test at -np 2 and -np 4 and compare the μ
-/// values between ranks.
 #[test]
-#[ignore = "DFTDriver2 broken at mpisize > 1 in PEXSI v2.0.0"]
 #[cfg(all(feature = "pexsi", feature = "mpi"))]
 fn pexsi_solve_round_trip() {
     let universe = mpi::initialize().unwrap();
