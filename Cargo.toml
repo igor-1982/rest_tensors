@@ -48,3 +48,5 @@ intel-mkl = []
 openblas = []
 mpi = ["dep:mpi"]
 scalapack = ["mpi"]
+pexsi     = ["mpi"]
+
