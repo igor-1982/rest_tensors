@@ -85,9 +85,19 @@ pub fn omp_set_num_threads_wrapper(n: usize) {
 pub fn omp_set_num_threads_global_wrapper(n: usize) {
     #[cfg(not(feature="intel-mkl"))]
     unsafe {
-        #[cfg(not(feature = "openblas-pthread"))]
+        // Which library is loaded decides which of the two calls has any effect, and that is
+        // not known when this crate is compiled: a payload may ship either the OpenMP-built or
+        // the pthread-built OpenBLAS. Both calls are safe here, because the function is only
+        // called on the main thread before any parallel region is entered:
+        //   * OpenMP-built OpenBLAS reacts to `omp_set_num_threads` (thread-local ICV, and this
+        //     call also sets the value inherited by the rayon workers);
+        //   * pthread-built OpenBLAS (`libopenblasp*`, as in the current SIF) ignores the OpenMP
+        //     API completely and only honours `openblas_set_num_threads`.
+        // Emitting only the OpenMP call silently leaves a pthread build at its auto-detected
+        // (= number of cores) thread count, which then multiplies with the worker pool. Measured
+        // on 2x56 cores, 268 atoms / def2-SVP / B3LYP / IEFPCM: 224 OS threads at 55-86% CPU
+        // utilisation and a 471 s RI-K build per SCF iteration.
         omp_set_num_threads(n as ::std::os::raw::c_int);
-        #[cfg(feature = "openblas-pthread")]
         openblas_set_num_threads(n as ::std::os::raw::c_int);
     }
     #[cfg(feature="intel-mkl")]
