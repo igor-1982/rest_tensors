@@ -67,13 +67,23 @@ subroutine general_dgemm_f(  &
     alpha, beta &
 )
 
+    ! C-block = op(A-block) * op(B-block), where every block is a rectangular sub-block of a
+    ! larger column-major matrix.
+    !
+    ! The leading dimensions handed to BLAS must be those of the PARENT matrices (rows_a,
+    ! rows_b, rows_c), not the sub-block extents: the sub-block is addressed by sequence
+    ! association from its first element (`matr_a(start_row_a+1, start_column_a+1)`), so no
+    ! array temporary is created and BLAS strides through the parent storage directly. The
+    ! earlier version passed sub-block extents (and `len_row_c` for `lda`), which only worked
+    ! because array sections made the compiler copy the block into a contiguous temporary.
+
     implicit none
-    
+
     integer :: rows_a, columns_a, start_row_a, len_row_a, start_column_a, len_column_a
     integer :: rows_b, columns_b, start_row_b, len_row_b, start_column_b, len_column_b
     integer :: rows_c, columns_c, start_row_c, len_row_c, start_column_c, len_column_c
 
-    integer :: k, lda, ldb;
+    integer :: k, lda, ldb, ldc
 
     real*8 :: matr_a(rows_a,columns_a)
     real*8 :: matr_b(rows_b,columns_b)
@@ -82,26 +92,22 @@ subroutine general_dgemm_f(  &
 
     character*1 :: opa, opb
 
+    lda = rows_a
+    ldb = rows_b
+    ldc = rows_c
+
     if (opa == 'N') then
         k = len_column_a
-        lda = len_row_c
     else
         k = len_row_a
-        lda = len_row_a
-    endif
-
-    if (opb == 'N') then
-        ldb = len_row_b
-    else
-        ldb = len_column_c
     endif
 
     call dgemm(opa, opb, len_row_c, len_column_c, k, &
         alpha, &
-        matr_a(start_row_a+1:len_row_a+start_row_a, start_column_a+1:len_column_a+start_column_a), lda, &
-        matr_b(start_row_b+1:len_row_b+start_row_b, start_column_b+1:len_column_b+start_column_b), ldb, &
+        matr_a(start_row_a+1, start_column_a+1), lda, &
+        matr_b(start_row_b+1, start_column_b+1), ldb, &
         beta,  &
-        matr_c(start_row_c+1:len_row_c+start_row_c, start_column_c+1:len_column_c+start_column_c), len_row_c &
+        matr_c(start_row_c+1, start_column_c+1), ldc &
         )
 
 end subroutine general_dgemm_f
