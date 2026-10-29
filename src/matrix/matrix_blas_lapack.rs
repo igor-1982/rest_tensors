@@ -3116,7 +3116,15 @@ where T: BasicMatUp<'a, f64>,
     });
     matr_b_full.fill_lower_part_from_upper();
 
-    let (matr_b_sqrt, matr_b_sqrt_inv, n_singularity) = _get_sqrt_and_inv_sqrt(&matr_b_full, 1.0e-10).unwrap();
+    // ---- cached metric decomposition -----------------------------------------------------
+    // `matr_b` is the overlap matrix in every SCF call and never changes across
+    // iterations, yet its eigendecomposition (a dsyevd of the same cost class as the
+    // Hamiltonian's own) was recomputed on every single call — twice per UKS
+    // iteration, near-single-core in this OpenBLAS build (measured ~2.5 s each at
+    // nao = 2392). A single-slot process cache keyed by an FNV-1a fingerprint of the
+    // packed upper triangle skips it; any change to S gives a different fingerprint
+    // and simply falls through to a fresh decomposition.
+    let (matr_b_sqrt, matr_b_sqrt_inv, n_singularity) = cached_sqrt_and_inv_sqrt(&matr_b_full, 1.0e-10);
 
     if n_singularity < *num_orb {*num_orb = n_singularity};
 
@@ -3137,6 +3145,45 @@ where T: BasicMatUp<'a, f64>,
            1.0, 0.0);
 
     Some((eigenvector, eigenvalues))
+}
+
+
+/// Single-slot process cache for the metric eigendecomposition used by
+/// [`_hamiltonian_fast_solver`]. Keyed by an FNV-1a hash of the packed upper
+/// triangle (23 MB at nao = 2392, ~2 ms to hash single-core) plus the shape.
+fn cached_sqrt_and_inv_sqrt(
+    m: &MatrixFull<f64>,
+    threshold: f64,
+) -> (MatrixFull<f64>, MatrixFull<f64>, usize) {
+    use std::sync::{Mutex, OnceLock};
+    struct Slot {
+        key: u64,
+        shape: [usize; 2],
+        sqrt: MatrixFull<f64>,
+        sqrt_inv: MatrixFull<f64>,
+        n_sing: usize,
+    }
+    static CACHE: OnceLock<Mutex<Option<Slot>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(None));
+
+    // FNV-1a over the upper triangle in column-major storage (i <= j at data[i + j*n])
+    let (n, c) = (m.size[0], m.size[1]);
+    let data = &m.data[..];
+    let mut h: u64 = 0xcbf29ce484222325;
+    for j in 0..c {
+        for i in 0..=j.min(n - 1) {
+            h ^= data[i + j * n].to_bits();
+            h = h.wrapping_mul(0x100000001b3);
+        }
+    }
+    if let Some(slot) = cache.lock().unwrap().as_ref() {
+        if slot.key == h && slot.shape == m.size {
+            return (slot.sqrt.clone(), slot.sqrt_inv.clone(), slot.n_sing);
+        }
+    }
+    let (sqrt, sqrt_inv, n_sing) = _get_sqrt_and_inv_sqrt(m, threshold).unwrap();
+    *cache.lock().unwrap() = Some(Slot { key: h, shape: m.size, sqrt: sqrt.clone(), sqrt_inv: sqrt_inv.clone(), n_sing });
+    (sqrt, sqrt_inv, n_sing)
 }
 
 pub fn _get_sqrt_and_inv_sqrt<'a, T>(matr_a: &T, threshold: f64) -> Option<(MatrixFull<f64>, MatrixFull<f64>, usize)> 
