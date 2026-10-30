@@ -558,6 +558,24 @@ pub fn _dsyev_inplace(
     }
 }
 
+
+/// Limit OpenBLAS threads to `n` for the duration of a LAPACK call and restore
+/// after. OpenBLAS's dsyevd peaks at ~8 threads (3.7x measured on n=4000) and
+/// DEGRADES at higher counts (56 threads: 1.9x slower than 8 threads, thread
+/// contention in the dsytrd rank-1 inner loops). The default auto-detect uses
+/// all cores, landing in the degradation zone for large matrices.
+pub fn with_openblas_threads<T, F: FnOnce() -> T>(n: usize, f: F) -> T {
+    extern "C" {
+        fn openblas_get_num_threads() -> ::std::os::raw::c_int;
+        fn openblas_set_num_threads(n: ::std::os::raw::c_int);
+    }
+    let saved = unsafe { openblas_get_num_threads() } as usize;
+    unsafe { openblas_set_num_threads(n as ::std::os::raw::c_int); }
+    let result = f();
+    unsafe { openblas_set_num_threads(saved as ::std::os::raw::c_int); }
+    result
+}
+
 pub fn _dsyevd<'a, T>(matr_a: &T, jobz: char) -> (Option<MatrixFull<f64>>, Vec<f64>, i32)
 where
     T: BasicMatrix<'a, f64>,
@@ -584,7 +602,7 @@ where
         let liwork = if jobz.eq(&'N') { 2 } else { 4 + 5 * n };
         let mut iwork: Vec<i32> = vec![0; liwork as usize];
         let mut info = 0;
-        unsafe {
+        with_openblas_threads(8, || unsafe {
             dsyevd(
                 jobz.clone() as u8,
                 b'L',
@@ -598,7 +616,7 @@ where
                 liwork,
                 &mut info,
             );
-        }
+        });
         if info < 0 {
             panic!(
                 "Error in _dsyevd: the {}-th argument had an illegal value",
