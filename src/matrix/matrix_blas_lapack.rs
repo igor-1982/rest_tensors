@@ -602,7 +602,11 @@ where
         let liwork = if jobz.eq(&'N') { 2 } else { 4 + 5 * n };
         let mut iwork: Vec<i32> = vec![0; liwork as usize];
         let mut info = 0;
-        with_openblas_threads(8, || unsafe {
+        // thread count configurable via REST_DSYEVD_THREADS (default 8; the optimal
+        // value depends on the specific OpenBLAS build and matrix size)
+        let dsyevd_threads: usize = std::env::var("REST_DSYEVD_THREADS")
+            .ok().and_then(|v| v.parse().ok()).unwrap_or(8);
+        with_openblas_threads(dsyevd_threads, || unsafe {
             dsyevd(
                 jobz.clone() as u8,
                 b'L',
