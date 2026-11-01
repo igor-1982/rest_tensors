@@ -23,7 +23,7 @@ extern "C" {
 }
 #[cfg(feature="intel-mkl")]
 extern "C" {
-    pub fn mkl_set_num_threads(n: *const c_int);
+    pub fn mkl_set_num_threads(n: c_int);
     pub fn mkl_set_num_threads_local(n: c_int) -> c_int;
     pub fn mkl_get_max_threads() -> c_int;
 }
@@ -102,8 +102,7 @@ pub fn omp_set_num_threads_global_wrapper(n: usize) {
     }
     #[cfg(feature="intel-mkl")]
     unsafe {
-        let tmp_n = n as i32;
-        mkl_set_num_threads(&tmp_n as *const c_int);
+        mkl_set_num_threads(n as i32);
     }
 }
 
