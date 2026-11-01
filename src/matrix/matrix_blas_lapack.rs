@@ -564,6 +564,7 @@ pub fn _dsyev_inplace(
 /// DEGRADES at higher counts (56 threads: 1.9x slower than 8 threads, thread
 /// contention in the dsytrd rank-1 inner loops). The default auto-detect uses
 /// all cores, landing in the degradation zone for large matrices.
+#[cfg(not(feature = "intel-mkl"))]
 pub fn with_openblas_threads<T, F: FnOnce() -> T>(n: usize, f: F) -> T {
     extern "C" {
         fn openblas_get_num_threads() -> ::std::os::raw::c_int;
@@ -574,6 +575,14 @@ pub fn with_openblas_threads<T, F: FnOnce() -> T>(n: usize, f: F) -> T {
     let result = f();
     unsafe { openblas_set_num_threads(saved as ::std::os::raw::c_int); }
     result
+}
+
+#[cfg(feature = "intel-mkl")]
+pub fn with_openblas_threads<T, F: FnOnce() -> T>(_n: usize, f: F) -> T {
+    // MKL build: the OpenBLAS-specific runtime thread API does not exist.
+    // MKL's own LAPACK drivers are internally threaded, so calling directly
+    // is the correct behavior (no save/restore needed).
+    f()
 }
 
 pub fn _dsyevd<'a, T>(matr_a: &T, jobz: char) -> (Option<MatrixFull<f64>>, Vec<f64>, i32)
