@@ -2,6 +2,9 @@
 use std::path::PathBuf;
 use std::{fs, env, process::Command};
 
+#[cfg(feature = "pexsi")]
+use std::collections::HashSet;
+
 fn main() -> std::io::Result<()> {
 
     // the lib directory to store librestmatr.so
@@ -134,7 +137,82 @@ fn main() -> std::io::Result<()> {
     // println!("cargo:rerun-if-changed={}/{}", &external_dir.to_str().unwrap(), restmatr_lib);
     #[cfg(target_os = "macos")]
     println!("cargo:rustc-link-lib=omp");
+    
+    #[cfg(feature = "pexsi")]
+    build_pexsi();
 
     Ok(())
+
+}
+
+// ===========================================================================
+// PEXSI: bindgen bindings + static link stack.
+//
+// Enabled via `--features pexsi` (declared in Cargo.toml).  Assumes the
+// dependencies are reachable through $REST_EXT_DIR (the spack-style view
+// maintained by genview.sh), with per-package $PEXSI_DIR / $SUPERLU_DIST_DIR
+// / $PARMETIS_DIR / $MPI_DIR honoured as overrides.
+// ===========================================================================
+#[cfg(feature = "pexsi")]
+fn build_pexsi() {
+    for var in [
+        "REST_EXT_DIR", "PEXSI_DIR", "SUPERLU_DIST_DIR",
+        "PARMETIS_DIR", "MPI_DIR", "LIBRARY_PATH",
+    ] {
+        println!("cargo:rerun-if-env-changed={}", var);
+    }
+    println!("cargo:rerun-if-changed=build.rs");
+
+    let view = env::var("REST_EXT_DIR")
+        .map(PathBuf::from)
+        .expect("REST_EXT_DIR must be set when the `pexsi` feature is enabled");
+
+
+    // ---- link search paths --------------------------------------------
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    dirs.push(view.clone());
+    dirs.push(view.join("lib"));
+    dirs.push(view.join("lib64"));
+
+    for name in ["PEXSI_DIR", "SUPERLU_DIST_DIR", "PARMETIS_DIR", "MPI_DIR"] {
+        if let Ok(p) = env::var(name) {
+            let p = PathBuf::from(p);
+            dirs.push(p.join("lib"));
+            dirs.push(p.join("lib64"));
+        }
+    }
+    if let Some(lp) = env::var_os("LIBRARY_PATH") {
+        for p in env::split_paths(&lp) {
+            dirs.push(p);
+        }
+    }
+
+    // Dedupe preserving order (view wins).
+    let mut seen = HashSet::new();
+    dirs.retain(|d| seen.insert(d.clone()));
+
+    for d in &dirs {
+        if d.is_dir() {
+            println!("cargo:rustc-link-search=native={}", d.display());
+        }
+    }
+
+    // ---- static stack: dependency order, in a linker group ------------
+    // ParMETIS ↔ METIS ↔ GKlib have cyclic references; --start-group /
+    // --end-group lets ld iterate to a fixed point.
+    println!("cargo:rustc-link-arg=-Wl,--start-group");
+    for lib in ["pexsi", "superlu_dist", "parmetis", "metis", "GKlib"] {
+        println!("cargo:rustc-link-lib=static={}", lib);
+    }
+    println!("cargo:rustc-link-arg=-Wl,--end-group");
+
+    // ---- shared libs ---------------------------------------------------
+    println!("cargo:rustc-link-lib=dylib=mpi");
+    for l in ["mpi_mpifh", "mpi_usempif08", "mpi_usempi_ignore_tkr"] {
+        println!("cargo:rustc-link-lib=dylib={}", l);
+    }
+    for l in ["openblas", "gomp", "stdc++", "gfortran", "m"] {
+        println!("cargo:rustc-link-lib=dylib={}", l);
+    }
 
 }
